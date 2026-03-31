@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Soar Project Hub</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    /* Custom scrollbar for the Kanban board */
+    .kanban-scroll::-webkit-scrollbar { height: 8px; }
+    .kanban-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    .kanban-scroll::-webkit-scrollbar-track { background: transparent; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-800 h-screen flex overflow-hidden">
+
+  <div id="app" class="w-full h-full flex" v-cloak>
+    
+    <aside class="w-64 bg-white border-r border-gray-200 flex flex-col transition-all duration-300">
+      <div class="h-16 flex items-center px-6 border-b border-gray-100">
+        <h1 class="text-2xl font-bold text-indigo-600"><i class="fa-solid fa-paper-plane mr-2"></i>Soar</h1>
+      </div>
+      
+      <nav class="flex-1 px-4 py-6 space-y-2">
+        <a href="#" class="flex items-center px-4 py-3 bg-indigo-50 text-indigo-700 rounded-lg font-medium">
+          <i class="fa-solid fa-layer-group w-6"></i> Project Board
+        </a>
+        <a href="#" class="flex items-center px-4 py-3 text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
+          <i class="fa-solid fa-calendar w-6"></i> Calendar
+        </a>
+        <a href="#" class="flex items-center px-4 py-3 text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
+          <i class="fa-solid fa-chart-gantt w-6"></i> Timeline
+        </a>
+      </nav>
+
+      <div class="p-4 border-t border-gray-100">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">
+             {{ getInitials(currentUser?.Name) || 'U' }}
+          </div>
+          <div>
+            <p class="text-sm font-medium">{{ currentUser?.Name || 'Loading...' }}</p>
+            <p class="text-xs text-gray-500 truncate w-32">{{ currentUser?.Email }}</p>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="flex-1 flex flex-col h-full overflow-hidden">
+      <header class="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-8">
+        <h2 class="text-xl font-semibold text-gray-800">Project Board</h2>
+        <button class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">
+          <i class="fa-solid fa-plus mr-1"></i> New Project
+        </button>
+      </header>
+
+      <div v-if="loading" class="flex-1 flex items-center justify-center">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+      </div>
+
+      <div v-else class="flex-1 overflow-x-auto kanban-scroll p-8 bg-gray-50/50">
+        <div class="flex space-x-6 h-full items-start">
+          
+          <div v-for="project in projects" :key="project.Project_ID" class="w-80 flex-shrink-0 flex flex-col max-h-full">
+            <div class="flex items-center justify-between mb-4 px-1">
+              <h3 class="font-bold text-gray-700 text-sm uppercase tracking-wide flex items-center">
+                <span class="w-2 h-2 rounded-full bg-indigo-500 mr-2"></span>
+                {{ project.Project_Title }}
+              </h3>
+              <span class="text-xs text-gray-400 font-medium">{{ getTasksForProject(project.Project_ID).length }}</span>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto space-y-3 pb-4">
+              <div v-for="task in getTasksForProject(project.Project_ID)" :key="task.Task_ID" 
+                   class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow cursor-pointer group"
+                   @click="openTaskInfo(task)">
+                
+                <div class="flex justify-between items-start mb-2">
+                  <span :class="statusColor(task.Status)" class="text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">
+                    {{ task.Status }}
+                  </span>
+                  <i class="fa-regular fa-comments text-gray-300 group-hover:text-indigo-400 transition-colors"></i>
+                </div>
+                
+                <h4 class="text-sm font-medium text-gray-800 mb-2">{{ task.Task_Title }}</h4>
+                
+                <div class="flex items-center justify-between mt-4">
+                  <div class="flex -space-x-2">
+                    <div v-for="assignee in getAssigneesForTask(task.Task_ID)" :key="assignee.User_ID"
+                         class="w-6 h-6 rounded-full bg-gray-200 border-2 border-white flex items-center justify-center text-[8px] font-bold text-gray-600"
+                         :title="assignee.Name">
+                      {{ getInitials(assignee.Name) }}
+                    </div>
+                  </div>
+                  <span v-if="task.Due_Date" class="text-xs text-gray-500 font-medium">
+                    <i class="fa-regular fa-clock mr-1"></i> {{ formatDate(task.Due_Date) }}
+                  </span>
+                </div>
+              </div>
+              
+              <button class="w-full py-2 border-2 border-dashed border-gray-200 text-gray-400 rounded-xl hover:border-indigo-300 hover:text-indigo-500 transition-colors text-sm font-medium">
+                + Add Task
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </main>
+
+  </div>
+
+  <?!= include('App.js'); ?>
+</body>
+</html>
