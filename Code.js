@@ -96,3 +96,45 @@ function updateTaskStatus(taskId, newStatus) {
   }
   return { success: false, error: "Task not found" };
 }
+
+/**
+ * API Endpoint: Creates a task for a project.
+ */
+function createTask(projectId, taskTitle) {
+  if (!projectId) {
+    return { success: false, error: 'Project ID is required.' };
+  }
+
+  if (!taskTitle || !taskTitle.toString().trim()) {
+    return { success: false, error: 'Task title is required.' };
+  }
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Tasks');
+  if (!sheet) {
+    return { success: false, error: 'Tasks sheet was not found.' };
+  }
+
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const headerIndex = headers.reduce((acc, header, index) => {
+    acc[header] = index;
+    return acc;
+  }, {});
+
+  const newRow = new Array(headers.length).fill('');
+  const now = new Date();
+
+  if (headerIndex.Task_ID !== undefined) newRow[headerIndex.Task_ID] = generateNextId('Tasks', 'T');
+  if (headerIndex.Project_ID !== undefined) newRow[headerIndex.Project_ID] = projectId;
+  if (headerIndex.Task_Title !== undefined) newRow[headerIndex.Task_Title] = taskTitle.toString().trim();
+  if (headerIndex.Status !== undefined) newRow[headerIndex.Status] = 'Not Started';
+  if (headerIndex.Created_Date !== undefined) newRow[headerIndex.Created_Date] = now;
+
+  sheet.appendRow(newRow);
+
+  const createdTask = {};
+  headers.forEach((header, index) => {
+    createdTask[header] = newRow[index];
+  });
+
+  return { success: true, task: createdTask };
+}
