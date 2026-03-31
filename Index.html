@@ -11,6 +11,10 @@
     .kanban-scroll::-webkit-scrollbar { height: 8px; }
     .kanban-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
     .kanban-scroll::-webkit-scrollbar-track { background: transparent; }
+    .suu-logo {
+      width: 170px;
+      height: auto;
+    }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-800 h-screen flex overflow-hidden">
@@ -19,11 +23,18 @@
     
     <aside class="w-64 bg-white border-r border-gray-200 flex flex-col transition-all duration-300">
       <div class="h-16 flex items-center px-6 border-b border-gray-100">
-        <h1 class="text-2xl font-bold text-indigo-600"><i class="fa-solid fa-paper-plane mr-2"></i>Soar</h1>
+        <h1 class="text-2xl font-bold text-[#DB0000] flex items-center gap-2">
+          <svg class="suu-logo" viewBox="0 0 520 120" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Southern Utah University logo">
+            <text x="0" y="90" fill="#DB0000" font-family="Georgia, 'Times New Roman', serif" font-size="96" letter-spacing="2">SUU</text>
+            <text x="225" y="42" fill="#111111" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" letter-spacing="4">SOUTHERN</text>
+            <text x="225" y="74" fill="#111111" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" letter-spacing="4">UTAH</text>
+            <text x="225" y="106" fill="#111111" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" letter-spacing="4">UNIVERSITY</text>
+          </svg>
+        </h1>
       </div>
       
       <nav class="flex-1 px-4 py-6 space-y-2">
-        <a href="#" class="flex items-center px-4 py-3 bg-indigo-50 text-indigo-700 rounded-lg font-medium">
+        <a href="#" class="flex items-center px-4 py-3 bg-[#DB0000]/10 text-[#DB0000] rounded-lg font-medium">
           <i class="fa-solid fa-layer-group w-6"></i> Project Board
         </a>
         <a href="#" class="flex items-center px-4 py-3 text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
@@ -36,7 +47,7 @@
 
       <div class="p-4 border-t border-gray-100">
         <div class="flex items-center space-x-3">
-          <div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">
+          <div class="w-10 h-10 rounded-full bg-[#DB0000]/10 flex items-center justify-center text-[#DB0000] font-bold">
              {{ getInitials(currentUser?.Name) || 'U' }}
           </div>
           <div>
@@ -49,14 +60,14 @@
 
     <main class="flex-1 flex flex-col h-full overflow-hidden">
       <header class="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-8">
-        <h2 class="text-xl font-semibold text-gray-800">Project Board</h2>
-        <button class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">
+        <h2 class="text-xl font-semibold text-black">Project Board</h2>
+        <button class="bg-[#DB0000] hover:bg-[#C41425] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">
           <i class="fa-solid fa-plus mr-1"></i> New Project
         </button>
       </header>
 
       <div v-if="loading" class="flex-1 flex items-center justify-center">
-        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-[#DB0000]"></div>
       </div>
 
       <div v-else class="flex-1 overflow-x-auto kanban-scroll p-8 bg-gray-50/50">
@@ -65,7 +76,7 @@
           <div v-for="project in projects" :key="project.Project_ID" class="w-80 flex-shrink-0 flex flex-col max-h-full">
             <div class="flex items-center justify-between mb-4 px-1">
               <h3 class="font-bold text-gray-700 text-sm uppercase tracking-wide flex items-center">
-                <span class="w-2 h-2 rounded-full bg-indigo-500 mr-2"></span>
+                <span class="w-2 h-2 rounded-full bg-[#DB0000] mr-2"></span>
                 {{ project.Project_Title }}
               </h3>
               <span class="text-xs text-gray-400 font-medium">{{ getTasksForProject(project.Project_ID).length }}</span>
@@ -80,7 +91,7 @@
                   <span :class="statusColor(task.Status)" class="text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">
                     {{ task.Status }}
                   </span>
-                  <i class="fa-regular fa-comments text-gray-300 group-hover:text-indigo-400 transition-colors"></i>
+                  <i class="fa-regular fa-comments text-gray-300 group-hover:text-[#C41425] transition-colors"></i>
                 </div>
                 
                 <h4 class="text-sm font-medium text-gray-800 mb-2">{{ task.Task_Title }}</h4>
@@ -99,7 +110,7 @@
                 </div>
               </div>
               
-              <button class="w-full py-2 border-2 border-dashed border-gray-200 text-gray-400 rounded-xl hover:border-indigo-300 hover:text-indigo-500 transition-colors text-sm font-medium">
+              <button class="w-full py-2 border-2 border-dashed border-gray-200 text-gray-400 rounded-xl hover:border-[#C41425] hover:text-[#DB0000] transition-colors text-sm font-medium">
                 + Add Task
               </button>
             </div>
