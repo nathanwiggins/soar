@@ -76,6 +76,31 @@
         alert(`Opening details for: ${task.Task_Title}\n(Next Step: Build the Task Detail Modal!)`);
       };
 
+      const openAddTask = (project) => {
+        const taskTitle = prompt(`Add a new task to "${project.Project_Title}"\n\nTask title:`);
+        if (!taskTitle) return;
+
+        const trimmedTitle = taskTitle.trim();
+        if (!trimmedTitle) {
+          alert("Task title cannot be empty.");
+          return;
+        }
+
+        google.script.run
+          .withSuccessHandler((result) => {
+            if (!result || !result.success) {
+              alert(result?.error || "Failed to create task.");
+              return;
+            }
+            tasks.value.push(result.task);
+          })
+          .withFailureHandler((error) => {
+            console.error("Failed to add task:", error);
+            alert("Error creating task.");
+          })
+          .createTask(project.Project_ID, trimmedTitle);
+      };
+
       // Lifecycle hooks
       onMounted(() => {
         fetchData();
@@ -91,7 +116,8 @@
         statusColor,
         getInitials,
         formatDate,
-        openTaskInfo
+        openTaskInfo,
+        openAddTask
       };
     }
   }).mount('#app');
