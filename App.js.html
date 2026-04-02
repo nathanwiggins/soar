@@ -5,6 +5,9 @@
     setup() {
       const loading = ref(true);
       const currentUserEmail = ref('');
+
+      const isDarkMode = ref(false);
+      const isUserMenuOpen = ref(false);
       
       // Data models based on Data Dictionary
       const users = ref([]);
@@ -76,6 +79,14 @@
         alert(`Opening details for: ${task.Task_Title}\n(Next Step: Build the Task Detail Modal!)`);
       };
 
+      const toggleUserMenu = () => {
+        isUserMenuOpen.value = !isUserMenuOpen.value;
+      };
+
+      const toggleDarkMode = () => {
+        isDarkMode.value = !isDarkMode.value;
+      };
+
       // Lifecycle hooks
       onMounted(() => {
         fetchData();
@@ -83,6 +94,8 @@
 
       return {
         loading,
+        isDarkMode,
+        isUserMenuOpen,
         currentUser,
         projects,
         tasks,
@@ -91,7 +104,9 @@
         statusColor,
         getInitials,
         formatDate,
-        openTaskInfo
+        openTaskInfo,
+        toggleUserMenu,
+        toggleDarkMode
       };
     }
   }).mount('#app');
