@@ -57,15 +57,44 @@
           const bgB = b / corners.length;
           const tolerance = 30;
 
-          for (let i = 0; i < pixels.length; i += 4) {
-            const dr = pixels[i] - bgR;
-            const dg = pixels[i + 1] - bgG;
-            const db = pixels[i + 2] - bgB;
+          const isBgLike = (x, y) => {
+            const index = (y * canvas.width + x) * 4;
+            const dr = pixels[index] - bgR;
+            const dg = pixels[index + 1] - bgG;
+            const db = pixels[index + 2] - bgB;
             const distance = Math.sqrt(dr * dr + dg * dg + db * db);
+            return distance <= tolerance;
+          };
 
-            if (distance <= tolerance) {
-              pixels[i + 3] = 0;
-            }
+          // Remove only edge-connected background so enclosed interior details stay intact.
+          const visited = new Uint8Array(canvas.width * canvas.height);
+          const queue = [];
+          const enqueue = (x, y) => {
+            const key = y * canvas.width + x;
+            if (visited[key]) return;
+            if (!isBgLike(x, y)) return;
+            visited[key] = 1;
+            queue.push([x, y]);
+          };
+
+          for (let x = 0; x < canvas.width; x++) {
+            enqueue(x, 0);
+            enqueue(x, canvas.height - 1);
+          }
+          for (let y = 0; y < canvas.height; y++) {
+            enqueue(0, y);
+            enqueue(canvas.width - 1, y);
+          }
+
+          while (queue.length) {
+            const [x, y] = queue.shift();
+            const index = (y * canvas.width + x) * 4;
+            pixels[index + 3] = 0;
+
+            if (x > 0) enqueue(x - 1, y);
+            if (x < canvas.width - 1) enqueue(x + 1, y);
+            if (y > 0) enqueue(x, y - 1);
+            if (y < canvas.height - 1) enqueue(x, y + 1);
           }
 
           ctx.putImageData(imageData, 0, 0);
