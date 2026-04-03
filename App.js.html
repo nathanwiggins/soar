@@ -21,6 +21,93 @@
       });
 
       // Methods
+      const makeLogoTransparent = () => {
+        const logo = document.querySelector('.soar-logo');
+        if (!logo) return;
+
+        const processLogo = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = logo.naturalWidth;
+          canvas.height = logo.naturalHeight;
+
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+
+          ctx.drawImage(logo, 0, 0);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const pixels = imageData.data;
+
+          const corners = [
+            [0, 0],
+            [canvas.width - 1, 0],
+            [0, canvas.height - 1],
+            [canvas.width - 1, canvas.height - 1]
+          ];
+
+          let r = 0, g = 0, b = 0;
+          corners.forEach(([x, y]) => {
+            const index = (y * canvas.width + x) * 4;
+            r += pixels[index];
+            g += pixels[index + 1];
+            b += pixels[index + 2];
+          });
+
+          const bgR = r / corners.length;
+          const bgG = g / corners.length;
+          const bgB = b / corners.length;
+          const tolerance = 30;
+
+          const isBgLike = (x, y) => {
+            const index = (y * canvas.width + x) * 4;
+            const dr = pixels[index] - bgR;
+            const dg = pixels[index + 1] - bgG;
+            const db = pixels[index + 2] - bgB;
+            const distance = Math.sqrt(dr * dr + dg * dg + db * db);
+            return distance <= tolerance;
+          };
+
+          // Remove only edge-connected background so enclosed interior details stay intact.
+          const visited = new Uint8Array(canvas.width * canvas.height);
+          const queue = [];
+          const enqueue = (x, y) => {
+            const key = y * canvas.width + x;
+            if (visited[key]) return;
+            if (!isBgLike(x, y)) return;
+            visited[key] = 1;
+            queue.push([x, y]);
+          };
+
+          for (let x = 0; x < canvas.width; x++) {
+            enqueue(x, 0);
+            enqueue(x, canvas.height - 1);
+          }
+          for (let y = 0; y < canvas.height; y++) {
+            enqueue(0, y);
+            enqueue(canvas.width - 1, y);
+          }
+
+          while (queue.length) {
+            const [x, y] = queue.shift();
+            const index = (y * canvas.width + x) * 4;
+            pixels[index + 3] = 0;
+
+            if (x > 0) enqueue(x - 1, y);
+            if (x < canvas.width - 1) enqueue(x + 1, y);
+            if (y > 0) enqueue(x, y - 1);
+            if (y < canvas.height - 1) enqueue(x, y + 1);
+          }
+
+          ctx.putImageData(imageData, 0, 0);
+          logo.src = canvas.toDataURL('image/png');
+        };
+
+        if (logo.complete) {
+          processLogo();
+        } else {
+          logo.addEventListener('load', processLogo, { once: true });
+        }
+      };
+
       const fetchData = () => {
         google.script.run
           .withSuccessHandler((response) => {
@@ -89,6 +176,7 @@
 
       // Lifecycle hooks
       onMounted(() => {
+        makeLogoTransparent();
         fetchData();
       });
 
