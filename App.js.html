@@ -97,6 +97,22 @@
             if (y < canvas.height - 1) enqueue(x, y + 1);
           }
 
+          // Recolor dark logo strokes to brand red.
+          for (let i = 0; i < pixels.length; i += 4) {
+            const alpha = pixels[i + 3];
+            if (alpha === 0) continue;
+
+            const rVal = pixels[i];
+            const gVal = pixels[i + 1];
+            const bVal = pixels[i + 2];
+
+            if (rVal < 80 && gVal < 80 && bVal < 80) {
+              pixels[i] = 219;     // #DB0000
+              pixels[i + 1] = 0;
+              pixels[i + 2] = 0;
+            }
+          }
+
           ctx.putImageData(imageData, 0, 0);
           logo.src = canvas.toDataURL('image/png');
         };
@@ -176,8 +192,8 @@
 
       // Lifecycle hooks
       onMounted(() => {
-        makeLogoTransparent();
         fetchData();
+        makeLogoTransparent();
       });
 
       return {
