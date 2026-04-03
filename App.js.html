@@ -21,6 +21,64 @@
       });
 
       // Methods
+      const makeLogoTransparent = () => {
+        const logo = document.querySelector('.soar-logo');
+        if (!logo) return;
+
+        const processLogo = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = logo.naturalWidth;
+          canvas.height = logo.naturalHeight;
+
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+
+          ctx.drawImage(logo, 0, 0);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const pixels = imageData.data;
+
+          const corners = [
+            [0, 0],
+            [canvas.width - 1, 0],
+            [0, canvas.height - 1],
+            [canvas.width - 1, canvas.height - 1]
+          ];
+
+          let r = 0, g = 0, b = 0;
+          corners.forEach(([x, y]) => {
+            const index = (y * canvas.width + x) * 4;
+            r += pixels[index];
+            g += pixels[index + 1];
+            b += pixels[index + 2];
+          });
+
+          const bgR = r / corners.length;
+          const bgG = g / corners.length;
+          const bgB = b / corners.length;
+          const tolerance = 30;
+
+          for (let i = 0; i < pixels.length; i += 4) {
+            const dr = pixels[i] - bgR;
+            const dg = pixels[i + 1] - bgG;
+            const db = pixels[i + 2] - bgB;
+            const distance = Math.sqrt(dr * dr + dg * dg + db * db);
+
+            if (distance <= tolerance) {
+              pixels[i + 3] = 0;
+            }
+          }
+
+          ctx.putImageData(imageData, 0, 0);
+          logo.src = canvas.toDataURL('image/png');
+        };
+
+        if (logo.complete) {
+          processLogo();
+        } else {
+          logo.addEventListener('load', processLogo, { once: true });
+        }
+      };
+
       const fetchData = () => {
         google.script.run
           .withSuccessHandler((response) => {
@@ -89,6 +147,7 @@
 
       // Lifecycle hooks
       onMounted(() => {
+        makeLogoTransparent();
         fetchData();
       });
 
