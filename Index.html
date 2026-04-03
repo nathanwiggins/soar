@@ -12,7 +12,9 @@
     .kanban-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
     .kanban-scroll::-webkit-scrollbar-track { background: transparent; }
     .soar-logo {
-      width: 180px;
+      display: block;
+      width: 100%;
+      max-width: 150px;
       height: auto;
     }
   </style>
@@ -22,7 +24,7 @@
   <div id="app" :class="isDarkMode ? 'bg-gray-950 text-gray-100' : 'bg-gray-50 text-gray-800'" class="w-full h-full flex transition-colors duration-200" v-cloak @click="isUserMenuOpen = false">
     
     <aside :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'" class="w-64 border-r flex flex-col transition-all duration-300">
-      <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="h-16 flex items-center px-6 border-b">
+      <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="h-16 flex items-center px-6 border-b overflow-hidden">
         <h1 class="text-2xl font-bold text-[#DB0000] flex items-center gap-2">
           <svg class="soar-logo" viewBox="0 0 658 312">
 <g><path style="opacity:1" fill="#e6192a" d="M 8.5,-0.5 C 13.5,-0.5 18.5,-0.5 23.5,-0.5C 24.6412,0.339027 25.9745,1.00569 27.5,1.5C 28.4933,6.11965 28.8266,10.7863 28.5,15.5C 27.1667,15.5 25.8333,15.5 24.5,15.5C 23.4629,5.28074 18.1295,1.78074 8.5,5C 5.0645,8.0599 4.73116,11.3932 7.5,15C 13.5,17.6667 19.5,20.3333 25.5,23C 31.4048,27.6179 32.9048,33.4512 30,40.5C 27.5943,44.4085 24.4276,47.4085 20.5,49.5C 15.8333,49.5 11.1667,49.5 6.5,49.5C 4.35105,48.2638 2.01772,47.2638 -0.5,46.5C -0.5,41.1667 -0.5,35.8333 -0.5,30.5C 0.833333,30.5 2.16667,30.5 3.5,30.5C 3.65737,36.5165 5.99071,41.3499 10.5,45C 19.0534,47.1704 23.2201,44.0038 23,35.5C 21.8783,33.3762 20.3783,31.5429 18.5,30C 13.8333,28 9.16667,26 4.5,24C 2.59809,22.2703 0.93142,20.437 -0.5,18.5C -0.5,14.8333 -0.5,11.1667 -0.5,7.5C 1.90326,4.09299 4.90326,1.42632 8.5,-0.5 Z"/></g>
