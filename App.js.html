@@ -5,12 +5,23 @@
     setup() {
       const loading = ref(true);
       const currentUserEmail = ref('');
-      
+
       // Data models based on Data Dictionary
       const users = ref([]);
       const projects = ref([]);
       const tasks = ref([]);
       const assignments = ref([]);
+
+      const showAddTaskModal = ref(false);
+      const selectedProject = ref(null);
+      const creatingTask = ref(false);
+      const newTaskForm = ref({
+        taskTitle: '',
+        dueDate: '',
+        complexity: null,
+        description: '',
+        priority: null
+      });
 
       // Computed properties
       const currentUser = computed(() => {
@@ -22,8 +33,8 @@
         google.script.run
           .withSuccessHandler((response) => {
             // Parse the stringified JSON back into a JavaScript object
-            const payload = JSON.parse(response); 
-            
+            const payload = JSON.parse(response);
+
             currentUserEmail.value = payload.currentUserEmail;
             users.value = payload.users;
             projects.value = payload.projects;
@@ -32,8 +43,8 @@
             loading.value = false;
           })
           .withFailureHandler((error) => {
-            console.error("Failed to load data:", error);
-            alert("Error loading application data.");
+            console.error('Failed to load data:', error);
+            alert('Error loading application data.');
           })
           .getInitialPayload();
       };
@@ -72,33 +83,79 @@
 
       const openTaskInfo = (task) => {
         // Placeholder for the detailed modal you requested (comments, drive links, etc.)
-        console.log("Opening task modal for:", task.Task_Title);
+        console.log('Opening task modal for:', task.Task_Title);
         alert(`Opening details for: ${task.Task_Title}\n(Next Step: Build the Task Detail Modal!)`);
       };
 
-      const openAddTask = (project) => {
-        const taskTitle = prompt(`Add a new task to "${project.Project_Title}"\n\nTask title:`);
-        if (!taskTitle) return;
+      const resetTaskForm = () => {
+        newTaskForm.value = {
+          taskTitle: '',
+          dueDate: '',
+          complexity: null,
+          description: '',
+          priority: null
+        };
+      };
 
-        const trimmedTitle = taskTitle.trim();
+      const openAddTask = (project) => {
+        selectedProject.value = project;
+        resetTaskForm();
+        showAddTaskModal.value = true;
+      };
+
+      const closeAddTask = () => {
+        if (creatingTask.value) return;
+        showAddTaskModal.value = false;
+        selectedProject.value = null;
+      };
+
+      const setComplexity = (value) => {
+        newTaskForm.value.complexity = value;
+      };
+
+      const setPriority = (value) => {
+        newTaskForm.value.priority = value;
+      };
+
+      const createTask = () => {
+        const trimmedTitle = newTaskForm.value.taskTitle.trim();
         if (!trimmedTitle) {
-          alert("Task title cannot be empty.");
+          alert('Task title cannot be empty.');
           return;
         }
 
+        if (!selectedProject.value?.Project_ID) {
+          alert('No project selected.');
+          return;
+        }
+
+        creatingTask.value = true;
+
         google.script.run
-          .withSuccessHandler((result) => {
+          .withSuccessHandler((response) => {
+            creatingTask.value = false;
+
+            const result = JSON.parse(response);
             if (!result || !result.success) {
-              alert(result?.error || "Failed to create task.");
+              alert(result?.error || 'Failed to create task.');
               return;
             }
+
             tasks.value.push(result.task);
+            closeAddTask();
           })
           .withFailureHandler((error) => {
-            console.error("Failed to add task:", error);
-            alert("Error creating task.");
+            creatingTask.value = false;
+            console.error('Failed to add task:', error);
+            alert('Error creating task.');
           })
-          .createTask(project.Project_ID, trimmedTitle);
+          .createTask(selectedProject.value.Project_ID, {
+            taskTitle: trimmedTitle,
+            dueDate: newTaskForm.value.dueDate,
+            complexity: newTaskForm.value.complexity,
+            description: newTaskForm.value.description,
+            priority: newTaskForm.value.priority
+          });
       };
 
       // Lifecycle hooks
@@ -111,13 +168,21 @@
         currentUser,
         projects,
         tasks,
+        showAddTaskModal,
+        selectedProject,
+        creatingTask,
+        newTaskForm,
         getTasksForProject,
         getAssigneesForTask,
         statusColor,
         getInitials,
         formatDate,
         openTaskInfo,
-        openAddTask
+        openAddTask,
+        closeAddTask,
+        setComplexity,
+        setPriority,
+        createTask
       };
     }
   }).mount('#app');

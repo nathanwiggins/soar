@@ -97,44 +97,72 @@ function updateTaskStatus(taskId, newStatus) {
   return { success: false, error: "Task not found" };
 }
 
+function normalizeScaleValue(value, fieldName) {
+  if (value === null || value === undefined || value === '') return '';
+
+  const parsedValue = Number(value);
+  if (!Number.isInteger(parsedValue) || parsedValue < 1 || parsedValue > 5) {
+    throw new Error(`${fieldName} must be an integer between 1 and 5.`);
+  }
+  return parsedValue;
+}
+
 /**
  * API Endpoint: Creates a task for a project.
  */
-function createTask(projectId, taskTitle) {
+function createTask(projectId, taskInput) {
   if (!projectId) {
-    return { success: false, error: 'Project ID is required.' };
+    return JSON.stringify({ success: false, error: 'Project ID is required.' });
   }
 
-  if (!taskTitle || !taskTitle.toString().trim()) {
-    return { success: false, error: 'Task title is required.' };
+  const taskTitle = taskInput && taskInput.taskTitle ? taskInput.taskTitle.toString().trim() : '';
+  if (!taskTitle) {
+    return JSON.stringify({ success: false, error: 'Task title is required.' });
   }
 
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Tasks');
   if (!sheet) {
-    return { success: false, error: 'Tasks sheet was not found.' };
+    return JSON.stringify({ success: false, error: 'Tasks sheet was not found.' });
   }
 
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const headerIndex = headers.reduce((acc, header, index) => {
-    acc[header] = index;
-    return acc;
-  }, {});
+  try {
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const headerIndex = headers.reduce((acc, header, index) => {
+      acc[header] = index;
+      return acc;
+    }, {});
 
-  const newRow = new Array(headers.length).fill('');
-  const now = new Date();
+    const newRow = new Array(headers.length).fill('');
+    const now = new Date();
+    const parsedDueDate = taskInput && taskInput.dueDate ? new Date(taskInput.dueDate) : '';
+    const hasValidDueDate = parsedDueDate && parsedDueDate.toString() !== 'Invalid Date';
+    const complexity = normalizeScaleValue(taskInput ? taskInput.complexity : '', 'Complexity');
+    const priority = normalizeScaleValue(taskInput ? taskInput.priority : '', 'Priority');
+    const description = taskInput && taskInput.description ? taskInput.description.toString().trim() : '';
 
-  if (headerIndex.Task_ID !== undefined) newRow[headerIndex.Task_ID] = generateNextId('Tasks', 'T');
-  if (headerIndex.Project_ID !== undefined) newRow[headerIndex.Project_ID] = projectId;
-  if (headerIndex.Task_Title !== undefined) newRow[headerIndex.Task_Title] = taskTitle.toString().trim();
-  if (headerIndex.Status !== undefined) newRow[headerIndex.Status] = 'Not Started';
-  if (headerIndex.Created_Date !== undefined) newRow[headerIndex.Created_Date] = now;
+    if (headerIndex.Task_ID !== undefined) newRow[headerIndex.Task_ID] = generateNextId('Tasks', 'T');
+    if (headerIndex.Project_ID !== undefined) newRow[headerIndex.Project_ID] = projectId;
+    if (headerIndex.Task_Title !== undefined) newRow[headerIndex.Task_Title] = taskTitle;
+    if (headerIndex.Due_Date !== undefined) newRow[headerIndex.Due_Date] = hasValidDueDate ? parsedDueDate : '';
+    if (headerIndex.Status !== undefined) newRow[headerIndex.Status] = 'Not Started';
+    if (headerIndex.Complexity !== undefined) newRow[headerIndex.Complexity] = complexity;
+    if (headerIndex.Created_Date !== undefined) newRow[headerIndex.Created_Date] = now;
+    if (headerIndex.Description !== undefined) newRow[headerIndex.Description] = description;
+    if (headerIndex.Priority !== undefined) newRow[headerIndex.Priority] = priority;
 
-  sheet.appendRow(newRow);
+    sheet.appendRow(newRow);
 
-  const createdTask = {};
-  headers.forEach((header, index) => {
-    createdTask[header] = newRow[index];
-  });
+    const createdTask = {};
+    headers.forEach((header, index) => {
+      const value = newRow[index];
+      createdTask[header] = value instanceof Date ? value.toISOString() : value;
+    });
 
-  return { success: true, task: createdTask };
+    return JSON.stringify({ success: true, task: createdTask });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: error && error.message ? error.message : 'Failed to create task.'
+    });
+  }
 }
