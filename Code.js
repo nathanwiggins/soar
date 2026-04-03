@@ -1,6 +1,8 @@
 /**
  * Main entry point for the web app.
  * Serves the Index.html file.
+ * 
+ * Owen Testing to see if clasp push went all the way to the sheet
  */
 function doGet() {
   return HtmlService.createTemplateFromFile('Index')
