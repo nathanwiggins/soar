@@ -135,13 +135,17 @@
           .withSuccessHandler((response) => {
             creatingTask.value = false;
 
-            const result = JSON.parse(response);
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
             if (!result || !result.success) {
               alert(result?.error || 'Failed to create task.');
               return;
             }
 
-            tasks.value.push(result.task);
+            if (result.task) {
+              tasks.value.push(result.task);
+            } else {
+              fetchData();
+            }
             closeAddTask();
           })
           .withFailureHandler((error) => {

@@ -1,8 +1,6 @@
 /**
  * Main entry point for the web app.
  * Serves the Index.html file.
- * 
- * Owen Testing to see if clasp push went all the way to the sheet
  */
 function doGet() {
   return HtmlService.createTemplateFromFile('Index')
@@ -58,10 +56,22 @@ function generateNextId(sheetName, prefix) {
     return `${prefix}-00000001`; // First ID
   }
   
-  // Assuming ID is always the first column based on Data Dictionary
-  const lastIdStr = data[data.length - 1][0]; 
-  const numericPart = parseInt(lastIdStr.split('-')[1], 10);
-  const nextNumber = numericPart + 1;
+  const existingIds = data
+    .slice(1)
+    .map(row => (row[0] || '').toString())
+    .filter(id => id.startsWith(`${prefix}-`));
+
+  if (existingIds.length === 0) {
+    return `${prefix}-00000001`;
+  }
+
+  const maxNumber = existingIds.reduce((max, id) => {
+    const numericPart = parseInt(id.split('-')[1], 10);
+    if (Number.isNaN(numericPart)) return max;
+    return Math.max(max, numericPart);
+  }, 0);
+
+  const nextNumber = maxNumber + 1;
   
   return `${prefix}-${nextNumber.toString().padStart(8, '0')}`;
 }
