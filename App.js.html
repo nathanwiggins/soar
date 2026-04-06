@@ -15,12 +15,14 @@
       const showAddTaskModal = ref(false);
       const selectedProject = ref(null);
       const creatingTask = ref(false);
+      const showAssigneeDropdown = ref(false);
       const newTaskForm = ref({
         taskTitle: '',
         dueDate: '',
         complexity: null,
         description: '',
-        priority: null
+        priority: null,
+        assigneeIds: []
       });
 
       // Computed properties
@@ -93,18 +95,21 @@
           dueDate: '',
           complexity: null,
           description: '',
-          priority: null
+          priority: null,
+          assigneeIds: []
         };
       };
 
       const openAddTask = (project) => {
         selectedProject.value = project;
         resetTaskForm();
+        showAssigneeDropdown.value = false;
         showAddTaskModal.value = true;
       };
 
       const closeAddTask = () => {
         if (creatingTask.value) return;
+        showAssigneeDropdown.value = false;
         showAddTaskModal.value = false;
         selectedProject.value = null;
       };
@@ -116,6 +121,28 @@
       const setPriority = (value) => {
         newTaskForm.value.priority = value;
       };
+
+      const toggleAssignee = (userId) => {
+        const selectedAssignees = newTaskForm.value.assigneeIds;
+        const index = selectedAssignees.indexOf(userId);
+        if (index >= 0) {
+          selectedAssignees.splice(index, 1);
+        } else {
+          selectedAssignees.push(userId);
+        }
+      };
+
+      const isAssigneeSelected = (userId) => newTaskForm.value.assigneeIds.includes(userId);
+
+      const assigneeSummary = computed(() => {
+        const count = newTaskForm.value.assigneeIds.length;
+        if (count === 0) return 'Select assignees';
+        if (count === 1) {
+          const selectedUser = users.value.find((u) => u.User_ID === newTaskForm.value.assigneeIds[0]);
+          return selectedUser ? selectedUser.Name : '1 assignee selected';
+        }
+        return `${count} assignees selected`;
+      });
 
       const createTask = () => {
         const trimmedTitle = newTaskForm.value.taskTitle.trim();
@@ -143,6 +170,10 @@
 
             if (result.task) {
               tasks.value.push(result.task);
+
+              if (Array.isArray(result.assignments)) {
+                assignments.value.push(...result.assignments);
+              }
             } else {
               fetchData();
             }
@@ -158,7 +189,8 @@
             dueDate: newTaskForm.value.dueDate,
             complexity: newTaskForm.value.complexity,
             description: newTaskForm.value.description,
-            priority: newTaskForm.value.priority
+            priority: newTaskForm.value.priority,
+            assigneeIds: newTaskForm.value.assigneeIds
           });
       };
 
@@ -175,6 +207,9 @@
         showAddTaskModal,
         selectedProject,
         creatingTask,
+        users,
+        showAssigneeDropdown,
+        assigneeSummary,
         newTaskForm,
         getTasksForProject,
         getAssigneesForTask,
@@ -186,6 +221,8 @@
         closeAddTask,
         setComplexity,
         setPriority,
+        toggleAssignee,
+        isAssigneeSelected,
         createTask
       };
     }
