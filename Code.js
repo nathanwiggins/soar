@@ -1,8 +1,6 @@
 /**
  * Main entry point for the web app.
  * Serves the Index.html file.
- * 
- * Owen Testing to see if clasp push went all the way to the sheet
  */
 function doGet() {
   return HtmlService.createTemplateFromFile('Index')
@@ -58,10 +56,22 @@ function generateNextId(sheetName, prefix) {
     return `${prefix}-00000001`; // First ID
   }
   
-  // Assuming ID is always the first column based on Data Dictionary
-  const lastIdStr = data[data.length - 1][0]; 
-  const numericPart = parseInt(lastIdStr.split('-')[1], 10);
-  const nextNumber = numericPart + 1;
+  const existingIds = data
+    .slice(1)
+    .map(row => (row[0] || '').toString())
+    .filter(id => id.startsWith(`${prefix}-`));
+
+  if (existingIds.length === 0) {
+    return `${prefix}-00000001`;
+  }
+
+  const maxNumber = existingIds.reduce((max, id) => {
+    const numericPart = parseInt(id.split('-')[1], 10);
+    if (Number.isNaN(numericPart)) return max;
+    return Math.max(max, numericPart);
+  }, 0);
+
+  const nextNumber = maxNumber + 1;
   
   return `${prefix}-${nextNumber.toString().padStart(8, '0')}`;
 }
@@ -109,6 +119,24 @@ function normalizeScaleValue(value, fieldName) {
   return parsedValue;
 }
 
+
+function getValidAssigneeIds(assigneeIds) {
+  if (!Array.isArray(assigneeIds)) return [];
+
+  const uniqueAssigneeIds = [...new Set(assigneeIds.map(id => (id || '').toString().trim()).filter(Boolean))];
+  if (uniqueAssigneeIds.length === 0) return [];
+
+  const users = getTableData('Users');
+  const validUserIds = new Set(users.map(user => user.User_ID));
+  const invalidAssignees = uniqueAssigneeIds.filter(id => !validUserIds.has(id));
+
+  if (invalidAssignees.length > 0) {
+    throw new Error(`Invalid assignee ID(s): ${invalidAssignees.join(', ')}`);
+  }
+
+  return uniqueAssigneeIds;
+}
+
 /**
  * API Endpoint: Creates a task for a project.
  */
@@ -141,6 +169,7 @@ function createTask(projectId, taskInput) {
     const complexity = normalizeScaleValue(taskInput ? taskInput.complexity : '', 'Complexity');
     const priority = normalizeScaleValue(taskInput ? taskInput.priority : '', 'Priority');
     const description = taskInput && taskInput.description ? taskInput.description.toString().trim() : '';
+    const assigneeIds = getValidAssigneeIds(taskInput ? taskInput.assigneeIds : []);
 
     if (headerIndex.Task_ID !== undefined) newRow[headerIndex.Task_ID] = generateNextId('Tasks', 'T');
     if (headerIndex.Project_ID !== undefined) newRow[headerIndex.Project_ID] = projectId;
@@ -154,13 +183,29 @@ function createTask(projectId, taskInput) {
 
     sheet.appendRow(newRow);
 
+    let createdAssignments = [];
+    if (assigneeIds.length > 0 && headerIndex.Task_ID !== undefined) {
+      const assignmentsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Assignments');
+      if (!assignmentsSheet) {
+        throw new Error('Assignments sheet was not found.');
+      }
+
+      createdAssignments = assigneeIds.map(assigneeId => ({
+        Assignment_ID: newRow[headerIndex.Task_ID],
+        Assignee_ID: assigneeId
+      }));
+
+      const assignmentRows = createdAssignments.map(assignment => [assignment.Assignment_ID, assignment.Assignee_ID]);
+      assignmentsSheet.getRange(assignmentsSheet.getLastRow() + 1, 1, assignmentRows.length, 2).setValues(assignmentRows);
+    }
+
     const createdTask = {};
     headers.forEach((header, index) => {
       const value = newRow[index];
       createdTask[header] = value instanceof Date ? value.toISOString() : value;
     });
 
-    return JSON.stringify({ success: true, task: createdTask });
+    return JSON.stringify({ success: true, task: createdTask, assignments: createdAssignments });
   } catch (error) {
     return JSON.stringify({
       success: false,
