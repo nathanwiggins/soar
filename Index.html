@@ -120,10 +120,10 @@
                 </div>
               </div>
               
-              <button
-                class="w-full py-2 border-2 border-dashed border-gray-200 text-gray-400 rounded-xl hover:border-indigo-300 hover:text-indigo-500 transition-colors text-sm font-medium"
-                      @click="openAddTask(project)"></button>
-              <button :class="isDarkMode ? 'border-gray-700 text-gray-500 hover:border-[#C41425] hover:text-[#DB0000]' : 'border-gray-200 text-gray-400 hover:border-[#C41425] hover:text-[#DB0000]'" class="w-full py-2 border-2 border-dashed rounded-xl transition-colors text-sm font-medium">
+              <button 
+                @click="openAddTask(project)" 
+                :class="isDarkMode ? 'border-gray-700 text-gray-500 hover:border-[#C41425] hover:text-[#DB0000]' : 'border-gray-200 text-gray-400 hover:border-[#C41425] hover:text-[#DB0000]'" 
+                class="w-full py-2 border-2 border-dashed rounded-xl transition-colors text-sm font-medium">
                 + Add Task
               </button>
             </div>

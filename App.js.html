@@ -277,6 +277,8 @@
             priority: newTaskForm.value.priority,
             assigneeIds: newTaskForm.value.assigneeIds
           });
+      };
+
       const toggleUserMenu = () => {
         isUserMenuOpen.value = !isUserMenuOpen.value;
       };
@@ -317,7 +319,7 @@
         setPriority,
         toggleAssignee,
         isAssigneeSelected,
-        createTask
+        createTask,
         toggleUserMenu,
         toggleDarkMode
       };
