@@ -15,6 +15,19 @@
       const tasks = ref([]);
       const assignments = ref([]);
 
+      const showAddTaskModal = ref(false);
+      const selectedProject = ref(null);
+      const creatingTask = ref(false);
+      const showAssigneeDropdown = ref(false);
+      const newTaskForm = ref({
+        taskTitle: '',
+        dueDate: '',
+        complexity: null,
+        description: '',
+        priority: null,
+        assigneeIds: []
+      });
+
       // Computed properties
       const currentUser = computed(() => {
         return users.value.find(u => u.Email === currentUserEmail.value) || { Email: currentUserEmail.value, Name: 'Unknown User' };
@@ -107,8 +120,8 @@
         google.script.run
           .withSuccessHandler((response) => {
             // Parse the stringified JSON back into a JavaScript object
-            const payload = JSON.parse(response); 
-            
+            const payload = JSON.parse(response);
+
             currentUserEmail.value = payload.currentUserEmail;
             users.value = payload.users;
             projects.value = payload.projects;
@@ -117,8 +130,8 @@
             loading.value = false;
           })
           .withFailureHandler((error) => {
-            console.error("Failed to load data:", error);
-            alert("Error loading application data.");
+            console.error('Failed to load data:', error);
+            alert('Error loading application data.');
           })
           .getInitialPayload();
       };
@@ -157,10 +170,113 @@
 
       const openTaskInfo = (task) => {
         // Placeholder for the detailed modal you requested (comments, drive links, etc.)
-        console.log("Opening task modal for:", task.Task_Title);
+        console.log('Opening task modal for:', task.Task_Title);
         alert(`Opening details for: ${task.Task_Title}\n(Next Step: Build the Task Detail Modal!)`);
       };
 
+      const resetTaskForm = () => {
+        newTaskForm.value = {
+          taskTitle: '',
+          dueDate: '',
+          complexity: null,
+          description: '',
+          priority: null,
+          assigneeIds: []
+        };
+      };
+
+      const openAddTask = (project) => {
+        selectedProject.value = project;
+        resetTaskForm();
+        showAssigneeDropdown.value = false;
+        showAddTaskModal.value = true;
+      };
+
+      const closeAddTask = () => {
+        if (creatingTask.value) return;
+        showAssigneeDropdown.value = false;
+        showAddTaskModal.value = false;
+        selectedProject.value = null;
+      };
+
+      const setComplexity = (value) => {
+        newTaskForm.value.complexity = value;
+      };
+
+      const setPriority = (value) => {
+        newTaskForm.value.priority = value;
+      };
+
+      const toggleAssignee = (userId) => {
+        const selectedAssignees = newTaskForm.value.assigneeIds;
+        const index = selectedAssignees.indexOf(userId);
+        if (index >= 0) {
+          selectedAssignees.splice(index, 1);
+        } else {
+          selectedAssignees.push(userId);
+        }
+      };
+
+      const isAssigneeSelected = (userId) => newTaskForm.value.assigneeIds.includes(userId);
+
+      const assigneeSummary = computed(() => {
+        const count = newTaskForm.value.assigneeIds.length;
+        if (count === 0) return 'Select assignees';
+        if (count === 1) {
+          const selectedUser = users.value.find((u) => u.User_ID === newTaskForm.value.assigneeIds[0]);
+          return selectedUser ? selectedUser.Name : '1 assignee selected';
+        }
+        return `${count} assignees selected`;
+      });
+
+      const createTask = () => {
+        const trimmedTitle = newTaskForm.value.taskTitle.trim();
+        if (!trimmedTitle) {
+          alert('Task title cannot be empty.');
+          return;
+        }
+
+        if (!selectedProject.value?.Project_ID) {
+          alert('No project selected.');
+          return;
+        }
+
+        creatingTask.value = true;
+
+        google.script.run
+          .withSuccessHandler((response) => {
+            creatingTask.value = false;
+
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (!result || !result.success) {
+              alert(result?.error || 'Failed to create task.');
+              return;
+            }
+
+            if (result.task) {
+              tasks.value.push(result.task);
+
+              if (Array.isArray(result.assignments)) {
+                assignments.value.push(...result.assignments);
+              }
+            } else {
+              fetchData();
+            }
+            closeAddTask();
+          })
+          .withFailureHandler((error) => {
+            creatingTask.value = false;
+            console.error('Failed to add task:', error);
+            alert('Error creating task.');
+          })
+          .createTask(selectedProject.value.Project_ID, {
+            taskTitle: trimmedTitle,
+            dueDate: newTaskForm.value.dueDate,
+            complexity: newTaskForm.value.complexity,
+            description: newTaskForm.value.description,
+            priority: newTaskForm.value.priority,
+            assigneeIds: newTaskForm.value.assigneeIds
+          });
       const toggleUserMenu = () => {
         isUserMenuOpen.value = !isUserMenuOpen.value;
       };
@@ -182,12 +298,26 @@
         currentUser,
         projects,
         tasks,
+        showAddTaskModal,
+        selectedProject,
+        creatingTask,
+        users,
+        showAssigneeDropdown,
+        assigneeSummary,
+        newTaskForm,
         getTasksForProject,
         getAssigneesForTask,
         statusColor,
         getInitials,
         formatDate,
         openTaskInfo,
+        openAddTask,
+        closeAddTask,
+        setComplexity,
+        setPriority,
+        toggleAssignee,
+        isAssigneeSelected,
+        createTask
         toggleUserMenu,
         toggleDarkMode
       };
