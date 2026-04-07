@@ -1,6 +1,7 @@
 /**
  * Main entry point for the web app.
  * Serves the Index.html file.
+ * check to see if new branch is pushing correctly
  */
 function doGet() {
   return HtmlService.createTemplateFromFile('Index')
@@ -20,7 +21,7 @@ function include(filename) {
  * Gets the current user's email.
  */
 function getCurrentUser() {
-  return Session.getActiveUser().getEmail();
+
 }
 
 /**
