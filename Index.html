@@ -120,11 +120,18 @@
                 
                 <div class="flex items-center justify-between mt-4">
                   <div class="flex -space-x-2">
-                    <div v-for="assignee in getAssigneesForTask(task.Task_ID)" :key="assignee.User_ID"
-                         :class="isDarkMode ? 'bg-gray-700 border-gray-900 text-gray-200' : 'bg-gray-200 border-white text-gray-600'"
-                         class="w-6 h-6 rounded-full border-2 flex items-center justify-center text-[8px] font-bold"
-                         :title="assignee.Name">
-                      {{ getInitials(assignee.Name) }}
+                    <div
+                      v-for="assignee in getAssigneesForTask(task.Task_ID)"
+                      :key="assignee.User_ID"
+                      :class="isDarkMode ? 'bg-gray-700 border-gray-900 text-gray-200' : 'bg-gray-200 border-white text-gray-600'"
+                      class="w-6 h-6 rounded-full border-2 flex items-center justify-center text-[8px] font-bold overflow-hidden"
+                      :title="assignee.Name">
+                      <img
+                        v-if="assignee?.Profile_Pic_Url"
+                        :src="assignee.Profile_Pic_Url"
+                        :alt="`${assignee?.Name || 'Assignee'} profile image`"
+                        class="w-full h-full object-cover">
+                      <span v-else>{{ getInitials(assignee.Name) }}</span>
                     </div>
                   </div>
                   <span v-if="task.Due_Date" :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-xs font-medium">
