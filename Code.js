@@ -24,26 +24,18 @@ function getCurrentUser() {
 }
 
 function normalizeEmail(email) {
-  const normalizedEmail = email ? email.toString().trim() : '';
-  if (!normalizedEmail) {
-    throw new Error('Email is required.');
-  }
-  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailPattern.test(normalizedEmail)) {
-    throw new Error('Email format is invalid.');
-  }
-  return normalizedEmail;
+  return email ? email.toString().trim().toLowerCase() : '';
 }
 
-function normalizeProfilePicUrl(profilePicUrl) {
-  const normalizedUrl = profilePicUrl ? profilePicUrl.toString().trim() : '';
-  if (!normalizedUrl) return '';
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
 
-  const urlPattern = /^https?:\/\/[^\s/$.?#].[^\s]*$/i;
-  if (!urlPattern.test(normalizedUrl)) {
-    throw new Error('Profile picture URL must be a valid HTTP(S) URL.');
-  }
-  return normalizedUrl;
+function getHeaderIndex(headers) {
+  return headers.reduce((acc, header, index) => {
+    acc[header] = index;
+    return acc;
+  }, {});
 }
 
 /**
@@ -99,12 +91,91 @@ function generateNextId(sheetName, prefix) {
   return `${prefix}-${nextNumber.toString().padStart(8, '0')}`;
 }
 
+function addUser(userInput) {
+  const normalizedEmail = normalizeEmail(userInput && userInput.email);
+  const name = userInput && userInput.name ? userInput.name.toString().trim() : '';
+  const managerId = userInput && userInput.managerId ? userInput.managerId.toString().trim() : '';
+  const profilePicUrl = userInput && userInput.profilePicUrl ? userInput.profilePicUrl.toString().trim() : '';
+
+  if (!normalizedEmail) {
+    return JSON.stringify({ success: false, error: 'Email is required.' });
+  }
+
+  if (!isValidEmail(normalizedEmail)) {
+    return JSON.stringify({ success: false, error: 'Email format is invalid.' });
+  }
+
+  if (!name) {
+    return JSON.stringify({ success: false, error: 'Name is required.' });
+  }
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Users');
+  if (!sheet) {
+    return JSON.stringify({ success: false, error: 'Users sheet was not found.' });
+  }
+
+  try {
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0] || [];
+    const headerIndex = getHeaderIndex(headers);
+    const emailColumnIndex = headerIndex.Email;
+    const userIdColumnIndex = headerIndex.User_ID;
+
+    if (emailColumnIndex === undefined || userIdColumnIndex === undefined) {
+      throw new Error('Users sheet must contain User_ID and Email columns.');
+    }
+
+    const existingUser = data
+      .slice(1)
+      .find((row) => normalizeEmail(row[emailColumnIndex]) === normalizedEmail);
+
+    if (existingUser) {
+      const user = {};
+      headers.forEach((header, index) => {
+        user[header] = existingUser[index];
+      });
+      return JSON.stringify({ success: true, user: user, created: false });
+    }
+
+    if (managerId && headerIndex.Manager_ID !== undefined) {
+      const users = getTableData('Users');
+      const validManagerIds = new Set(users.map((user) => user.User_ID));
+      if (!validManagerIds.has(managerId)) {
+        throw new Error(`Manager_ID ${managerId} does not exist.`);
+      }
+    }
+
+    const newRow = new Array(headers.length).fill('');
+    if (headerIndex.User_ID !== undefined) newRow[headerIndex.User_ID] = generateNextId('Users', 'U');
+    if (headerIndex.Email !== undefined) newRow[headerIndex.Email] = normalizedEmail;
+    if (headerIndex.Name !== undefined) newRow[headerIndex.Name] = name;
+    if (headerIndex.Manager_ID !== undefined) newRow[headerIndex.Manager_ID] = managerId;
+    if (headerIndex.Profile_Pic_Url !== undefined) newRow[headerIndex.Profile_Pic_Url] = profilePicUrl;
+
+    sheet.appendRow(newRow);
+
+    const createdUser = {};
+    headers.forEach((header, index) => {
+      createdUser[header] = newRow[index];
+    });
+
+    return JSON.stringify({ success: true, user: createdUser, created: true });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: error && error.message ? error.message : 'Failed to add user.'
+    });
+  }
+}
+
 /**
  * API Endpoint: Fetches the full data payload for the frontend to initialize.
  */
 function getInitialPayload() {
+  const currentUserEmail = getCurrentUser();
   const payload = {
-    currentUserEmail: getCurrentUser(),
+    currentUserEmail: currentUserEmail,
+    currentUserExists: getTableData('Users').some((user) => normalizeEmail(user.Email) === normalizeEmail(currentUserEmail)),
     users: getTableData('Users'),
     projects: getTableData('Projects'),
     tasks: getTableData('Tasks'),

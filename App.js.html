@@ -5,6 +5,13 @@
     setup() {
       const loading = ref(true);
       const currentUserEmail = ref('');
+      const showCreateAccountModal = ref(false);
+      const creatingAccount = ref(false);
+      const createAccountForm = ref({
+        name: '',
+        managerId: '',
+        profilePicUrl: ''
+      });
 
       const isDarkMode = ref(false);
       const isUserMenuOpen = ref(false);
@@ -175,12 +182,59 @@
             tasks.value = payload.tasks;
             assignments.value = payload.assignments;
             loading.value = false;
+
+            if (!payload.currentUserExists && payload.currentUserEmail) {
+              const fallbackName = payload.currentUserEmail.split('@')[0] || '';
+              createAccountForm.value.name = fallbackName;
+              showCreateAccountModal.value = true;
+            } else {
+              showCreateAccountModal.value = false;
+            }
           })
           .withFailureHandler((error) => {
             console.error('Failed to load data:', error);
             alert('Error loading application data.');
           })
           .getInitialPayload();
+      };
+
+      const createAccount = () => {
+        const trimmedName = createAccountForm.value.name.trim();
+        if (!trimmedName) {
+          alert('Please enter your name.');
+          return;
+        }
+
+        creatingAccount.value = true;
+        google.script.run
+          .withSuccessHandler((response) => {
+            creatingAccount.value = false;
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (!result || !result.success || !result.user) {
+              alert(result?.error || 'Failed to create account.');
+              return;
+            }
+
+            const existingUserIndex = users.value.findIndex((user) => user.User_ID === result.user.User_ID);
+            if (existingUserIndex >= 0) {
+              users.value.splice(existingUserIndex, 1, result.user);
+            } else {
+              users.value.push(result.user);
+            }
+
+            showCreateAccountModal.value = false;
+          })
+          .withFailureHandler((error) => {
+            creatingAccount.value = false;
+            console.error('Failed to create account:', error);
+            alert('Error creating account.');
+          })
+          .addUser({
+            email: currentUserEmail.value,
+            name: trimmedName,
+            managerId: createAccountForm.value.managerId,
+            profilePicUrl: createAccountForm.value.profilePicUrl
+          });
       };
 
       const getTasksForProject = (projectId) => tasks.value.filter((t) => t.Project_ID === projectId);
@@ -560,10 +614,9 @@
         loading,
         isDarkMode,
         isUserMenuOpen,
-        showProfileModal,
-        isEditingProfile,
-        savingProfile,
-        profileForm,
+        showCreateAccountModal,
+        createAccountForm,
+        creatingAccount,
         currentUser,
         users,
         projects,
@@ -603,6 +656,7 @@
         toggleAssignee,
         isAssigneeSelected,
         createTask,
+        createAccount,
         toggleUserMenu,
         toggleDarkMode,
         openProfileModal,
