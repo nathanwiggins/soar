@@ -344,3 +344,58 @@ function updateTask(taskId, taskInput) {
     });
   }
 }
+
+/**
+ * API Endpoint: Deletes a task and any of its assignments.
+ */
+function deleteTask(taskId) {
+  const normalizedTaskId = taskId ? taskId.toString().trim() : '';
+  if (!normalizedTaskId) {
+    return JSON.stringify({ success: false, error: 'Task ID is required.' });
+  }
+
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const tasksSheet = spreadsheet.getSheetByName('Tasks');
+  if (!tasksSheet) {
+    return JSON.stringify({ success: false, error: 'Tasks sheet was not found.' });
+  }
+
+  try {
+    const taskData = tasksSheet.getDataRange().getValues();
+    if (taskData.length <= 1) {
+      throw new Error('Tasks sheet has no data rows.');
+    }
+
+    const headers = taskData[0];
+    const taskIdColumnIndex = headers.indexOf('Task_ID');
+    if (taskIdColumnIndex === -1) {
+      throw new Error('Tasks sheet is missing Task_ID column.');
+    }
+
+    const taskRowIndex = taskData.findIndex((row, index) => index > 0 && row[taskIdColumnIndex] === normalizedTaskId);
+    if (taskRowIndex < 0) {
+      throw new Error('Task not found.');
+    }
+
+    tasksSheet.deleteRow(taskRowIndex + 1);
+
+    const assignmentsSheet = spreadsheet.getSheetByName('Assignments');
+    if (!assignmentsSheet) {
+      throw new Error('Assignments sheet was not found.');
+    }
+
+    const assignmentsData = assignmentsSheet.getDataRange().getValues();
+    for (let i = assignmentsData.length - 1; i >= 1; i--) {
+      if (assignmentsData[i][0] === normalizedTaskId) {
+        assignmentsSheet.deleteRow(i + 1);
+      }
+    }
+
+    return JSON.stringify({ success: true, taskId: normalizedTaskId });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: error && error.message ? error.message : 'Failed to delete task.'
+    });
+  }
+}

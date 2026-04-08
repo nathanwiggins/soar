@@ -35,6 +35,7 @@
       const showTaskDetailsAssigneeDropdown = ref(false);
       const isEditingTask = ref(false);
       const savingTask = ref(false);
+      const deletingTask = ref(false);
 
       // Computed properties
       const currentUser = computed(() => {
@@ -331,6 +332,38 @@
           });
       };
 
+      const deleteTask = () => {
+        if (!taskDetailsForm.value?.taskId || savingTask.value || deletingTask.value) return;
+
+        const confirmed = confirm('Are you sure you want to delete this task? This action cannot be undone.');
+        if (!confirmed) return;
+
+        deletingTask.value = true;
+
+        google.script.run
+          .withSuccessHandler((response) => {
+            deletingTask.value = false;
+
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (!result || !result.success) {
+              alert(result?.error || 'Failed to delete task.');
+              return;
+            }
+
+            const deletedTaskId = result.taskId;
+            tasks.value = tasks.value.filter((task) => !idsMatch(task.Task_ID, deletedTaskId));
+            assignments.value = assignments.value.filter((assignment) => !idsMatch(assignment.Assignment_ID, deletedTaskId));
+
+            closeTaskInfo();
+          })
+          .withFailureHandler((error) => {
+            deletingTask.value = false;
+            console.error('Failed to delete task:', error);
+            alert('Error deleting task.');
+          })
+          .deleteTask(taskDetailsForm.value.taskId);
+      };
+
       const resetTaskForm = () => {
         newTaskForm.value = {
           taskTitle: '',
@@ -460,6 +493,7 @@
         taskDetailsAssigneeUsers,
         isEditingTask,
         savingTask,
+        deletingTask,
         getTasksForProject,
         getAssigneesForTask,
         getProjectById,
@@ -473,6 +507,7 @@
         toggleTaskDetailsAssignee,
         isTaskDetailsAssigneeSelected,
         saveTaskEdits,
+        deleteTask,
         openAddTask,
         closeAddTask,
         setComplexity,
