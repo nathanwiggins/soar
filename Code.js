@@ -38,6 +38,24 @@ function getHeaderIndex(headers) {
   }, {});
 }
 
+function normalizeHeaderName(header) {
+  return header ? header.toString().trim().toLowerCase() : '';
+}
+
+function getNormalizedHeaderIndex(headers) {
+  return headers.reduce((acc, header, index) => {
+    acc[normalizeHeaderName(header)] = index;
+    return acc;
+  }, {});
+}
+
+function getUserEmailFromRow(row, headerIndex) {
+  if (!row || !headerIndex) return '';
+  const emailColumnIndex = headerIndex.email;
+  if (emailColumnIndex === undefined) return '';
+  return normalizeEmail(row[emailColumnIndex]);
+}
+
 /**
  * Core DB Function: Reads a sheet and returns an array of JSON objects.
  */
@@ -172,11 +190,14 @@ function addUser(userInput) {
  * API Endpoint: Fetches the full data payload for the frontend to initialize.
  */
 function getInitialPayload() {
-  const currentUserEmail = getCurrentUser();
+  const currentUserEmail = normalizeEmail(getCurrentUser());
+  const users = getTableData('Users');
+  const currentUserExists = users.some((user) => normalizeEmail(user.Email) === currentUserEmail);
   const payload = {
     currentUserEmail: currentUserEmail,
-    currentUserExists: getTableData('Users').some((user) => normalizeEmail(user.Email) === normalizeEmail(currentUserEmail)),
-    users: getTableData('Users'),
+    currentUserExists: currentUserExists,
+    requiresAccountSetup: Boolean(currentUserEmail) && !currentUserExists,
+    users: users,
     projects: getTableData('Projects'),
     tasks: getTableData('Tasks'),
     assignments: getTableData('Assignments')
@@ -211,16 +232,13 @@ function updateCurrentUserProfile(profileInput) {
     }
 
     const headers = data[0];
-    const headerIndex = headers.reduce((acc, header, index) => {
-      acc[header] = index;
-      return acc;
-    }, {});
+    const headerIndex = getNormalizedHeaderIndex(headers);
 
-    if (headerIndex.Email === undefined) throw new Error('Users sheet is missing Email column.');
-    if (headerIndex.Name === undefined) throw new Error('Users sheet is missing Name column.');
+    if (headerIndex.email === undefined) throw new Error('Users sheet is missing Email column.');
+    if (headerIndex.name === undefined) throw new Error('Users sheet is missing Name column.');
 
     const currentUserRowIndex = data.findIndex(
-      (row, index) => index > 0 && row[headerIndex.Email] && row[headerIndex.Email].toString().trim() === activeEmail
+      (row, index) => index > 0 && getUserEmailFromRow(row, headerIndex) === activeEmail
     );
     if (currentUserRowIndex < 0) {
       throw new Error('Current user record was not found.');
@@ -230,17 +248,16 @@ function updateCurrentUserProfile(profileInput) {
       (row, index) =>
         index > 0 &&
         index !== currentUserRowIndex &&
-        row[headerIndex.Email] &&
-        row[headerIndex.Email].toString().trim() === normalizedEmail
+        getUserEmailFromRow(row, headerIndex) === normalizedEmail
     );
     if (duplicateEmailIndex > 0) {
       throw new Error('Email already exists for another user.');
     }
 
-    usersSheet.getRange(currentUserRowIndex + 1, headerIndex.Name + 1).setValue(normalizedName);
-    usersSheet.getRange(currentUserRowIndex + 1, headerIndex.Email + 1).setValue(normalizedEmail);
-    if (headerIndex.Profile_Pic_Url !== undefined) {
-      usersSheet.getRange(currentUserRowIndex + 1, headerIndex.Profile_Pic_Url + 1).setValue(normalizedProfilePicUrl);
+    usersSheet.getRange(currentUserRowIndex + 1, headerIndex.name + 1).setValue(normalizedName);
+    usersSheet.getRange(currentUserRowIndex + 1, headerIndex.email + 1).setValue(normalizedEmail);
+    if (headerIndex.profile_pic_url !== undefined) {
+      usersSheet.getRange(currentUserRowIndex + 1, headerIndex.profile_pic_url + 1).setValue(normalizedProfilePicUrl);
     }
 
     const updatedRow = usersSheet.getRange(currentUserRowIndex + 1, 1, 1, headers.length).getValues()[0];

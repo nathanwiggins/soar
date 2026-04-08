@@ -179,13 +179,16 @@
           </div>
 
           <div>
-            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Manager ID (Optional)</label>
-            <input
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Manager (Optional)</label>
+            <select
               v-model="createAccountForm.managerId"
-              type="text"
               :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
-              class="w-full rounded-lg px-3 py-2 text-sm border focus:outline-none focus:ring-2"
-              placeholder="U-00000001">
+              class="w-full rounded-lg px-3 py-2 text-sm border focus:outline-none focus:ring-2">
+              <option value="">No manager selected</option>
+              <option v-for="manager in managerOptions" :key="manager.User_ID" :value="manager.User_ID">
+                {{ manager.Name || manager.Email }} ({{ manager.User_ID }})
+              </option>
+            </select>
           </div>
 
           <div>

@@ -54,7 +54,7 @@
 
       // Computed properties
       const currentUser = computed(() => {
-        return users.value.find((u) => u.Email === currentUserEmail.value) || {
+        return users.value.find((u) => normalizeEmail(u?.Email) === normalizeEmail(currentUserEmail.value)) || {
           Email: currentUserEmail.value,
           Name: 'Unknown User'
         };
@@ -85,6 +85,13 @@
         return selectedIds
           .map((id) => getUserById(id))
           .filter(Boolean);
+      });
+
+      const managerOptions = computed(() => {
+        const currentEmail = normalizeEmail(currentUserEmail.value);
+        return users.value
+          .filter((u) => normalizeEmail(u?.Email) !== currentEmail)
+          .sort((a, b) => (a?.Name || '').localeCompare(b?.Name || ''));
       });
 
       // Methods
@@ -176,15 +183,15 @@
           .withSuccessHandler((response) => {
             const payload = JSON.parse(response);
 
-            currentUserEmail.value = payload.currentUserEmail;
+            currentUserEmail.value = normalizeEmail(payload.currentUserEmail);
             users.value = payload.users;
             projects.value = payload.projects;
             tasks.value = payload.tasks;
             assignments.value = payload.assignments;
             loading.value = false;
 
-            if (!payload.currentUserExists && payload.currentUserEmail) {
-              const fallbackName = payload.currentUserEmail.split('@')[0] || '';
+            if (payload.requiresAccountSetup) {
+              const fallbackName = currentUserEmail.value.split('@')[0] || '';
               createAccountForm.value.name = fallbackName;
               showCreateAccountModal.value = true;
             } else {
@@ -239,6 +246,7 @@
 
       const getTasksForProject = (projectId) => tasks.value.filter((t) => t.Project_ID === projectId);
 
+      const normalizeEmail = (email) => (email || '').toString().trim().toLowerCase();
       const normalizeId = (value) => (value === null || value === undefined ? '' : value.toString().trim());
       const idsMatch = (left, right) => normalizeId(left) !== '' && normalizeId(left) === normalizeId(right);
 
@@ -617,10 +625,15 @@
         showCreateAccountModal,
         createAccountForm,
         creatingAccount,
+        managerOptions,
         currentUser,
         users,
         projects,
         tasks,
+        showProfileModal,
+        isEditingProfile,
+        savingProfile,
+        profileForm,
         showAddTaskModal,
         selectedProject,
         creatingTask,
