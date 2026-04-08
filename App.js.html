@@ -222,7 +222,6 @@
       };
 
       const buildTaskDetailsForm = (task) => {
-        const creator = getUserById(task.Creator_ID);
         return {
           taskId: task.Task_ID,
           taskTitle: task.Task_Title || '',
@@ -233,10 +232,7 @@
           createdDate: task.Created_Date || '',
           dueDate: formatDateForInput(task.Due_Date),
           projectId: task.Project_ID || '',
-          assigneeIds: getAssigneesForTask(task.Task_ID).map((u) => u.User_ID),
-          creatorId: task.Creator_ID || '',
-          creatorName: creator ? creator.Name : 'Unknown User',
-          creatorEmail: creator ? creator.Email : ''
+          assigneeIds: getAssigneesForTask(task.Task_ID).map((u) => u.User_ID)
         };
       };
 

@@ -171,7 +171,6 @@ function createTask(projectId, taskInput) {
     const description = taskInput && taskInput.description ? taskInput.description.toString().trim() : '';
     const assigneeIds = getValidAssigneeIds(taskInput ? taskInput.assigneeIds : []);
     const normalizedProjectId = ensureProjectExists(projectId);
-    const creatorId = getUserIdForCurrentUserEmail();
 
     if (headerIndex.Task_ID !== undefined) newRow[headerIndex.Task_ID] = generateNextId('Tasks', 'T');
     if (headerIndex.Project_ID !== undefined) newRow[headerIndex.Project_ID] = normalizedProjectId;
@@ -244,23 +243,6 @@ function ensureProjectExists(projectId) {
   }
 
   return normalizedProjectId;
-}
-
-function getUserIdForCurrentUserEmail() {
-  const email = (getCurrentUser() || '').toString().trim().toLowerCase();
-  if (!email) {
-    throw new Error('Unable to determine current user email.');
-  }
-
-  const matchingUser = getTableData('Users').find((user) =>
-    (user.Email || '').toString().trim().toLowerCase() === email
-  );
-
-  if (!matchingUser || !matchingUser.User_ID) {
-    throw new Error(`No Users record found for current user email: ${email}`);
-  }
-
-  return matchingUser.User_ID;
 }
 
 /**
