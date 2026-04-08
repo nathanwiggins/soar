@@ -23,6 +23,29 @@ function getCurrentUser() {
   return Session.getActiveUser().getEmail();
 }
 
+function normalizeEmail(email) {
+  const normalizedEmail = email ? email.toString().trim() : '';
+  if (!normalizedEmail) {
+    throw new Error('Email is required.');
+  }
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailPattern.test(normalizedEmail)) {
+    throw new Error('Email format is invalid.');
+  }
+  return normalizedEmail;
+}
+
+function normalizeProfilePicUrl(profilePicUrl) {
+  const normalizedUrl = profilePicUrl ? profilePicUrl.toString().trim() : '';
+  if (!normalizedUrl) return '';
+
+  const urlPattern = /^https?:\/\/[^\s/$.?#].[^\s]*$/i;
+  if (!urlPattern.test(normalizedUrl)) {
+    throw new Error('Profile picture URL must be a valid HTTP(S) URL.');
+  }
+  return normalizedUrl;
+}
+
 /**
  * Core DB Function: Reads a sheet and returns an array of JSON objects.
  */
@@ -90,6 +113,79 @@ function getInitialPayload() {
   
   // Stringifying prevents Apps Script's silent serialization failures
   return JSON.stringify(payload); 
+}
+
+/**
+ * API Endpoint: Updates the current user's profile data.
+ */
+function updateCurrentUserProfile(profileInput) {
+  const activeEmail = normalizeEmail(getCurrentUser());
+  const normalizedName = profileInput && profileInput.name ? profileInput.name.toString().trim() : '';
+  const normalizedEmail = normalizeEmail(profileInput ? profileInput.email : '');
+  const normalizedProfilePicUrl = normalizeProfilePicUrl(profileInput ? profileInput.profilePicUrl : '');
+
+  if (!normalizedName) {
+    return JSON.stringify({ success: false, error: 'Name is required.' });
+  }
+
+  const usersSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Users');
+  if (!usersSheet) {
+    return JSON.stringify({ success: false, error: 'Users sheet was not found.' });
+  }
+
+  try {
+    const data = usersSheet.getDataRange().getValues();
+    if (data.length <= 1) {
+      throw new Error('Users sheet has no data rows.');
+    }
+
+    const headers = data[0];
+    const headerIndex = headers.reduce((acc, header, index) => {
+      acc[header] = index;
+      return acc;
+    }, {});
+
+    if (headerIndex.Email === undefined) throw new Error('Users sheet is missing Email column.');
+    if (headerIndex.Name === undefined) throw new Error('Users sheet is missing Name column.');
+
+    const currentUserRowIndex = data.findIndex(
+      (row, index) => index > 0 && row[headerIndex.Email] && row[headerIndex.Email].toString().trim() === activeEmail
+    );
+    if (currentUserRowIndex < 0) {
+      throw new Error('Current user record was not found.');
+    }
+
+    const duplicateEmailIndex = data.findIndex(
+      (row, index) =>
+        index > 0 &&
+        index !== currentUserRowIndex &&
+        row[headerIndex.Email] &&
+        row[headerIndex.Email].toString().trim() === normalizedEmail
+    );
+    if (duplicateEmailIndex > 0) {
+      throw new Error('Email already exists for another user.');
+    }
+
+    usersSheet.getRange(currentUserRowIndex + 1, headerIndex.Name + 1).setValue(normalizedName);
+    usersSheet.getRange(currentUserRowIndex + 1, headerIndex.Email + 1).setValue(normalizedEmail);
+    if (headerIndex.Profile_Pic_Url !== undefined) {
+      usersSheet.getRange(currentUserRowIndex + 1, headerIndex.Profile_Pic_Url + 1).setValue(normalizedProfilePicUrl);
+    }
+
+    const updatedRow = usersSheet.getRange(currentUserRowIndex + 1, 1, 1, headers.length).getValues()[0];
+    const updatedUser = {};
+    headers.forEach((header, index) => {
+      const value = updatedRow[index];
+      updatedUser[header] = value instanceof Date ? value.toISOString() : value;
+    });
+
+    return JSON.stringify({ success: true, user: updatedUser });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: error && error.message ? error.message : 'Failed to update user profile.'
+    });
+  }
 }
 
 /**

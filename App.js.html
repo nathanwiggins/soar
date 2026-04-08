@@ -8,6 +8,14 @@
 
       const isDarkMode = ref(false);
       const isUserMenuOpen = ref(false);
+      const showProfileModal = ref(false);
+      const isEditingProfile = ref(false);
+      const savingProfile = ref(false);
+      const profileForm = ref({
+        name: '',
+        email: '',
+        profilePicUrl: ''
+      });
 
       // Data models based on Data Dictionary
       const users = ref([]);
@@ -467,6 +475,82 @@
         isDarkMode.value = !isDarkMode.value;
       };
 
+      const buildProfileForm = () => ({
+        name: currentUser.value?.Name || '',
+        email: currentUser.value?.Email || '',
+        profilePicUrl: currentUser.value?.Profile_Pic_Url || ''
+      });
+
+      const openProfileModal = () => {
+        profileForm.value = buildProfileForm();
+        isEditingProfile.value = false;
+        showProfileModal.value = true;
+        isUserMenuOpen.value = false;
+      };
+
+      const closeProfileModal = () => {
+        if (savingProfile.value) return;
+        showProfileModal.value = false;
+        isEditingProfile.value = false;
+      };
+
+      const enableProfileEdit = () => {
+        isEditingProfile.value = true;
+      };
+
+      const cancelProfileEdit = () => {
+        profileForm.value = buildProfileForm();
+        isEditingProfile.value = false;
+      };
+
+      const saveProfile = () => {
+        const trimmedName = (profileForm.value?.name || '').trim();
+        const trimmedEmail = (profileForm.value?.email || '').trim();
+        const trimmedProfilePicUrl = (profileForm.value?.profilePicUrl || '').trim();
+
+        if (!trimmedName) {
+          alert('Name is required.');
+          return;
+        }
+        if (!trimmedEmail) {
+          alert('Email is required.');
+          return;
+        }
+
+        savingProfile.value = true;
+        google.script.run
+          .withSuccessHandler((response) => {
+            savingProfile.value = false;
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (!result || !result.success || !result.user) {
+              alert(result?.error || 'Failed to update profile.');
+              return;
+            }
+
+            const updatedUser = result.user;
+            const userIndex = users.value.findIndex((u) => idsMatch(u.User_ID, updatedUser.User_ID));
+            if (userIndex >= 0) {
+              users.value.splice(userIndex, 1, updatedUser);
+            } else {
+              users.value.push(updatedUser);
+            }
+
+            currentUserEmail.value = updatedUser.Email || trimmedEmail;
+            profileForm.value = buildProfileForm();
+            isEditingProfile.value = false;
+          })
+          .withFailureHandler((error) => {
+            savingProfile.value = false;
+            console.error('Failed to update profile:', error);
+            alert('Error updating profile.');
+          })
+          .updateCurrentUserProfile({
+            name: trimmedName,
+            email: trimmedEmail,
+            profilePicUrl: trimmedProfilePicUrl
+          });
+      };
+
       onMounted(() => {
         fetchData();
         makeLogoTransparent();
@@ -476,6 +560,10 @@
         loading,
         isDarkMode,
         isUserMenuOpen,
+        showProfileModal,
+        isEditingProfile,
+        savingProfile,
+        profileForm,
         currentUser,
         users,
         projects,
@@ -516,7 +604,12 @@
         isAssigneeSelected,
         createTask,
         toggleUserMenu,
-        toggleDarkMode
+        toggleDarkMode,
+        openProfileModal,
+        closeProfileModal,
+        enableProfileEdit,
+        cancelProfileEdit,
+        saveProfile
       };
     }
   }).mount('#app');
