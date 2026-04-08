@@ -45,8 +45,13 @@
       <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="p-4 border-t">
         <div class="relative" @click.stop>
           <button @click="toggleUserMenu" class="w-full flex items-center space-x-3 text-left">
-            <div class="w-10 h-10 rounded-full bg-[#DB0000]/10 flex items-center justify-center text-[#DB0000] font-bold">
-              {{ getInitials(currentUser?.Name) || 'U' }}
+            <div class="w-10 h-10 rounded-full bg-[#DB0000]/10 flex items-center justify-center text-[#DB0000] font-bold overflow-hidden">
+              <img
+                v-if="currentUser?.Profile_Pic_Url"
+                :src="currentUser.Profile_Pic_Url"
+                :alt="`${currentUser?.Name || 'User'} profile image`"
+                class="w-full h-full object-cover">
+              <span v-else>{{ getInitials(currentUser?.Name) || 'U' }}</span>
             </div>
             <div>
               <p :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'" class="text-sm font-medium">{{ currentUser?.Name || 'Loading...' }}</p>
@@ -56,6 +61,12 @@
           </button>
 
           <div v-if="isUserMenuOpen" :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'" class="absolute bottom-14 left-0 w-full rounded-lg border shadow-lg p-2 z-30">
+            <button
+              @click="openProfileModal"
+              :class="isDarkMode ? 'hover:bg-gray-700 text-gray-100' : 'hover:bg-gray-100 text-gray-700'"
+              class="w-full flex items-center px-3 py-2 rounded-md text-sm">
+              <span><i class="fa-solid fa-user mr-2"></i> Profile</span>
+            </button>
             <button
               @click="toggleDarkMode"
               :class="isDarkMode ? 'hover:bg-gray-700 text-gray-100' : 'hover:bg-gray-100 text-gray-700'"
@@ -134,6 +145,73 @@
         </div>
       </div>
     </main>
+
+    <div
+      v-if="showCreateAccountModal"
+      class="fixed inset-0 bg-gray-900/50 flex items-center justify-center z-50 px-4">
+      <div :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-100'" class="w-full max-w-md rounded-2xl shadow-2xl border transition-colors">
+        <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="px-6 py-4 border-b">
+          <h3 :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'" class="text-lg font-semibold">Create Account</h3>
+          <p :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-sm mt-1">
+            Complete your profile to continue.
+          </p>
+        </div>
+
+        <div class="p-6 space-y-4">
+          <div>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Email</label>
+            <input
+              :value="currentUser?.Email || ''"
+              type="email"
+              disabled
+              :class="isDarkMode ? 'bg-gray-800 border-gray-700 text-gray-300' : 'bg-gray-100 border-gray-300 text-gray-600'"
+              class="w-full rounded-lg px-3 py-2 text-sm border">
+          </div>
+
+          <div>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Name</label>
+            <input
+              v-model="createAccountForm.name"
+              type="text"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
+              class="w-full rounded-lg px-3 py-2 text-sm border focus:outline-none focus:ring-2"
+              placeholder="Enter your full name">
+          </div>
+
+          <div>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Manager (Optional)</label>
+            <select
+              v-model="createAccountForm.managerId"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
+              class="w-full rounded-lg px-3 py-2 text-sm border focus:outline-none focus:ring-2">
+              <option value="">No manager selected</option>
+              <option v-for="manager in managerOptions" :key="manager.User_ID" :value="manager.User_ID">
+                {{ manager.Name || manager.Email }} ({{ manager.User_ID }})
+              </option>
+            </select>
+          </div>
+
+          <div>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Profile Picture URL (Optional)</label>
+            <input
+              v-model="createAccountForm.profilePicUrl"
+              type="url"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
+              class="w-full rounded-lg px-3 py-2 text-sm border focus:outline-none focus:ring-2"
+              placeholder="https://example.com/profile.png">
+          </div>
+        </div>
+
+        <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="px-6 py-4 border-t flex justify-end">
+          <button
+            class="btn-action-red px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60 transition-colors"
+            @click="createAccount"
+            :disabled="creatingAccount">
+            {{ creatingAccount ? 'Creating...' : 'Create Account' }}
+          </button>
+        </div>
+      </div>
+    </div>
 
     <div
       v-if="showAddTaskModal"
@@ -473,6 +551,94 @@
             {{ savingTask ? 'Saving...' : 'Save Changes' }}
           </button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="showProfileModal"
+      class="fixed inset-0 bg-gray-900/50 flex items-center justify-center z-50 px-4"
+      @click.self="closeProfileModal">
+      <div :class="isDarkMode ? 'bg-gray-900 border-gray-700 text-gray-100' : 'bg-white border-gray-100 text-gray-800'" class="w-full max-w-lg rounded-2xl shadow-2xl border">
+        <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="px-6 py-4 border-b flex items-center justify-between">
+          <div>
+            <h3 :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'" class="text-lg font-semibold">My Profile</h3>
+            <p :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-sm">View and edit your account details</p>
+          </div>
+          <button
+            :class="isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'"
+            class="transition-colors"
+            @click="closeProfileModal"
+            :disabled="savingProfile">
+            <i class="fa-solid fa-xmark text-lg"></i>
+          </button>
+        </div>
+
+        <div class="p-6 space-y-5">
+          <div class="flex justify-center">
+            <div :class="isDarkMode ? 'bg-gray-700 text-gray-100' : 'bg-[#DB0000]/10 text-[#DB0000]'" class="w-20 h-20 rounded-full flex items-center justify-center font-bold text-xl overflow-hidden">
+              <img
+                v-if="profileForm.profilePicUrl"
+                :src="profileForm.profilePicUrl"
+                alt="Profile preview"
+                class="w-full h-full object-cover">
+              <span v-else>{{ getInitials(profileForm.name) || 'U' }}</span>
+            </div>
+          </div>
+
+          <div>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Name</label>
+            <input
+              v-model="profileForm.name"
+              type="text"
+              :disabled="!isEditingProfile"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 disabled:bg-gray-800/70 disabled:text-gray-400' : 'bg-white border-gray-300 text-gray-900 disabled:bg-gray-100'"
+              class="w-full border rounded-lg px-3 py-2 text-sm">
+          </div>
+
+          <div>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Email</label>
+            <input
+              v-model="profileForm.email"
+              type="email"
+              :disabled="!isEditingProfile"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 disabled:bg-gray-800/70 disabled:text-gray-400' : 'bg-white border-gray-300 text-gray-900 disabled:bg-gray-100'"
+              class="w-full border rounded-lg px-3 py-2 text-sm">
+          </div>
+
+          <div>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Profile Picture URL</label>
+            <input
+              v-model="profileForm.profilePicUrl"
+              type="url"
+              placeholder="https://example.com/avatar.png"
+              :disabled="!isEditingProfile"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 disabled:bg-gray-800/70 disabled:text-gray-400' : 'bg-white border-gray-300 text-gray-900 disabled:bg-gray-100'"
+              class="w-full border rounded-lg px-3 py-2 text-sm">
+          </div>
+        </div>
+
+        <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="px-6 py-4 border-t flex justify-end gap-3">
+          <button
+            :class="isDarkMode ? 'border-gray-600 text-gray-200 hover:bg-gray-800' : 'border-gray-300 text-gray-700 hover:bg-gray-50'"
+            class="px-4 py-2 rounded-lg text-sm font-medium border"
+            @click="isEditingProfile ? cancelProfileEdit() : closeProfileModal()"
+            :disabled="savingProfile">
+            {{ isEditingProfile ? 'Cancel' : 'Close' }}
+          </button>
+          <button
+            v-if="!isEditingProfile"
+            class="btn-action-red px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            @click="enableProfileEdit">
+            Edit Profile
+          </button>
+          <button
+            v-else
+            class="btn-action-red px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60 transition-colors"
+            @click="saveProfile"
+            :disabled="savingProfile">
+            {{ savingProfile ? 'Saving...' : 'Save Changes' }}
+          </button>
         </div>
       </div>
     </div>

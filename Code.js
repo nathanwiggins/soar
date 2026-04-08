@@ -23,6 +23,39 @@ function getCurrentUser() {
   return Session.getActiveUser().getEmail();
 }
 
+function normalizeEmail(email) {
+  return email ? email.toString().trim().toLowerCase() : '';
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function getHeaderIndex(headers) {
+  return headers.reduce((acc, header, index) => {
+    acc[header] = index;
+    return acc;
+  }, {});
+}
+
+function normalizeHeaderName(header) {
+  return header ? header.toString().trim().toLowerCase() : '';
+}
+
+function getNormalizedHeaderIndex(headers) {
+  return headers.reduce((acc, header, index) => {
+    acc[normalizeHeaderName(header)] = index;
+    return acc;
+  }, {});
+}
+
+function getUserEmailFromRow(row, headerIndex) {
+  if (!row || !headerIndex) return '';
+  const emailColumnIndex = headerIndex.email;
+  if (emailColumnIndex === undefined) return '';
+  return normalizeEmail(row[emailColumnIndex]);
+}
+
 /**
  * Core DB Function: Reads a sheet and returns an array of JSON objects.
  */
@@ -76,13 +109,95 @@ function generateNextId(sheetName, prefix) {
   return `${prefix}-${nextNumber.toString().padStart(8, '0')}`;
 }
 
+function addUser(userInput) {
+  const normalizedEmail = normalizeEmail(userInput && userInput.email);
+  const name = userInput && userInput.name ? userInput.name.toString().trim() : '';
+  const managerId = userInput && userInput.managerId ? userInput.managerId.toString().trim() : '';
+  const profilePicUrl = userInput && userInput.profilePicUrl ? userInput.profilePicUrl.toString().trim() : '';
+
+  if (!normalizedEmail) {
+    return JSON.stringify({ success: false, error: 'Email is required.' });
+  }
+
+  if (!isValidEmail(normalizedEmail)) {
+    return JSON.stringify({ success: false, error: 'Email format is invalid.' });
+  }
+
+  if (!name) {
+    return JSON.stringify({ success: false, error: 'Name is required.' });
+  }
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Users');
+  if (!sheet) {
+    return JSON.stringify({ success: false, error: 'Users sheet was not found.' });
+  }
+
+  try {
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0] || [];
+    const headerIndex = getHeaderIndex(headers);
+    const emailColumnIndex = headerIndex.Email;
+    const userIdColumnIndex = headerIndex.User_ID;
+
+    if (emailColumnIndex === undefined || userIdColumnIndex === undefined) {
+      throw new Error('Users sheet must contain User_ID and Email columns.');
+    }
+
+    const existingUser = data
+      .slice(1)
+      .find((row) => normalizeEmail(row[emailColumnIndex]) === normalizedEmail);
+
+    if (existingUser) {
+      const user = {};
+      headers.forEach((header, index) => {
+        user[header] = existingUser[index];
+      });
+      return JSON.stringify({ success: true, user: user, created: false });
+    }
+
+    if (managerId && headerIndex.Manager_ID !== undefined) {
+      const users = getTableData('Users');
+      const validManagerIds = new Set(users.map((user) => user.User_ID));
+      if (!validManagerIds.has(managerId)) {
+        throw new Error(`Manager_ID ${managerId} does not exist.`);
+      }
+    }
+
+    const newRow = new Array(headers.length).fill('');
+    if (headerIndex.User_ID !== undefined) newRow[headerIndex.User_ID] = generateNextId('Users', 'U');
+    if (headerIndex.Email !== undefined) newRow[headerIndex.Email] = normalizedEmail;
+    if (headerIndex.Name !== undefined) newRow[headerIndex.Name] = name;
+    if (headerIndex.Manager_ID !== undefined) newRow[headerIndex.Manager_ID] = managerId;
+    if (headerIndex.Profile_Pic_Url !== undefined) newRow[headerIndex.Profile_Pic_Url] = profilePicUrl;
+
+    sheet.appendRow(newRow);
+
+    const createdUser = {};
+    headers.forEach((header, index) => {
+      createdUser[header] = newRow[index];
+    });
+
+    return JSON.stringify({ success: true, user: createdUser, created: true });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: error && error.message ? error.message : 'Failed to add user.'
+    });
+  }
+}
+
 /**
  * API Endpoint: Fetches the full data payload for the frontend to initialize.
  */
 function getInitialPayload() {
+  const currentUserEmail = normalizeEmail(getCurrentUser());
+  const users = getTableData('Users');
+  const currentUserExists = users.some((user) => normalizeEmail(user.Email) === currentUserEmail);
   const payload = {
-    currentUserEmail: getCurrentUser(),
-    users: getTableData('Users'),
+    currentUserEmail: currentUserEmail,
+    currentUserExists: currentUserExists,
+    requiresAccountSetup: Boolean(currentUserEmail) && !currentUserExists,
+    users: users,
     projects: getTableData('Projects'),
     tasks: getTableData('Tasks'),
     assignments: getTableData('Assignments')
@@ -90,6 +205,75 @@ function getInitialPayload() {
   
   // Stringifying prevents Apps Script's silent serialization failures
   return JSON.stringify(payload); 
+}
+
+/**
+ * API Endpoint: Updates the current user's profile data.
+ */
+function updateCurrentUserProfile(profileInput) {
+  const activeEmail = normalizeEmail(getCurrentUser());
+  const normalizedName = profileInput && profileInput.name ? profileInput.name.toString().trim() : '';
+  const normalizedEmail = normalizeEmail(profileInput ? profileInput.email : '');
+  const normalizedProfilePicUrl = normalizeProfilePicUrl(profileInput ? profileInput.profilePicUrl : '');
+
+  if (!normalizedName) {
+    return JSON.stringify({ success: false, error: 'Name is required.' });
+  }
+
+  const usersSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Users');
+  if (!usersSheet) {
+    return JSON.stringify({ success: false, error: 'Users sheet was not found.' });
+  }
+
+  try {
+    const data = usersSheet.getDataRange().getValues();
+    if (data.length <= 1) {
+      throw new Error('Users sheet has no data rows.');
+    }
+
+    const headers = data[0];
+    const headerIndex = getNormalizedHeaderIndex(headers);
+
+    if (headerIndex.email === undefined) throw new Error('Users sheet is missing Email column.');
+    if (headerIndex.name === undefined) throw new Error('Users sheet is missing Name column.');
+
+    const currentUserRowIndex = data.findIndex(
+      (row, index) => index > 0 && getUserEmailFromRow(row, headerIndex) === activeEmail
+    );
+    if (currentUserRowIndex < 0) {
+      throw new Error('Current user record was not found.');
+    }
+
+    const duplicateEmailIndex = data.findIndex(
+      (row, index) =>
+        index > 0 &&
+        index !== currentUserRowIndex &&
+        getUserEmailFromRow(row, headerIndex) === normalizedEmail
+    );
+    if (duplicateEmailIndex > 0) {
+      throw new Error('Email already exists for another user.');
+    }
+
+    usersSheet.getRange(currentUserRowIndex + 1, headerIndex.name + 1).setValue(normalizedName);
+    usersSheet.getRange(currentUserRowIndex + 1, headerIndex.email + 1).setValue(normalizedEmail);
+    if (headerIndex.profile_pic_url !== undefined) {
+      usersSheet.getRange(currentUserRowIndex + 1, headerIndex.profile_pic_url + 1).setValue(normalizedProfilePicUrl);
+    }
+
+    const updatedRow = usersSheet.getRange(currentUserRowIndex + 1, 1, 1, headers.length).getValues()[0];
+    const updatedUser = {};
+    headers.forEach((header, index) => {
+      const value = updatedRow[index];
+      updatedUser[header] = value instanceof Date ? value.toISOString() : value;
+    });
+
+    return JSON.stringify({ success: true, user: updatedUser });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: error && error.message ? error.message : 'Failed to update user profile.'
+    });
+  }
 }
 
 /**
