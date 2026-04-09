@@ -32,8 +32,10 @@
 
       // Add-task modal state
       const showAddTaskModal = ref(false);
+      const showAddProjectModal = ref(false);
       const selectedProject = ref(null);
       const creatingTask = ref(false);
+      const creatingProject = ref(false);
       const showAssigneeDropdown = ref(false);
       const newTaskForm = ref({
         taskTitle: '',
@@ -42,6 +44,12 @@
         description: '',
         priority: null,
         assigneeIds: []
+      });
+      const newProjectForm = ref({
+        projectTitle: '',
+        dueDate: '',
+        description: '',
+        status: 'Not Started'
       });
 
       // Task details/edit modal state
@@ -445,6 +453,25 @@
         };
       };
 
+      const resetProjectForm = () => {
+        newProjectForm.value = {
+          projectTitle: '',
+          dueDate: '',
+          description: '',
+          status: 'Not Started'
+        };
+      };
+
+      const openAddProject = () => {
+        resetProjectForm();
+        showAddProjectModal.value = true;
+      };
+
+      const closeAddProject = () => {
+        if (creatingProject.value) return;
+        showAddProjectModal.value = false;
+      };
+
       const openAddTask = (project) => {
         selectedProject.value = project;
         resetTaskForm();
@@ -526,6 +553,46 @@
             description: newTaskForm.value.description,
             priority: newTaskForm.value.priority,
             assigneeIds: newTaskForm.value.assigneeIds
+          });
+      };
+
+      const createProject = () => {
+        const trimmedTitle = newProjectForm.value.projectTitle.trim();
+        if (!trimmedTitle) {
+          alert('Project title cannot be empty.');
+          return;
+        }
+
+        creatingProject.value = true;
+
+        google.script.run
+          .withSuccessHandler((response) => {
+            creatingProject.value = false;
+
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (!result || !result.success) {
+              alert(result?.error || 'Failed to create project.');
+              return;
+            }
+
+            if (result.project) {
+              projects.value.push(result.project);
+            } else {
+              fetchData();
+            }
+
+            closeAddProject();
+          })
+          .withFailureHandler((error) => {
+            creatingProject.value = false;
+            console.error('Failed to add project:', error);
+            alert('Error creating project.');
+          })
+          .createProject({
+            projectTitle: trimmedTitle,
+            dueDate: newProjectForm.value.dueDate,
+            description: newProjectForm.value.description,
+            status: newProjectForm.value.status || 'Not Started'
           });
       };
 
@@ -635,11 +702,14 @@
         savingProfile,
         profileForm,
         showAddTaskModal,
+        showAddProjectModal,
         selectedProject,
         creatingTask,
+        creatingProject,
         showAssigneeDropdown,
         assigneeSummary,
         newTaskForm,
+        newProjectForm,
         showTaskDetailsModal,
         taskDetailsForm,
         showTaskDetailsAssigneeDropdown,
@@ -655,6 +725,8 @@
         getInitials,
         formatDate,
         openTaskInfo,
+        openAddProject,
+        closeAddProject,
         closeTaskInfo,
         enableTaskEdit,
         cancelTaskEdit,
@@ -669,6 +741,7 @@
         toggleAssignee,
         isAssigneeSelected,
         createTask,
+        createProject,
         createAccount,
         toggleUserMenu,
         toggleDarkMode,
