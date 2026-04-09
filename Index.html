@@ -249,8 +249,8 @@
             <input
               v-model="newTaskForm.taskTitle"
               type="text"
-              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
-              class="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:ring-[#DB0000]' : 'bg-gray-50 border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
+              class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
               placeholder="Enter task title">
           </div>
 
@@ -259,8 +259,8 @@
             <input
               v-model="newTaskForm.dueDate"
               type="date"
-              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
-              class="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2">
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:ring-[#DB0000]' : 'bg-gray-50 border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
+              class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2">
           </div>
 
           <div>
@@ -271,7 +271,7 @@
                 :key="`complexity-${value}`"
                 @click="setComplexity(value)"
                 type="button"
-                :class="newTaskForm.complexity === value ? 'btn-action-red border-[#DB0000]' : 'bg-white text-gray-700 border-gray-300'"
+                :class="newTaskForm.complexity === value ? 'btn-action-red border-[#DB0000]' : (isDarkMode ? 'bg-gray-800 text-gray-300 border-gray-600' : 'bg-gray-50 text-gray-700 border-gray-300')"
                 class="w-10 h-10 rounded-lg border text-sm font-semibold transition-colors">
                 {{ value }}
               </button>
@@ -286,7 +286,7 @@
                 :key="`priority-${value}`"
                 @click="setPriority(value)"
                 type="button"
-                :class="newTaskForm.priority === value ? 'btn-action-red border-[#DB0000]' : 'bg-white text-gray-700 border-gray-300'"
+                :class="newTaskForm.priority === value ? 'btn-action-red border-[#DB0000]' : (isDarkMode ? 'bg-gray-800 text-gray-300 border-gray-600' : 'bg-gray-50 text-gray-700 border-gray-300')"
                 class="w-10 h-10 rounded-lg border text-sm font-semibold transition-colors">
                 {{ value }}
               </button>
@@ -297,8 +297,8 @@
             <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Assign To</label>
             <button
               type="button"
-              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
-              class="w-full rounded-lg px-3 py-2 text-sm text-left flex items-center justify-between focus:outline-none focus:ring-2"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 focus:ring-[#DB0000]' : 'bg-gray-50 border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
+              class="w-full border rounded-lg px-3 py-2 text-sm text-left flex items-center justify-between focus:outline-none focus:ring-2"
               @click="showAssigneeDropdown = !showAssigneeDropdown">
               <span :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'">{{ assigneeSummary }}</span>
               <i class="fa-solid fa-chevron-down text-xs" :class="isDarkMode ? 'text-gray-400' : 'text-gray-400'"></i>
@@ -330,8 +330,8 @@
             <textarea
               v-model="newTaskForm.description"
               rows="4"
-              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
-              class="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:ring-[#DB0000]' : 'bg-gray-50 border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
+              class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
               placeholder="Describe the task"></textarea>
           </div>
         </div>
@@ -376,8 +376,8 @@
             <input
               v-model="newProjectForm.projectTitle"
               type="text"
-              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
-              class="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:ring-[#DB0000]' : 'bg-gray-50 border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
+              class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
               placeholder="Enter project title">
           </div>
 
@@ -386,16 +386,16 @@
             <input
               v-model="newProjectForm.dueDate"
               type="date"
-              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
-              class="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2">
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:ring-[#DB0000]' : 'bg-gray-50 border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
+              class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2">
           </div>
 
           <div>
             <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Status</label>
             <select
               v-model="newProjectForm.status"
-              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
-              class="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2">
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 focus:ring-[#DB0000]' : 'bg-gray-50 border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
+              class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2">
               <option>Not Started</option>
               <option>In Progress</option>
               <option>Completed</option>
@@ -408,8 +408,8 @@
             <textarea
               v-model="newProjectForm.description"
               rows="4"
-              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
-              class="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:ring-[#DB0000]' : 'bg-gray-50 border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
+              class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
               placeholder="Describe the project"></textarea>
           </div>
         </div>
