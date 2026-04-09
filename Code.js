@@ -1,7 +1,7 @@
 /**
  * Main entry point for the web app.
  * Serves the Index.html file.
- * check to see if new branch is pushing correctly
+ * is version 2 even getting there
  */
 function doGet() {
   return HtmlService.createTemplateFromFile('Index')
@@ -21,7 +21,7 @@ function include(filename) {
  * Gets the current user's email.
  */
 function getCurrentUser() {
-
+  return Session.getActiveUser().getEmail();
 }
 
 /**
@@ -120,6 +120,25 @@ function normalizeScaleValue(value, fieldName) {
   return parsedValue;
 }
 
+function normalizeStatusValue(value) {
+  const validStatuses = ['Not Started', 'In Progress', 'Completed', 'Delayed'];
+  const status = value && value.toString().trim() ? value.toString().trim() : 'Not Started';
+  if (!validStatuses.includes(status)) {
+    throw new Error(`Status must be one of: ${validStatuses.join(', ')}`);
+  }
+  return status;
+}
+
+function getCurrentUserIdByEmail(email) {
+  if (!email) return '';
+
+  const users = getTableData('Users');
+  const normalizedEmail = email.toString().trim().toLowerCase();
+  const user = users.find((u) => (u.Email || '').toString().trim().toLowerCase() === normalizedEmail);
+
+  return user && user.User_ID ? user.User_ID : '';
+}
+
 
 function getValidAssigneeIds(assigneeIds) {
   if (!Array.isArray(assigneeIds)) return [];
@@ -136,6 +155,64 @@ function getValidAssigneeIds(assigneeIds) {
   }
 
   return uniqueAssigneeIds;
+}
+
+/**
+ * API Endpoint: Creates a project.
+ */
+function createProject(projectInput) {
+  const projectTitle = projectInput && projectInput.projectTitle ? projectInput.projectTitle.toString().trim() : '';
+  if (!projectTitle) {
+    return JSON.stringify({ success: false, error: 'Project title is required.' });
+  }
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Projects');
+  if (!sheet) {
+    return JSON.stringify({ success: false, error: 'Projects sheet was not found.' });
+  }
+
+  try {
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const headerIndex = headers.reduce((acc, header, index) => {
+      acc[header] = index;
+      return acc;
+    }, {});
+
+    const newRow = new Array(headers.length).fill('');
+    const now = new Date();
+    const status = normalizeStatusValue(projectInput ? projectInput.status : '');
+    const description = projectInput && projectInput.description ? projectInput.description.toString().trim() : '';
+    const parsedDueDate = projectInput && projectInput.dueDate ? new Date(projectInput.dueDate) : '';
+    const hasValidDueDate = parsedDueDate && parsedDueDate.toString() !== 'Invalid Date';
+    const creatorId = getCurrentUserIdByEmail(getCurrentUser());
+
+    if (!creatorId) {
+      throw new Error('Could not determine Creator_ID from current user email.');
+    }
+
+    if (headerIndex.Project_ID !== undefined) newRow[headerIndex.Project_ID] = generateNextId('Projects', 'P');
+    if (headerIndex.Project_Title !== undefined) newRow[headerIndex.Project_Title] = projectTitle;
+    if (headerIndex.Description !== undefined) newRow[headerIndex.Description] = description;
+    if (headerIndex.Status !== undefined) newRow[headerIndex.Status] = status;
+    if (headerIndex.Created_Date !== undefined) newRow[headerIndex.Created_Date] = now;
+    if (headerIndex.Due_Date !== undefined) newRow[headerIndex.Due_Date] = hasValidDueDate ? parsedDueDate : '';
+    if (headerIndex.Creator_ID !== undefined) newRow[headerIndex.Creator_ID] = creatorId;
+
+    sheet.appendRow(newRow);
+
+    const createdProject = {};
+    headers.forEach((header, index) => {
+      const value = newRow[index];
+      createdProject[header] = value instanceof Date ? value.toISOString() : value;
+    });
+
+    return JSON.stringify({ success: true, project: createdProject });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: error && error.message ? error.message : 'Failed to create project.'
+    });
+  }
 }
 
 /**
