@@ -59,6 +59,7 @@
       const isEditingTask = ref(false);
       const savingTask = ref(false);
       const deletingTask = ref(false);
+      const completingTask = ref(false);
 
       // Computed properties
       const currentUser = computed(() => {
@@ -300,6 +301,18 @@
         return date.toISOString().split('T')[0];
       };
 
+      const isPastDueDate = (dueDateValue) => {
+        if (!dueDateValue) return false;
+        const dueDate = new Date(dueDateValue);
+        if (Number.isNaN(dueDate.getTime())) return false;
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const normalizedDueDate = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
+        return normalizedDueDate.getTime() < startOfToday.getTime();
+      };
+
+      const shouldStrikeTask = (task) => task?.Status === 'Completed' && !isPastDueDate(task?.Due_Date);
+
       const buildTaskDetailsForm = (task) => {
         return {
           taskId: task.Task_ID,
@@ -440,6 +453,47 @@
             alert('Error deleting task.');
           })
           .deleteTask(taskDetailsForm.value.taskId);
+      };
+
+      const completeTask = () => {
+        if (!taskDetailsForm.value?.taskId || savingTask.value || deletingTask.value || completingTask.value) return;
+
+        completingTask.value = true;
+
+        google.script.run
+          .withSuccessHandler((response) => {
+            completingTask.value = false;
+
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (!result || !result.success) {
+              alert(result?.error || 'Failed to complete task.');
+              return;
+            }
+
+            if (result.deleted) {
+              const deletedTaskId = result.taskId;
+              tasks.value = tasks.value.filter((task) => !idsMatch(task.Task_ID, deletedTaskId));
+              assignments.value = assignments.value.filter((assignment) => !idsMatch(assignment.Assignment_ID, deletedTaskId));
+              closeTaskInfo();
+              return;
+            }
+
+            if (result.task) {
+              const taskIndex = tasks.value.findIndex((task) => idsMatch(task.Task_ID, result.task.Task_ID));
+              if (taskIndex >= 0) {
+                tasks.value.splice(taskIndex, 1, result.task);
+              } else {
+                tasks.value.push(result.task);
+              }
+              taskDetailsForm.value = buildTaskDetailsForm(result.task);
+            }
+          })
+          .withFailureHandler((error) => {
+            completingTask.value = false;
+            console.error('Failed to complete task:', error);
+            alert('Error completing task.');
+          })
+          .completeTask(taskDetailsForm.value.taskId);
       };
 
       const resetTaskForm = () => {
@@ -718,12 +772,14 @@
         isEditingTask,
         savingTask,
         deletingTask,
+        completingTask,
         getTasksForProject,
         getAssigneesForTask,
         getProjectById,
         statusColor,
         getInitials,
         formatDate,
+        shouldStrikeTask,
         openTaskInfo,
         openAddProject,
         closeAddProject,
@@ -734,6 +790,7 @@
         isTaskDetailsAssigneeSelected,
         saveTaskEdits,
         deleteTask,
+        completeTask,
         openAddTask,
         closeAddTask,
         setComplexity,
