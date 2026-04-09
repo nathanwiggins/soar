@@ -11,6 +11,8 @@
     .kanban-scroll::-webkit-scrollbar { height: 8px; }
     .kanban-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
     .kanban-scroll::-webkit-scrollbar-track { background: transparent; }
+    .btn-action-red { background: #DB0000; color: #fff; }
+    .btn-action-red:hover { background: #C41425; }
     .soar-logo {
       display: block;
       width: 100%;
@@ -43,17 +45,28 @@
       <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="p-4 border-t">
         <div class="relative" @click.stop>
           <button @click="toggleUserMenu" class="w-full flex items-center space-x-3 text-left">
-            <div class="w-10 h-10 rounded-full bg-[#DB0000]/10 flex items-center justify-center text-[#DB0000] font-bold">
-              {{ getInitials(currentUser?.Name) || 'U' }}
+            <div class="w-10 h-10 rounded-full bg-[#DB0000]/10 flex items-center justify-center text-[#DB0000] font-bold overflow-hidden">
+              <img
+                v-if="currentUser?.Profile_Pic_Url"
+                :src="currentUser.Profile_Pic_Url"
+                :alt="`${currentUser?.Name || 'User'} profile image`"
+                class="w-full h-full object-cover">
+              <span v-else>{{ getInitials(currentUser?.Name) || 'U' }}</span>
             </div>
             <div>
-              <p class="text-sm font-medium">{{ currentUser?.Name || 'Loading...' }}</p>
+              <p :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'" class="text-sm font-medium">{{ currentUser?.Name || 'Loading...' }}</p>
               <p :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-xs truncate w-32">{{ currentUser?.Email }}</p>
             </div>
             <i class="fa-solid fa-chevron-up ml-auto text-xs" :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'"></i>
           </button>
 
           <div v-if="isUserMenuOpen" :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'" class="absolute bottom-14 left-0 w-full rounded-lg border shadow-lg p-2 z-30">
+            <button
+              @click="openProfileModal"
+              :class="isDarkMode ? 'hover:bg-gray-700 text-gray-100' : 'hover:bg-gray-100 text-gray-700'"
+              class="w-full flex items-center px-3 py-2 rounded-md text-sm">
+              <span><i class="fa-solid fa-user mr-2"></i> Profile</span>
+            </button>
             <button
               @click="toggleDarkMode"
               :class="isDarkMode ? 'hover:bg-gray-700 text-gray-100' : 'hover:bg-gray-100 text-gray-700'"
@@ -109,11 +122,18 @@
                 
                 <div class="flex items-center justify-between mt-4">
                   <div class="flex -space-x-2">
-                    <div v-for="assignee in getAssigneesForTask(task.Task_ID)" :key="assignee.User_ID"
-                         :class="isDarkMode ? 'bg-gray-700 border-gray-900 text-gray-200' : 'bg-gray-200 border-white text-gray-600'"
-                         class="w-6 h-6 rounded-full border-2 flex items-center justify-center text-[8px] font-bold"
-                         :title="assignee.Name">
-                      {{ getInitials(assignee.Name) }}
+                    <div
+                      v-for="assignee in getAssigneesForTask(task.Task_ID)"
+                      :key="assignee.User_ID"
+                      :class="isDarkMode ? 'bg-gray-700 border-gray-900 text-gray-200' : 'bg-gray-200 border-white text-gray-600'"
+                      class="w-6 h-6 rounded-full border-2 flex items-center justify-center text-[8px] font-bold overflow-hidden"
+                      :title="assignee.Name">
+                      <img
+                        v-if="assignee?.Profile_Pic_Url"
+                        :src="assignee.Profile_Pic_Url"
+                        :alt="`${assignee?.Name || 'Assignee'} profile image`"
+                        class="w-full h-full object-cover">
+                      <span v-else>{{ getInitials(assignee.Name) }}</span>
                     </div>
                   </div>
                   <span v-if="task.Due_Date" :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-xs font-medium">
@@ -136,19 +156,87 @@
     </main>
 
     <div
+      v-if="showCreateAccountModal"
+      class="fixed inset-0 bg-gray-900/50 flex items-center justify-center z-50 px-4">
+      <div :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-100'" class="w-full max-w-md rounded-2xl shadow-2xl border transition-colors">
+        <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="px-6 py-4 border-b">
+          <h3 :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'" class="text-lg font-semibold">Create Account</h3>
+          <p :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-sm mt-1">
+            Complete your profile to continue.
+          </p>
+        </div>
+
+        <div class="p-6 space-y-4">
+          <div>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Email</label>
+            <input
+              :value="currentUser?.Email || ''"
+              type="email"
+              disabled
+              :class="isDarkMode ? 'bg-gray-800 border-gray-700 text-gray-300' : 'bg-gray-100 border-gray-300 text-gray-600'"
+              class="w-full rounded-lg px-3 py-2 text-sm border">
+          </div>
+
+          <div>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Name</label>
+            <input
+              v-model="createAccountForm.name"
+              type="text"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
+              class="w-full rounded-lg px-3 py-2 text-sm border focus:outline-none focus:ring-2"
+              placeholder="Enter your full name">
+          </div>
+
+          <div>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Manager (Optional)</label>
+            <select
+              v-model="createAccountForm.managerId"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
+              class="w-full rounded-lg px-3 py-2 text-sm border focus:outline-none focus:ring-2">
+              <option value="">No manager selected</option>
+              <option v-for="manager in managerOptions" :key="manager.User_ID" :value="manager.User_ID">
+                {{ manager.Name || manager.Email }} ({{ manager.User_ID }})
+              </option>
+            </select>
+          </div>
+
+          <div>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Profile Picture URL (Optional)</label>
+            <input
+              v-model="createAccountForm.profilePicUrl"
+              type="url"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
+              class="w-full rounded-lg px-3 py-2 text-sm border focus:outline-none focus:ring-2"
+              placeholder="https://example.com/profile.png">
+          </div>
+        </div>
+
+        <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="px-6 py-4 border-t flex justify-end">
+          <button
+            class="btn-action-red px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60 transition-colors"
+            @click="createAccount"
+            :disabled="creatingAccount">
+            {{ creatingAccount ? 'Creating...' : 'Create Account' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
       v-if="showAddTaskModal"
       class="fixed inset-0 bg-gray-900/50 flex items-center justify-center z-50 px-4"
       @click.self="closeAddTask">
-      <div class="bg-white w-full max-w-xl rounded-2xl shadow-2xl border border-gray-100">
-        <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+      <div :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-100'" class="w-full max-w-xl rounded-2xl shadow-2xl border transition-colors">
+        <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="px-6 py-4 border-b flex items-center justify-between">
           <div>
-            <h3 class="text-lg font-semibold text-gray-800">Add Task</h3>
-            <p class="text-sm text-gray-500">
+            <h3 :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'" class="text-lg font-semibold">Add Task</h3>
+            <p :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-sm">
               {{ selectedProject ? `Project: ${selectedProject.Project_Title}` : '' }}
             </p>
           </div>
           <button
-            class="text-gray-400 hover:text-gray-600 transition-colors"
+            :class="isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'"
+            class="transition-colors"
             @click="closeAddTask"
             :disabled="creatingTask">
             <i class="fa-solid fa-xmark text-lg"></i>
@@ -157,31 +245,33 @@
 
         <div class="p-6 space-y-5">
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Task Title</label>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Task Title</label>
             <input
               v-model="newTaskForm.taskTitle"
               type="text"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
+              class="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
               placeholder="Enter task title">
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Due Date</label>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Due Date</label>
             <input
               v-model="newTaskForm.dueDate"
               type="date"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
+              class="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2">
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Complexity</label>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Complexity</label>
             <div class="flex gap-2">
               <button
                 v-for="value in [1,2,3,4,5]"
                 :key="`complexity-${value}`"
                 @click="setComplexity(value)"
                 type="button"
-                :class="newTaskForm.complexity === value ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-700 border-gray-300'"
+                :class="newTaskForm.complexity === value ? 'btn-action-red border-[#DB0000]' : 'bg-white text-gray-700 border-gray-300'"
                 class="w-10 h-10 rounded-lg border text-sm font-semibold transition-colors">
                 {{ value }}
               </button>
@@ -189,14 +279,14 @@
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Priority</label>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Priority</label>
             <div class="flex gap-2">
               <button
                 v-for="value in [1,2,3,4,5]"
                 :key="`priority-${value}`"
                 @click="setPriority(value)"
                 type="button"
-                :class="newTaskForm.priority === value ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-700 border-gray-300'"
+                :class="newTaskForm.priority === value ? 'btn-action-red border-[#DB0000]' : 'bg-white text-gray-700 border-gray-300'"
                 class="w-10 h-10 rounded-lg border text-sm font-semibold transition-colors">
                 {{ value }}
               </button>
@@ -204,53 +294,58 @@
           </div>
 
           <div class="relative">
-            <label class="block text-sm font-medium text-gray-700 mb-2">Assign To</label>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Assign To</label>
             <button
               type="button"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
+              class="w-full rounded-lg px-3 py-2 text-sm text-left flex items-center justify-between focus:outline-none focus:ring-2"
               @click="showAssigneeDropdown = !showAssigneeDropdown">
-              <span class="text-gray-700">{{ assigneeSummary }}</span>
-              <i class="fa-solid fa-chevron-down text-gray-400 text-xs"></i>
+              <span :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'">{{ assigneeSummary }}</span>
+              <i class="fa-solid fa-chevron-down text-xs" :class="isDarkMode ? 'text-gray-400' : 'text-gray-400'"></i>
             </button>
 
             <div
               v-if="showAssigneeDropdown"
-              class="absolute z-20 mt-2 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto p-2">
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'"
+              class="absolute z-20 mt-2 w-full border rounded-lg shadow-lg max-h-48 overflow-y-auto p-2">
               <label
                 v-for="user in users"
                 :key="`assignee-${user.User_ID}`"
-                class="flex items-center gap-2 px-2 py-2 rounded-md hover:bg-gray-50 cursor-pointer text-sm">
+                :class="isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'"
+                class="flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer text-sm">
                 <input
                   type="checkbox"
                   :value="user.User_ID"
                   :checked="isAssigneeSelected(user.User_ID)"
                   @change="toggleAssignee(user.User_ID)"
-                  class="h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500">
-                <span class="text-gray-700">{{ user.Name }}</span>
-                <span class="text-xs text-gray-400">{{ user.Email }}</span>
+                  class="h-4 w-4 text-[#DB0000] rounded border-gray-300 focus:ring-[#DB0000]">
+                <span :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'">{{ user.Name }}</span>
+                <span :class="isDarkMode ? 'text-gray-400' : 'text-gray-400'" class="text-xs">{{ user.Email }}</span>
               </label>
             </div>
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Description</label>
             <textarea
               v-model="newTaskForm.description"
               rows="4"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
+              class="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
               placeholder="Describe the task"></textarea>
           </div>
         </div>
 
-        <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+        <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="px-6 py-4 border-t flex justify-end gap-3">
           <button
-            class="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50"
+            :class="isDarkMode ? 'border-gray-600 text-gray-200 hover:bg-gray-800' : 'border-gray-300 text-gray-700 hover:bg-gray-50'"
+            class="px-4 py-2 rounded-lg text-sm font-medium border"
             @click="closeAddTask"
             :disabled="creatingTask">
             Cancel
           </button>
           <button
-            class="px-4 py-2 rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60"
+            class="btn-action-red px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60 transition-colors"
             @click="createTask"
             :disabled="creatingTask">
             {{ creatingTask ? 'Creating...' : 'Create Task' }}
@@ -260,14 +355,16 @@
     </div>
 
     <div
+<div
       v-if="showAddProjectModal"
       class="fixed inset-0 bg-gray-900/50 flex items-center justify-center z-50 px-4"
       @click.self="closeAddProject">
-      <div class="bg-white w-full max-w-xl rounded-2xl shadow-2xl border border-gray-100">
-        <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h3 class="text-lg font-semibold text-gray-800">New Project</h3>
+      <div :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-100'" class="w-full max-w-xl rounded-2xl shadow-2xl border transition-colors">
+        <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="px-6 py-4 border-b flex items-center justify-between">
+          <h3 :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'" class="text-lg font-semibold">New Project</h3>
           <button
-            class="text-gray-400 hover:text-gray-600 transition-colors"
+            :class="isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'"
+            class="transition-colors"
             @click="closeAddProject"
             :disabled="creatingProject">
             <i class="fa-solid fa-xmark text-lg"></i>
@@ -276,27 +373,30 @@
 
         <div class="p-6 space-y-5">
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Project Title</label>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Project Title</label>
             <input
               v-model="newProjectForm.projectTitle"
               type="text"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
+              class="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
               placeholder="Enter project title">
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Due Date</label>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Due Date</label>
             <input
               v-model="newProjectForm.dueDate"
               type="date"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
+              class="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2">
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Status</label>
             <select
               v-model="newProjectForm.status"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
+              class="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2">
               <option>Not Started</option>
               <option>In Progress</option>
               <option>Completed</option>
@@ -305,24 +405,26 @@
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Description</label>
             <textarea
               v-model="newProjectForm.description"
               rows="4"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
+              class="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
               placeholder="Describe the project"></textarea>
           </div>
         </div>
 
-        <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+        <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="px-6 py-4 border-t flex justify-end gap-3">
           <button
-            class="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50"
+            :class="isDarkMode ? 'border-gray-600 text-gray-200 hover:bg-gray-800' : 'border-gray-300 text-gray-700 hover:bg-gray-50'"
+            class="px-4 py-2 rounded-lg text-sm font-medium border"
             @click="closeAddProject"
             :disabled="creatingProject">
             Cancel
           </button>
           <button
-            class="px-4 py-2 rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60"
+            class="btn-action-red px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60 transition-colors"
             @click="createProject"
             :disabled="creatingProject">
             {{ creatingProject ? 'Creating...' : 'Create Project' }}
@@ -331,6 +433,302 @@
       </div>
     </div>
 
+    <div
+      v-if="showTaskDetailsModal && taskDetailsForm"
+      class="fixed inset-0 bg-gray-900/50 flex items-center justify-center z-50 px-4"
+      @click.self="closeTaskInfo">
+      <div
+        :class="isDarkMode ? 'bg-gray-900 border-gray-700 text-gray-100' : 'bg-white border-gray-100 text-gray-800'"
+        class="w-full max-w-3xl rounded-2xl shadow-2xl border max-h-[90vh] overflow-y-auto">
+        <div
+          :class="isDarkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-100 bg-white'"
+          class="px-6 py-4 border-b flex items-center justify-between sticky top-0 z-10">
+          <div>
+            <h3 :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'" class="text-lg font-semibold">Task Details</h3>
+            <p :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-sm">{{ taskDetailsForm.taskId }}</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              v-if="!isEditingTask"
+              class="btn-action-red px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+              @click="enableTaskEdit">
+              Edit Task
+            </button>
+            <button
+              :class="isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'"
+              class="transition-colors"
+              @click="closeTaskInfo"
+              :disabled="savingTask">
+              <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div class="md:col-span-2">
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Task Name</label>
+            <input
+              v-model="taskDetailsForm.taskTitle"
+              type="text"
+              :disabled="!isEditingTask"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 disabled:bg-gray-800/70 disabled:text-gray-400' : 'bg-white border-gray-300 text-gray-800 disabled:bg-gray-100'"
+              class="w-full border rounded-lg px-3 py-2 text-sm">
+          </div>
+
+          <div class="md:col-span-2">
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Task Description</label>
+            <textarea
+              v-model="taskDetailsForm.description"
+              rows="4"
+              :disabled="!isEditingTask"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 disabled:bg-gray-800/70 disabled:text-gray-400' : 'bg-white border-gray-300 text-gray-800 disabled:bg-gray-100'"
+              class="w-full border rounded-lg px-3 py-2 text-sm"></textarea>
+          </div>
+
+          <div>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Task Status</label>
+            <select
+              v-model="taskDetailsForm.status"
+              :disabled="!isEditingTask"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 disabled:bg-gray-800/70 disabled:text-gray-400' : 'bg-white border-gray-300 text-gray-800 disabled:bg-gray-100'"
+              class="w-full border rounded-lg px-3 py-2 text-sm">
+              <option>Not Started</option>
+              <option>In Progress</option>
+              <option>Completed</option>
+              <option>Delayed</option>
+            </select>
+          </div>
+
+          <div>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">What project it's under</label>
+            <select
+              v-model="taskDetailsForm.projectId"
+              :disabled="!isEditingTask"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 disabled:bg-gray-800/70 disabled:text-gray-400' : 'bg-white border-gray-300 text-gray-800 disabled:bg-gray-100'"
+              class="w-full border rounded-lg px-3 py-2 text-sm">
+              <option v-for="project in projects" :key="`task-project-${project.Project_ID}`" :value="project.Project_ID">
+                {{ project.Project_Title }}
+              </option>
+            </select>
+          </div>
+
+          <div>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Complexity</label>
+            <select
+              v-model.number="taskDetailsForm.complexity"
+              :disabled="!isEditingTask"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 disabled:bg-gray-800/70 disabled:text-gray-400' : 'bg-white border-gray-300 text-gray-800 disabled:bg-gray-100'"
+              class="w-full border rounded-lg px-3 py-2 text-sm">
+              <option :value="null">None</option>
+              <option v-for="value in [1,2,3,4,5]" :key="`detail-complexity-${value}`" :value="value">{{ value }}</option>
+            </select>
+          </div>
+
+          <div>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Priority</label>
+            <select
+              v-model.number="taskDetailsForm.priority"
+              :disabled="!isEditingTask"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 disabled:bg-gray-800/70 disabled:text-gray-400' : 'bg-white border-gray-300 text-gray-800 disabled:bg-gray-100'"
+              class="w-full border rounded-lg px-3 py-2 text-sm">
+              <option :value="null">None</option>
+              <option v-for="value in [1,2,3,4,5]" :key="`detail-priority-${value}`" :value="value">{{ value }}</option>
+            </select>
+          </div>
+
+          <div>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Date Created</label>
+            <input
+              :value="formatDate(taskDetailsForm.createdDate)"
+              type="text"
+              disabled
+              :class="isDarkMode ? 'bg-gray-800/70 border-gray-600 text-gray-400' : 'bg-gray-100 border-gray-300 text-gray-700'"
+              class="w-full border rounded-lg px-3 py-2 text-sm">
+          </div>
+
+          <div>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Date Due</label>
+            <input
+              v-model="taskDetailsForm.dueDate"
+              type="date"
+              :disabled="!isEditingTask"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 disabled:bg-gray-800/70 disabled:text-gray-400' : 'bg-white border-gray-300 text-gray-800 disabled:bg-gray-100'"
+              class="w-full border rounded-lg px-3 py-2 text-sm">
+          </div>
+
+          <div class="relative md:col-span-2">
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Who is assigned to it</label>
+            <button
+              type="button"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 disabled:bg-gray-800/70 disabled:text-gray-400' : 'bg-white border-gray-300 text-gray-800 disabled:bg-gray-100'"
+              class="w-full border rounded-lg px-3 py-2 text-sm text-left flex items-center justify-between"
+              @click="isEditingTask && (showTaskDetailsAssigneeDropdown = !showTaskDetailsAssigneeDropdown)"
+              :disabled="!isEditingTask">
+              <span :class="isDarkMode ? 'text-gray-100' : 'text-gray-700'">{{ taskDetailsAssigneeSummary }}</span>
+              <i :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'" class="fa-solid fa-chevron-down text-xs"></i>
+            </button>
+
+            <div
+              v-if="showTaskDetailsAssigneeDropdown && isEditingTask"
+              :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'"
+              class="absolute z-20 mt-2 w-full border rounded-lg shadow-lg max-h-48 overflow-y-auto p-2">
+              <label
+                v-for="user in users"
+                :key="`task-detail-assignee-${user.User_ID}`"
+                :class="isDarkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'"
+                class="flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer text-sm">
+                <input
+                  type="checkbox"
+                  :value="user.User_ID"
+                  :checked="isTaskDetailsAssigneeSelected(user.User_ID)"
+                  @change="toggleTaskDetailsAssignee(user.User_ID)"
+                  class="h-4 w-4 text-[#DB0000] rounded border-gray-300 focus:ring-[#DB0000]">
+                <span :class="isDarkMode ? 'text-gray-100' : 'text-gray-700'">{{ user.Name }}</span>
+                <span :class="isDarkMode ? 'text-gray-400' : 'text-gray-400'" class="text-xs">{{ user.Email }}</span>
+              </label>
+            </div>
+
+            <div class="mt-3 space-y-2">
+              <div
+                v-for="assignee in taskDetailsAssigneeUsers"
+                :key="`task-details-assignee-row-${assignee.User_ID}`"
+                :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'"
+                class="rounded-lg border px-3 py-2 flex items-center gap-3">
+                <div
+                  :class="isDarkMode ? 'bg-gray-700 text-gray-200 border-gray-900' : 'bg-gray-200 text-gray-600 border-white'"
+                  class="w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold">
+                  {{ getInitials(assignee.Name) }}
+                </div>
+                <div class="min-w-0">
+                  <p :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'" class="text-sm font-medium truncate">{{ assignee.Name }}</p>
+                  <p :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-xs truncate">{{ assignee.Email }}</p>
+                </div>
+              </div>
+              <p
+                v-if="taskDetailsAssigneeUsers.length === 0"
+                :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'"
+                class="text-sm">
+                No assignees yet.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="px-6 py-4 border-t flex flex-wrap items-center justify-between gap-3">
+          <button
+            class="px-4 py-2 rounded-lg text-sm font-medium border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-60"
+            @click="deleteTask"
+            :disabled="savingTask || deletingTask">
+            {{ deletingTask ? 'Deleting...' : 'Delete Task' }}
+          </button>
+
+          <div class="flex justify-end gap-3">
+            <button
+              :class="isDarkMode ? 'border-gray-600 text-gray-200 hover:bg-gray-800' : 'border-gray-300 text-gray-700 hover:bg-gray-50'"
+              class="px-4 py-2 rounded-lg text-sm font-medium border"
+              @click="isEditingTask ? cancelTaskEdit() : closeTaskInfo()"
+              :disabled="savingTask || deletingTask">
+              {{ isEditingTask ? 'Cancel' : 'Close' }}
+            </button>
+            <button
+              v-if="isEditingTask"
+              class="btn-action-red px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60 transition-colors"
+              @click="saveTaskEdits"
+              :disabled="savingTask || deletingTask">
+              {{ savingTask ? 'Saving...' : 'Save Changes' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="showProfileModal"
+      class="fixed inset-0 bg-gray-900/50 flex items-center justify-center z-50 px-4"
+      @click.self="closeProfileModal">
+      <div :class="isDarkMode ? 'bg-gray-900 border-gray-700 text-gray-100' : 'bg-white border-gray-100 text-gray-800'" class="w-full max-w-lg rounded-2xl shadow-2xl border">
+        <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="px-6 py-4 border-b flex items-center justify-between">
+          <div>
+            <h3 :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'" class="text-lg font-semibold">My Profile</h3>
+            <p :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-sm">View and edit your account details</p>
+          </div>
+          <button
+            :class="isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'"
+            class="transition-colors"
+            @click="closeProfileModal"
+            :disabled="savingProfile">
+            <i class="fa-solid fa-xmark text-lg"></i>
+          </button>
+        </div>
+
+        <div class="p-6 space-y-5">
+          <div class="flex justify-center">
+            <div :class="isDarkMode ? 'bg-gray-700 text-gray-100' : 'bg-[#DB0000]/10 text-[#DB0000]'" class="w-20 h-20 rounded-full flex items-center justify-center font-bold text-xl overflow-hidden">
+              <img
+                v-if="profileForm.profilePicUrl"
+                :src="profileForm.profilePicUrl"
+                alt="Profile preview"
+                class="w-full h-full object-cover">
+              <span v-else>{{ getInitials(profileForm.name) || 'U' }}</span>
+            </div>
+          </div>
+
+          <div>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Name</label>
+            <input
+              v-model="profileForm.name"
+              type="text"
+              :disabled="!isEditingProfile"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 disabled:bg-gray-800/70 disabled:text-gray-400' : 'bg-white border-gray-300 text-gray-900 disabled:bg-gray-100'"
+              class="w-full border rounded-lg px-3 py-2 text-sm">
+          </div>
+
+          <div>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Email</label>
+            <input
+              v-model="profileForm.email"
+              type="email"
+              :disabled="!isEditingProfile"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 disabled:bg-gray-800/70 disabled:text-gray-400' : 'bg-white border-gray-300 text-gray-900 disabled:bg-gray-100'"
+              class="w-full border rounded-lg px-3 py-2 text-sm">
+          </div>
+
+          <div>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Profile Picture URL</label>
+            <input
+              v-model="profileForm.profilePicUrl"
+              type="url"
+              placeholder="https://example.com/avatar.png"
+              :disabled="!isEditingProfile"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 disabled:bg-gray-800/70 disabled:text-gray-400' : 'bg-white border-gray-300 text-gray-900 disabled:bg-gray-100'"
+              class="w-full border rounded-lg px-3 py-2 text-sm">
+          </div>
+        </div>
+
+        <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="px-6 py-4 border-t flex justify-end gap-3">
+          <button
+            :class="isDarkMode ? 'border-gray-600 text-gray-200 hover:bg-gray-800' : 'border-gray-300 text-gray-700 hover:bg-gray-50'"
+            class="px-4 py-2 rounded-lg text-sm font-medium border"
+            @click="isEditingProfile ? cancelProfileEdit() : closeProfileModal()"
+            :disabled="savingProfile">
+            {{ isEditingProfile ? 'Cancel' : 'Close' }}
+          </button>
+          <button
+            v-if="!isEditingProfile"
+            class="btn-action-red px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            @click="enableProfileEdit">
+            Edit Profile
+          </button>
+          <button
+            v-else
+            class="btn-action-red px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60 transition-colors"
+            @click="saveProfile"
+            :disabled="savingProfile">
+            {{ savingProfile ? 'Saving...' : 'Save Changes' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <?!= include('App.js'); ?>
