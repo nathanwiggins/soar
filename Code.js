@@ -203,11 +203,223 @@ function getInitialPayload() {
     users: users,
     projects: getTableData('Projects'),
     tasks: getTableData('Tasks'),
-    assignments: getTableData('Assignments')
+    assignments: getTableData('Assignments'),
+    comments: getTableData('Comments')
   };
   
   // Stringifying prevents Apps Script's silent serialization failures
   return JSON.stringify(payload); 
+}
+
+function getUserById(userId) {
+  const normalizedUserId = userId ? userId.toString().trim() : '';
+  if (!normalizedUserId) return null;
+
+  const users = getTableData('Users');
+  return users.find((user) => (user.User_ID || '').toString().trim() === normalizedUserId) || null;
+}
+
+function ensureTaskExists(taskId) {
+  const normalizedTaskId = taskId ? taskId.toString().trim() : '';
+  if (!normalizedTaskId) {
+    throw new Error('Topic_ID (task ID) is required.');
+  }
+
+  const tasks = getTableData('Tasks');
+  const taskExists = tasks.some((task) => (task.Task_ID || '').toString().trim() === normalizedTaskId);
+  if (!taskExists) {
+    throw new Error(`Task ${normalizedTaskId} does not exist.`);
+  }
+
+  return normalizedTaskId;
+}
+
+function extractMentionedUsers(content, users) {
+  if (!content) return [];
+  const mentionPattern = /@([a-zA-Z0-9._-]+)/g;
+  const matches = content.matchAll(mentionPattern);
+  const mentions = new Set();
+  for (const match of matches) {
+    if (match && match[1]) {
+      mentions.add(match[1].toLowerCase());
+    }
+  }
+  if (mentions.size === 0) return [];
+
+  return users.filter((user) => {
+    const name = (user.Name || '').toString().trim().toLowerCase();
+    const emailLocalPart = (user.Email || '').toString().trim().toLowerCase().split('@')[0];
+    return mentions.has(name) || mentions.has(emailLocalPart);
+  });
+}
+
+function sendMentionNotifications(comment, topicId, commenter, mentionedUsers) {
+  if (!mentionedUsers || mentionedUsers.length === 0) return;
+
+  const topicLabel = topicId || 'task';
+  const commenterName = commenter && commenter.Name ? commenter.Name : 'A teammate';
+  const commenterEmail = commenter && commenter.Email ? commenter.Email : 'Unknown email';
+  const subject = `You were mentioned in a comment on ${topicLabel}`;
+  const body = `${commenterName} (${commenterEmail}) mentioned you in a comment on ${topicLabel}.\n\nComment:\n${comment}\n`;
+
+  const sentEmails = new Set();
+  mentionedUsers.forEach((user) => {
+    const email = normalizeEmail(user.Email);
+    if (!email || sentEmails.has(email)) return;
+    sentEmails.add(email);
+    MailApp.sendEmail(email, subject, body);
+  });
+}
+
+function addComment(topicId, commentInput) {
+  try {
+    const normalizedTopicId = ensureTaskExists(topicId);
+    const content = commentInput && commentInput.content ? commentInput.content.toString().trim() : '';
+    if (!content) {
+      throw new Error('Comment content is required.');
+    }
+
+    const currentUserEmail = normalizeEmail(getCurrentUser());
+    const currentUserId = getCurrentUserIdByEmail(currentUserEmail);
+    if (!currentUserId) {
+      throw new Error('Could not determine commenter_ID from current user email.');
+    }
+
+    const commentsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Comments');
+    if (!commentsSheet) {
+      throw new Error('Comments sheet was not found.');
+    }
+
+    const headers = commentsSheet.getRange(1, 1, 1, commentsSheet.getLastColumn()).getValues()[0];
+    const headerIndex = getHeaderIndex(headers);
+    const now = new Date();
+    const newRow = new Array(headers.length).fill('');
+
+    if (headerIndex.Comment_ID !== undefined) newRow[headerIndex.Comment_ID] = generateNextId('Comments', 'C');
+    if (headerIndex.Topic_ID !== undefined) newRow[headerIndex.Topic_ID] = normalizedTopicId;
+    if (headerIndex.Commenter_ID !== undefined) newRow[headerIndex.Commenter_ID] = currentUserId;
+    if (headerIndex.Timestamp !== undefined) newRow[headerIndex.Timestamp] = now;
+    if (headerIndex.Content !== undefined) newRow[headerIndex.Content] = content;
+
+    commentsSheet.appendRow(newRow);
+
+    const createdComment = {};
+    headers.forEach((header, index) => {
+      const value = newRow[index];
+      createdComment[header] = value instanceof Date ? value.toISOString() : value;
+    });
+
+    const users = getTableData('Users');
+    const commenter = users.find((user) => (user.User_ID || '').toString().trim() === currentUserId) || null;
+    const mentionedUsers = extractMentionedUsers(content, users).filter(
+      (user) => (user.User_ID || '').toString().trim() !== currentUserId
+    );
+    sendMentionNotifications(content, normalizedTopicId, commenter, mentionedUsers);
+
+    return JSON.stringify({ success: true, comment: createdComment });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: error && error.message ? error.message : 'Failed to add comment.'
+    });
+  }
+}
+
+function deleteComment(commentId) {
+  const normalizedCommentId = commentId ? commentId.toString().trim() : '';
+  if (!normalizedCommentId) {
+    return JSON.stringify({ success: false, error: 'Comment ID is required.' });
+  }
+
+  const commentsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Comments');
+  if (!commentsSheet) {
+    return JSON.stringify({ success: false, error: 'Comments sheet was not found.' });
+  }
+
+  try {
+    const data = commentsSheet.getDataRange().getValues();
+    if (data.length <= 1) {
+      throw new Error('Comments sheet has no data rows.');
+    }
+
+    const headers = data[0];
+    const commentIdColumnIndex = headers.indexOf('Comment_ID');
+    if (commentIdColumnIndex === -1) {
+      throw new Error('Comments sheet is missing Comment_ID column.');
+    }
+
+    const rowIndex = data.findIndex((row, index) => index > 0 && row[commentIdColumnIndex] === normalizedCommentId);
+    if (rowIndex < 0) {
+      throw new Error('Comment not found.');
+    }
+
+    commentsSheet.deleteRow(rowIndex + 1);
+    return JSON.stringify({ success: true, commentId: normalizedCommentId });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: error && error.message ? error.message : 'Failed to delete comment.'
+    });
+  }
+}
+
+function resolveComment(commentId) {
+  const normalizedCommentId = commentId ? commentId.toString().trim() : '';
+  if (!normalizedCommentId) {
+    return JSON.stringify({ success: false, error: 'Comment ID is required.' });
+  }
+
+  const commentsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Comments');
+  if (!commentsSheet) {
+    return JSON.stringify({ success: false, error: 'Comments sheet was not found.' });
+  }
+
+  try {
+    const data = commentsSheet.getDataRange().getValues();
+    if (data.length <= 1) {
+      throw new Error('Comments sheet has no data rows.');
+    }
+
+    const headers = data[0];
+    const commentIdColumnIndex = headers.indexOf('Comment_ID');
+    const topicIdColumnIndex = headers.indexOf('Topic_ID');
+    const commenterIdColumnIndex = headers.indexOf('Commenter_ID');
+    const contentColumnIndex = headers.indexOf('Content');
+
+    if (commentIdColumnIndex === -1) throw new Error('Comments sheet is missing Comment_ID column.');
+    if (commenterIdColumnIndex === -1) throw new Error('Comments sheet is missing Commenter_ID column.');
+
+    const rowIndex = data.findIndex((row, index) => index > 0 && row[commentIdColumnIndex] === normalizedCommentId);
+    if (rowIndex < 0) {
+      throw new Error('Comment not found.');
+    }
+
+    const row = data[rowIndex];
+    const commenterId = commenterIdColumnIndex > -1 ? row[commenterIdColumnIndex] : '';
+    const commenter = getUserById(commenterId);
+    const topicId = topicIdColumnIndex > -1 ? row[topicIdColumnIndex] : '';
+    const content = contentColumnIndex > -1 ? row[contentColumnIndex] : '';
+
+    commentsSheet.deleteRow(rowIndex + 1);
+
+    const commenterEmail = commenter ? normalizeEmail(commenter.Email) : '';
+    if (commenterEmail) {
+      const resolverEmail = normalizeEmail(getCurrentUser());
+      const resolverUserId = getCurrentUserIdByEmail(resolverEmail);
+      const resolver = getUserById(resolverUserId);
+      const resolverName = resolver && resolver.Name ? resolver.Name : 'A teammate';
+      const subject = `Your comment ${normalizedCommentId} was resolved`;
+      const body = `${resolverName} resolved your comment on ${topicId || 'a task'}.\n\nResolved comment:\n${content}\n`;
+      MailApp.sendEmail(commenterEmail, subject, body);
+    }
+
+    return JSON.stringify({ success: true, commentId: normalizedCommentId, resolved: true });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: error && error.message ? error.message : 'Failed to resolve comment.'
+    });
+  }
 }
 
 function hasDueDatePassed(dueDateValue) {
