@@ -121,7 +121,18 @@
                   <span :class="statusColor(task.Status)" class="text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">
                     {{ task.Status }}
                   </span>
-                  <i class="fa-regular fa-comments text-gray-300 group-hover:text-[#C41425] transition-colors"></i>
+                  <button
+                    type="button"
+                    class="text-gray-300 hover:text-[#C41425] transition-colors inline-flex items-center gap-1"
+                    @click.stop="openTaskComments(task)"
+                    title="Open comments">
+                    <i class="fa-regular fa-comments"></i>
+                    <span
+                      :class="isDarkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'"
+                      class="min-w-5 h-5 px-1 rounded-full text-[10px] font-semibold flex items-center justify-center">
+                      {{ getCommentCountForTask(task.Task_ID) }}
+                    </span>
+                  </button>
                 </div>
                 
                 <h4
@@ -764,6 +775,7 @@
               </p>
             </div>
           </div>
+
         </div>
 
         <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="px-6 py-4 border-t flex flex-wrap items-center justify-between gap-3">
@@ -797,6 +809,109 @@
               :disabled="savingTask || deletingTask || completingTask">
               {{ savingTask ? 'Saving...' : 'Save Changes' }}
             </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="showCommentModal && commentModalTask"
+      class="fixed inset-0 bg-gray-900/50 flex items-center justify-center z-50 px-4"
+      @click.self="closeCommentModal">
+      <div :class="isDarkMode ? 'bg-gray-900 border-gray-700 text-gray-100' : 'bg-white border-gray-100 text-gray-800'" class="w-full max-w-2xl rounded-2xl shadow-2xl border max-h-[90vh] overflow-y-auto">
+        <div :class="isDarkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-100 bg-white'" class="px-6 py-4 border-b flex items-center justify-between sticky top-0 z-10">
+          <div>
+            <h3 :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'" class="text-lg font-semibold">Comments</h3>
+            <p :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-sm">{{ commentModalTask.Task_Title }}</p>
+          </div>
+          <button
+            :class="isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'"
+            class="transition-colors"
+            @click="closeCommentModal"
+            :disabled="creatingComment">
+            <i class="fa-solid fa-xmark text-lg"></i>
+          </button>
+        </div>
+
+        <div class="p-6">
+          <div class="flex items-center justify-between mb-2">
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium">Write a comment</label>
+            <span :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-xs">Type @ to mention a teammate</span>
+          </div>
+
+          <div :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'" class="border rounded-xl p-3 relative">
+            <textarea
+              ref="quickCommentTextarea"
+              v-model="commentDraft"
+              rows="3"
+              :class="isDarkMode ? 'bg-gray-900 border-gray-600 text-gray-100' : 'bg-white border-gray-300 text-gray-800'"
+              class="w-full border rounded-lg px-3 py-2 text-sm"
+              placeholder="Write a comment..."
+              @input="updateMentionSuggestions($event)"></textarea>
+
+            <div
+              v-if="showMentionSuggestions && filteredMentionSuggestions.length > 0"
+              :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'"
+              class="absolute left-3 right-3 mt-2 border rounded-lg shadow-lg z-20 max-h-40 overflow-y-auto">
+              <button
+                v-for="suggestion in filteredMentionSuggestions"
+                :key="`mention-${suggestion.handle}`"
+                type="button"
+                :class="isDarkMode ? 'hover:bg-gray-800 text-gray-100' : 'hover:bg-gray-50 text-gray-700'"
+                class="w-full text-left px-3 py-2 text-sm flex items-center justify-between"
+                @click="applyMentionSuggestion(suggestion.handle)">
+                <span class="font-medium">@{{ suggestion.handle }}</span>
+                <span :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-xs">{{ suggestion.name || suggestion.email }}</span>
+              </button>
+            </div>
+
+            <div class="mt-3 flex justify-end">
+              <button
+                class="btn-action-red px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60 transition-colors"
+                @click="addComment"
+                :disabled="creatingComment">
+                {{ creatingComment ? 'Posting...' : 'Post Comment' }}
+              </button>
+            </div>
+          </div>
+
+          <div class="mt-4 space-y-3 max-h-80 overflow-y-auto pr-1">
+            <div
+              v-for="comment in taskComments"
+              :key="comment.Comment_ID"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'"
+              class="rounded-xl border p-3">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <p :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'" class="text-sm font-medium truncate">
+                    {{ getCommentAuthor(comment)?.Name || getCommentAuthor(comment)?.Email || comment.Commenter_ID }}
+                  </p>
+                  <p :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-xs">{{ formatCommentTimestamp(comment.Timestamp) }}</p>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button
+                    class="text-xs px-2 py-1 rounded-md border border-green-300 text-green-600 hover:bg-green-50 disabled:opacity-60"
+                    @click="resolveComment(comment.Comment_ID)"
+                    :disabled="resolvingCommentIds.includes(comment.Comment_ID)">
+                    {{ resolvingCommentIds.includes(comment.Comment_ID) ? 'Resolving...' : 'Resolve' }}
+                  </button>
+                  <button
+                    class="text-xs px-2 py-1 rounded-md border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-60"
+                    @click="deleteComment(comment.Comment_ID)"
+                    :disabled="deletingCommentIds.includes(comment.Comment_ID)">
+                    {{ deletingCommentIds.includes(comment.Comment_ID) ? 'Deleting...' : 'Delete' }}
+                  </button>
+                </div>
+              </div>
+              <p :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="text-sm mt-3 whitespace-pre-wrap">{{ comment.Content }}</p>
+            </div>
+
+            <p
+              v-if="taskComments.length === 0"
+              :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'"
+              class="text-sm">
+              No comments yet. Start the conversation.
+            </p>
           </div>
         </div>
       </div>

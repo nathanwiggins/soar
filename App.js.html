@@ -1,5 +1,5 @@
 <script>
-  const { createApp, ref, computed, onMounted } = Vue;
+  const { createApp, ref, computed, onMounted, nextTick } = Vue;
 
   createApp({
     setup() {
@@ -29,6 +29,19 @@
       const projects = ref([]);
       const tasks = ref([]);
       const assignments = ref([]);
+      const comments = ref([]);
+      const commentDraft = ref('');
+      const creatingComment = ref(false);
+      const resolvingCommentIds = ref([]);
+      const deletingCommentIds = ref([]);
+      const showCommentModal = ref(false);
+      const commentModalTask = ref(null);
+      const activeCommentTaskId = ref('');
+      const showMentionSuggestions = ref(false);
+      const mentionQuery = ref('');
+      const mentionStartIndex = ref(-1);
+      const mentionCursorIndex = ref(-1);
+      const quickCommentTextarea = ref(null);
 
       // Add-task modal state
       const showAddTaskModal = ref(false);
@@ -104,6 +117,54 @@
       const projectDetailsCreator = computed(() => {
         if (!projectDetailsForm.value?.creatorId) return null;
         return getUserById(projectDetailsForm.value.creatorId);
+      });
+
+      const taskComments = computed(() => {
+        const topicId = activeCommentTaskId.value;
+        if (!topicId) return [];
+
+        return comments.value
+          .filter((comment) => idsMatch(comment.Topic_ID, topicId))
+          .slice()
+          .sort((left, right) => {
+            const leftTime = new Date(left.Timestamp || 0).getTime();
+            const rightTime = new Date(right.Timestamp || 0).getTime();
+            return rightTime - leftTime;
+          });
+      });
+
+      const mentionableUsers = computed(() => {
+        const byHandle = new Map();
+        users.value.forEach((user) => {
+          const emailLocalPart = normalizeEmail(user?.Email).split('@')[0];
+          const fallbackHandle = (user?.Name || '')
+            .toString()
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, '.')
+            .replace(/[^a-z0-9._-]/g, '');
+          const handle = emailLocalPart || fallbackHandle;
+          if (!handle) return;
+
+          if (!byHandle.has(handle)) {
+            byHandle.set(handle, {
+              handle,
+              userId: user.User_ID,
+              name: user.Name || '',
+              email: user.Email || ''
+            });
+          }
+        });
+
+        return Array.from(byHandle.values()).sort((a, b) => a.handle.localeCompare(b.handle));
+      });
+
+      const filteredMentionSuggestions = computed(() => {
+        if (!showMentionSuggestions.value) return [];
+        const query = mentionQuery.value.toLowerCase();
+        return mentionableUsers.value
+          .filter((entry) => !query || entry.handle.toLowerCase().startsWith(query))
+          .slice(0, 6);
       });
 
       const managerOptions = computed(() => {
@@ -207,6 +268,7 @@
             projects.value = payload.projects;
             tasks.value = payload.tasks;
             assignments.value = payload.assignments;
+            comments.value = payload.comments || [];
             loading.value = false;
 
             if (payload.requiresAccountSetup) {
@@ -357,6 +419,34 @@
         showTaskDetailsModal.value = true;
       };
 
+      const openTaskComments = (task) => {
+        commentModalTask.value = task;
+        activeCommentTaskId.value = task?.Task_ID || '';
+        commentDraft.value = '';
+        showMentionSuggestions.value = false;
+        mentionQuery.value = '';
+        mentionStartIndex.value = -1;
+        mentionCursorIndex.value = -1;
+        showCommentModal.value = true;
+        nextTick(() => {
+          if (quickCommentTextarea.value) {
+            quickCommentTextarea.value.focus();
+          }
+        });
+      };
+
+      const closeCommentModal = () => {
+        if (creatingComment.value) return;
+        showCommentModal.value = false;
+        commentModalTask.value = null;
+        activeCommentTaskId.value = '';
+        commentDraft.value = '';
+        showMentionSuggestions.value = false;
+        mentionQuery.value = '';
+        mentionStartIndex.value = -1;
+        mentionCursorIndex.value = -1;
+      };
+
       const openProjectInfo = (project) => {
         projectDetailsForm.value = buildProjectDetailsForm(project);
         isEditingProject.value = false;
@@ -389,6 +479,139 @@
         showTaskDetailsAssigneeDropdown.value = false;
         isEditingTask.value = false;
         taskDetailsForm.value = null;
+      };
+
+      const getCommentCountForTask = (taskId) => {
+        return comments.value.filter((comment) => idsMatch(comment.Topic_ID, taskId)).length;
+      };
+
+      const getCommentAuthor = (comment) => {
+        return getUserById(comment?.Commenter_ID);
+      };
+
+      const formatCommentTimestamp = (timestamp) => {
+        if (!timestamp) return '—';
+        const date = new Date(timestamp);
+        if (Number.isNaN(date.getTime())) return '—';
+        return date.toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit'
+        });
+      };
+
+      const addComment = () => {
+        if (!activeCommentTaskId.value) return;
+        const trimmedContent = commentDraft.value.trim();
+        if (!trimmedContent) {
+          alert('Please enter a comment before posting.');
+          return;
+        }
+
+        creatingComment.value = true;
+        google.script.run
+          .withSuccessHandler((response) => {
+            creatingComment.value = false;
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (!result || !result.success || !result.comment) {
+              alert(result?.error || 'Failed to add comment.');
+              return;
+            }
+            comments.value.push(result.comment);
+            commentDraft.value = '';
+            showMentionSuggestions.value = false;
+          })
+          .withFailureHandler((error) => {
+            creatingComment.value = false;
+            console.error('Failed to add comment:', error);
+            alert('Error adding comment.');
+          })
+          .addComment(activeCommentTaskId.value, {
+            content: trimmedContent
+          });
+      };
+
+      const updateMentionSuggestions = (event) => {
+        const cursorIndex = event?.target?.selectionStart ?? commentDraft.value.length;
+        mentionCursorIndex.value = cursorIndex;
+        const beforeCursor = commentDraft.value.slice(0, cursorIndex);
+        const match = beforeCursor.match(/(^|\s)@([a-zA-Z0-9._-]*)$/);
+        if (!match) {
+          showMentionSuggestions.value = false;
+          mentionQuery.value = '';
+          mentionStartIndex.value = -1;
+          return;
+        }
+
+        mentionQuery.value = (match[2] || '').toLowerCase();
+        mentionStartIndex.value = cursorIndex - mentionQuery.value.length - 1;
+        showMentionSuggestions.value = true;
+      };
+
+      const applyMentionSuggestion = (handle) => {
+        if (!handle || mentionStartIndex.value < 0) return;
+        const cursorIndex = mentionCursorIndex.value >= 0 ? mentionCursorIndex.value : commentDraft.value.length;
+        const before = commentDraft.value.slice(0, mentionStartIndex.value);
+        const after = commentDraft.value.slice(cursorIndex);
+        commentDraft.value = `${before}@${handle} ${after}`;
+        showMentionSuggestions.value = false;
+        mentionQuery.value = '';
+        mentionStartIndex.value = -1;
+
+        nextTick(() => {
+          if (!quickCommentTextarea.value) return;
+          quickCommentTextarea.value.focus();
+          const nextCursor = `${before}@${handle} `.length;
+          quickCommentTextarea.value.setSelectionRange(nextCursor, nextCursor);
+        });
+      };
+
+      const resolveComment = (commentId) => {
+        if (!commentId || resolvingCommentIds.value.includes(commentId)) return;
+        resolvingCommentIds.value.push(commentId);
+
+        google.script.run
+          .withSuccessHandler((response) => {
+            resolvingCommentIds.value = resolvingCommentIds.value.filter((id) => id !== commentId);
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (!result || !result.success) {
+              alert(result?.error || 'Failed to resolve comment.');
+              return;
+            }
+            comments.value = comments.value.filter((comment) => !idsMatch(comment.Comment_ID, commentId));
+          })
+          .withFailureHandler((error) => {
+            resolvingCommentIds.value = resolvingCommentIds.value.filter((id) => id !== commentId);
+            console.error('Failed to resolve comment:', error);
+            alert('Error resolving comment.');
+          })
+          .resolveComment(commentId);
+      };
+
+      const deleteComment = (commentId) => {
+        if (!commentId || deletingCommentIds.value.includes(commentId)) return;
+        const confirmed = confirm('Delete this comment?');
+        if (!confirmed) return;
+
+        deletingCommentIds.value.push(commentId);
+        google.script.run
+          .withSuccessHandler((response) => {
+            deletingCommentIds.value = deletingCommentIds.value.filter((id) => id !== commentId);
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (!result || !result.success) {
+              alert(result?.error || 'Failed to delete comment.');
+              return;
+            }
+            comments.value = comments.value.filter((comment) => !idsMatch(comment.Comment_ID, commentId));
+          })
+          .withFailureHandler((error) => {
+            deletingCommentIds.value = deletingCommentIds.value.filter((id) => id !== commentId);
+            console.error('Failed to delete comment:', error);
+            alert('Error deleting comment.');
+          })
+          .deleteComment(commentId);
       };
 
       const enableTaskEdit = () => {
@@ -884,6 +1107,18 @@
         users,
         projects,
         tasks,
+        comments,
+        taskComments,
+        commentDraft,
+        creatingComment,
+        showCommentModal,
+        commentModalTask,
+        activeCommentTaskId,
+        showMentionSuggestions,
+        filteredMentionSuggestions,
+        quickCommentTextarea,
+        resolvingCommentIds,
+        deletingCommentIds,
         showProfileModal,
         isEditingProfile,
         savingProfile,
@@ -920,6 +1155,8 @@
         formatDate,
         shouldStrikeTask,
         openTaskInfo,
+        openTaskComments,
+        closeCommentModal,
         openProjectInfo,
         openAddProject,
         closeAddProject,
@@ -944,6 +1181,14 @@
         isAssigneeSelected,
         createTask,
         createProject,
+        getCommentAuthor,
+        getCommentCountForTask,
+        formatCommentTimestamp,
+        updateMentionSuggestions,
+        applyMentionSuggestion,
+        addComment,
+        resolveComment,
+        deleteComment,
         createAccount,
         toggleUserMenu,
         toggleDarkMode,
