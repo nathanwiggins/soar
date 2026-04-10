@@ -24,6 +24,35 @@ function getCurrentUser() {
   return Session.getActiveUser().getEmail();
 }
 
+
+function getCurrentUserProfilePhotoUrl() {
+  const activeEmail = normalizeEmail(getCurrentUser());
+  if (!activeEmail) return '';
+
+  try {
+    const response = UrlFetchApp.fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: {
+        Authorization: `Bearer ${ScriptApp.getOAuthToken()}`
+      },
+      muteHttpExceptions: true
+    });
+
+    if (response.getResponseCode() !== 200) {
+      return '';
+    }
+
+    const data = JSON.parse(response.getContentText() || '{}');
+    const profileEmail = normalizeEmail(data.email);
+    if (profileEmail && profileEmail !== activeEmail) {
+      return '';
+    }
+
+    return data.picture ? data.picture.toString().trim() : '';
+  } catch (error) {
+    return '';
+  }
+}
+
 function normalizeEmail(email) {
   return email ? email.toString().trim().toLowerCase() : '';
 }
@@ -114,7 +143,7 @@ function addUser(userInput) {
   const normalizedEmail = normalizeEmail(userInput && userInput.email);
   const name = userInput && userInput.name ? userInput.name.toString().trim() : '';
   const managerId = userInput && userInput.managerId ? userInput.managerId.toString().trim() : '';
-  const profilePicUrl = userInput && userInput.profilePicUrl ? userInput.profilePicUrl.toString().trim() : '';
+  const profilePicUrl = getCurrentUserProfilePhotoUrl();
 
   if (!normalizedEmail) {
     return JSON.stringify({ success: false, error: 'Email is required.' });
@@ -195,6 +224,15 @@ function getInitialPayload() {
 
   const currentUserEmail = normalizeEmail(getCurrentUser());
   const users = getTableData('Users');
+  const currentUserProfilePhotoUrl = getCurrentUserProfilePhotoUrl();
+  if (currentUserProfilePhotoUrl) {
+    users.forEach((user) => {
+      if (normalizeEmail(user.Email) === currentUserEmail) {
+        user.Profile_Pic_Url = currentUserProfilePhotoUrl;
+      }
+    });
+  }
+
   const currentUserExists = users.some((user) => normalizeEmail(user.Email) === currentUserEmail);
   const payload = {
     currentUserEmail: currentUserEmail,
@@ -521,7 +559,6 @@ function updateCurrentUserProfile(profileInput) {
   const activeEmail = normalizeEmail(getCurrentUser());
   const normalizedName = profileInput && profileInput.name ? profileInput.name.toString().trim() : '';
   const normalizedEmail = normalizeEmail(profileInput ? profileInput.email : '');
-  const normalizedProfilePicUrl = normalizeProfilePicUrl(profileInput ? profileInput.profilePicUrl : '');
 
   if (!normalizedName) {
     return JSON.stringify({ success: false, error: 'Name is required.' });
@@ -564,7 +601,10 @@ function updateCurrentUserProfile(profileInput) {
     usersSheet.getRange(currentUserRowIndex + 1, headerIndex.name + 1).setValue(normalizedName);
     usersSheet.getRange(currentUserRowIndex + 1, headerIndex.email + 1).setValue(normalizedEmail);
     if (headerIndex.profile_pic_url !== undefined) {
-      usersSheet.getRange(currentUserRowIndex + 1, headerIndex.profile_pic_url + 1).setValue(normalizedProfilePicUrl);
+      const latestProfilePicUrl = getCurrentUserProfilePhotoUrl();
+      if (latestProfilePicUrl) {
+        usersSheet.getRange(currentUserRowIndex + 1, headerIndex.profile_pic_url + 1).setValue(latestProfilePicUrl);
+      }
     }
 
     const updatedRow = usersSheet.getRange(currentUserRowIndex + 1, 1, 1, headers.length).getValues()[0];

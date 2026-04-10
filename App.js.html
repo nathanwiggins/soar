@@ -10,7 +10,6 @@
       const createAccountForm = ref({
         name: '',
         managerId: '',
-        profilePicUrl: ''
       });
 
       const isDarkMode = ref(false);
@@ -21,7 +20,6 @@
       const profileForm = ref({
         name: '',
         email: '',
-        profilePicUrl: ''
       });
 
       // Data models based on Data Dictionary
@@ -321,7 +319,6 @@
             email: currentUserEmail.value,
             name: trimmedName,
             managerId: createAccountForm.value.managerId,
-            profilePicUrl: createAccountForm.value.profilePicUrl
           });
       };
 
@@ -1016,8 +1013,7 @@
 
       const buildProfileForm = () => ({
         name: currentUser.value?.Name || '',
-        email: currentUser.value?.Email || '',
-        profilePicUrl: currentUser.value?.Profile_Pic_Url || ''
+        email: currentUser.value?.Email || ''
       });
 
       const openProfileModal = () => {
@@ -1045,8 +1041,6 @@
       const saveProfile = () => {
         const trimmedName = (profileForm.value?.name || '').trim();
         const trimmedEmail = (profileForm.value?.email || '').trim();
-        const trimmedProfilePicUrl = (profileForm.value?.profilePicUrl || '').trim();
-
         if (!trimmedName) {
           alert('Name is required.');
           return;
@@ -1085,8 +1079,7 @@
           })
           .updateCurrentUserProfile({
             name: trimmedName,
-            email: trimmedEmail,
-            profilePicUrl: trimmedProfilePicUrl
+            email: trimmedEmail
           });
       };
 
