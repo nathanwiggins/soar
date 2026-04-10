@@ -177,6 +177,7 @@ function addUser(userInput) {
     headers.forEach((header, index) => {
       createdUser[header] = newRow[index];
     });
+    sendManagerAccountCreatedNotification(createdUser);
 
     return JSON.stringify({ success: true, user: createdUser, created: true });
   } catch (error) {
@@ -269,6 +270,83 @@ function sendMentionNotifications(comment, topicId, commenter, mentionedUsers) {
     sentEmails.add(email);
     MailApp.sendEmail(email, subject, body);
   });
+}
+
+function sendTaskAssignmentNotifications(task, assigneeIds) {
+  if (!task || !Array.isArray(assigneeIds) || assigneeIds.length === 0) return;
+
+  const usersById = getTableData('Users').reduce((acc, user) => {
+    const userId = (user.User_ID || '').toString().trim();
+    if (userId) acc[userId] = user;
+    return acc;
+  }, {});
+
+  const taskId = (task.Task_ID || '').toString().trim();
+  const taskTitle = (task.Task_Title || '').toString().trim() || taskId || 'a task';
+  const projectId = (task.Project_ID || '').toString().trim();
+  const subject = `You were assigned to task ${taskId || taskTitle}`;
+  const body = `You were assigned to task "${taskTitle}"${projectId ? ` in project ${projectId}` : ''}.\n\nTask ID: ${taskId || 'N/A'}\n`;
+
+  const sentEmails = new Set();
+  assigneeIds.forEach((assigneeId) => {
+    const user = usersById[(assigneeId || '').toString().trim()];
+    const email = normalizeEmail(user && user.Email);
+    if (!email || sentEmails.has(email)) return;
+    sentEmails.add(email);
+    MailApp.sendEmail(email, subject, body);
+  });
+}
+
+function sendManagerTaskCompletedNotifications(task, assigneeIds, completedByUserId) {
+  if (!task || !Array.isArray(assigneeIds) || assigneeIds.length === 0) return;
+
+  const users = getTableData('Users');
+  const usersById = users.reduce((acc, user) => {
+    const userId = (user.User_ID || '').toString().trim();
+    if (userId) acc[userId] = user;
+    return acc;
+  }, {});
+
+  const managerIds = new Set();
+  assigneeIds.forEach((assigneeId) => {
+    const worker = usersById[(assigneeId || '').toString().trim()];
+    const managerId = (worker && worker.Manager_ID ? worker.Manager_ID : '').toString().trim();
+    if (managerId) managerIds.add(managerId);
+  });
+  if (managerIds.size === 0) return;
+
+  const taskId = (task.Task_ID || '').toString().trim();
+  const taskTitle = (task.Task_Title || '').toString().trim() || taskId || 'a task';
+  const completedBy = usersById[(completedByUserId || '').toString().trim()];
+  const completedByName = completedBy && completedBy.Name ? completedBy.Name : 'A user';
+  const subject = `Worker task completed: ${taskId || taskTitle}`;
+  const body = `${completedByName} marked task "${taskTitle}" as completed.\n\nTask ID: ${taskId || 'N/A'}\n`;
+
+  const sentEmails = new Set();
+  managerIds.forEach((managerId) => {
+    const manager = usersById[managerId];
+    const email = normalizeEmail(manager && manager.Email);
+    if (!email || sentEmails.has(email)) return;
+    sentEmails.add(email);
+    MailApp.sendEmail(email, subject, body);
+  });
+}
+
+function sendManagerAccountCreatedNotification(createdUser) {
+  if (!createdUser) return;
+  const managerId = (createdUser.Manager_ID || '').toString().trim();
+  if (!managerId) return;
+
+  const manager = getUserById(managerId);
+  const managerEmail = normalizeEmail(manager && manager.Email);
+  if (!managerEmail) return;
+
+  const userId = (createdUser.User_ID || '').toString().trim();
+  const userName = (createdUser.Name || '').toString().trim() || userId || 'A user';
+  const userEmail = normalizeEmail(createdUser.Email);
+  const subject = `New direct report created: ${userName}`;
+  const body = `${userName}${userEmail ? ` (${userEmail})` : ''} created an account and listed you as their manager.\n\nUser ID: ${userId || 'N/A'}\n`;
+  MailApp.sendEmail(managerEmail, subject, body);
 }
 
 function addComment(topicId, commentInput) {
@@ -774,6 +852,7 @@ function createTask(projectId, taskInput) {
       const value = newRow[index];
       createdTask[header] = value instanceof Date ? value.toISOString() : value;
     });
+    sendTaskAssignmentNotifications(createdTask, assigneeIds);
 
     return JSON.stringify({ success: true, task: createdTask, assignments: createdAssignments });
   } catch (error) {
@@ -854,6 +933,7 @@ function updateTask(taskId, taskInput) {
     if (taskRowIndex < 0) {
       throw new Error('Task not found.');
     }
+    const previousStatus = (data[taskRowIndex][headerIndex.Status] || '').toString().trim();
 
     const parsedDueDate = taskInput && taskInput.dueDate ? new Date(taskInput.dueDate) : '';
     const hasValidDueDate = parsedDueDate && parsedDueDate.toString() !== 'Invalid Date';
@@ -878,6 +958,10 @@ function updateTask(taskId, taskInput) {
     }
 
     const assignmentsData = assignmentsSheet.getDataRange().getValues();
+    const previousAssigneeIds = assignmentsData
+      .filter((row, index) => index > 0 && row[0] === normalizedTaskId)
+      .map((row) => (row[1] || '').toString().trim())
+      .filter(Boolean);
     for (let i = assignmentsData.length - 1; i >= 1; i--) {
       if (assignmentsData[i][0] === normalizedTaskId) {
         assignmentsSheet.deleteRow(i + 1);
@@ -903,6 +987,13 @@ function updateTask(taskId, taskInput) {
       const value = refreshedRow[index];
       updatedTask[header] = value instanceof Date ? value.toISOString() : value;
     });
+    const previousAssigneeSet = new Set(previousAssigneeIds);
+    const newlyAssignedIds = assigneeIds.filter((assigneeId) => !previousAssigneeSet.has(assigneeId));
+    sendTaskAssignmentNotifications(updatedTask, newlyAssignedIds);
+    if (status === 'Completed' && previousStatus !== 'Completed') {
+      const currentUserId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
+      sendManagerTaskCompletedNotifications(updatedTask, assigneeIds, currentUserId);
+    }
 
     return JSON.stringify({ success: true, task: updatedTask, assignments: updatedAssignments });
   } catch (error) {
@@ -1137,6 +1228,13 @@ function completeTask(taskId) {
       const value = refreshedRow[index];
       completedTask[header] = value instanceof Date ? value.toISOString() : value;
     });
+    const assignments = getTableData('Assignments');
+    const assigneeIds = assignments
+      .filter((assignment) => (assignment.Assignment_ID || '').toString().trim() === normalizedTaskId)
+      .map((assignment) => (assignment.Assignee_ID || '').toString().trim())
+      .filter(Boolean);
+    const currentUserId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
+    sendManagerTaskCompletedNotifications(completedTask, assigneeIds, currentUserId);
 
     return JSON.stringify({ success: true, deleted: false, task: completedTask });
   } catch (error) {
