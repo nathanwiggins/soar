@@ -702,6 +702,168 @@ function updateTask(taskId, taskInput) {
 }
 
 /**
+ * API Endpoint: Updates a project's details.
+ */
+function updateProject(projectId, projectInput) {
+  const normalizedProjectId = projectId ? projectId.toString().trim() : '';
+  if (!normalizedProjectId) {
+    return JSON.stringify({ success: false, error: 'Project ID is required.' });
+  }
+
+  const projectTitle = projectInput && projectInput.projectTitle ? projectInput.projectTitle.toString().trim() : '';
+  if (!projectTitle) {
+    return JSON.stringify({ success: false, error: 'Project title is required.' });
+  }
+
+  const projectsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Projects');
+  if (!projectsSheet) {
+    return JSON.stringify({ success: false, error: 'Projects sheet was not found.' });
+  }
+
+  try {
+    const dataRange = projectsSheet.getDataRange();
+    const data = dataRange.getValues();
+    if (data.length <= 1) {
+      throw new Error('Projects sheet has no data rows.');
+    }
+
+    const headers = data[0];
+    const headerIndex = headers.reduce((acc, header, index) => {
+      acc[header] = index;
+      return acc;
+    }, {});
+
+    const projectIdColumnIndex = headerIndex.Project_ID;
+    if (projectIdColumnIndex === undefined) {
+      throw new Error('Projects sheet is missing Project_ID column.');
+    }
+
+    const projectRowIndex = data.findIndex((row, index) => index > 0 && row[projectIdColumnIndex] === normalizedProjectId);
+    if (projectRowIndex < 0) {
+      throw new Error('Project not found.');
+    }
+
+    const status = normalizeStatusValue(projectInput ? projectInput.status : '');
+    const description = projectInput && projectInput.description ? projectInput.description.toString().trim() : '';
+    const parsedDueDate = projectInput && projectInput.dueDate ? new Date(projectInput.dueDate) : '';
+    const hasValidDueDate = parsedDueDate && parsedDueDate.toString() !== 'Invalid Date';
+
+    if (headerIndex.Project_Title !== undefined) {
+      projectsSheet.getRange(projectRowIndex + 1, headerIndex.Project_Title + 1).setValue(projectTitle);
+    }
+    if (headerIndex.Description !== undefined) {
+      projectsSheet.getRange(projectRowIndex + 1, headerIndex.Description + 1).setValue(description);
+    }
+    if (headerIndex.Status !== undefined) {
+      projectsSheet.getRange(projectRowIndex + 1, headerIndex.Status + 1).setValue(status);
+    }
+    if (headerIndex.Due_Date !== undefined) {
+      projectsSheet.getRange(projectRowIndex + 1, headerIndex.Due_Date + 1).setValue(hasValidDueDate ? parsedDueDate : '');
+    }
+
+    const refreshedData = projectsSheet.getDataRange().getValues();
+    const refreshedRow = refreshedData.find((row, index) => index > 0 && row[projectIdColumnIndex] === normalizedProjectId);
+
+    const updatedProject = {};
+    headers.forEach((header, index) => {
+      const value = refreshedRow[index];
+      updatedProject[header] = value instanceof Date ? value.toISOString() : value;
+    });
+
+    return JSON.stringify({ success: true, project: updatedProject });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: error && error.message ? error.message : 'Failed to update project.'
+    });
+  }
+}
+
+/**
+ * API Endpoint: Deletes a project and cascades deletion to its tasks and assignments.
+ */
+function deleteProject(projectId) {
+  const normalizedProjectId = projectId ? projectId.toString().trim() : '';
+  if (!normalizedProjectId) {
+    return JSON.stringify({ success: false, error: 'Project ID is required.' });
+  }
+
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const projectsSheet = spreadsheet.getSheetByName('Projects');
+  const tasksSheet = spreadsheet.getSheetByName('Tasks');
+  const assignmentsSheet = spreadsheet.getSheetByName('Assignments');
+
+  if (!projectsSheet) {
+    return JSON.stringify({ success: false, error: 'Projects sheet was not found.' });
+  }
+  if (!tasksSheet) {
+    return JSON.stringify({ success: false, error: 'Tasks sheet was not found.' });
+  }
+  if (!assignmentsSheet) {
+    return JSON.stringify({ success: false, error: 'Assignments sheet was not found.' });
+  }
+
+  try {
+    const projectData = projectsSheet.getDataRange().getValues();
+    if (projectData.length <= 1) {
+      throw new Error('Projects sheet has no data rows.');
+    }
+
+    const projectHeaders = projectData[0];
+    const projectIdColumnIndex = projectHeaders.indexOf('Project_ID');
+    if (projectIdColumnIndex === -1) {
+      throw new Error('Projects sheet is missing Project_ID column.');
+    }
+
+    const projectRowIndex = projectData.findIndex(
+      (row, index) => index > 0 && row[projectIdColumnIndex] === normalizedProjectId
+    );
+    if (projectRowIndex < 0) {
+      throw new Error('Project not found.');
+    }
+
+    const tasksData = tasksSheet.getDataRange().getValues();
+    const taskHeaders = tasksData[0] || [];
+    const taskIdColumnIndex = taskHeaders.indexOf('Task_ID');
+    const taskProjectIdColumnIndex = taskHeaders.indexOf('Project_ID');
+    if (taskIdColumnIndex === -1 || taskProjectIdColumnIndex === -1) {
+      throw new Error('Tasks sheet must contain Task_ID and Project_ID columns.');
+    }
+
+    const deletedTaskIds = [];
+    for (let i = tasksData.length - 1; i >= 1; i--) {
+      if (tasksData[i][taskProjectIdColumnIndex] === normalizedProjectId) {
+        deletedTaskIds.push(tasksData[i][taskIdColumnIndex]);
+        tasksSheet.deleteRow(i + 1);
+      }
+    }
+
+    if (deletedTaskIds.length > 0) {
+      const deletedTaskIdSet = new Set(deletedTaskIds);
+      const assignmentsData = assignmentsSheet.getDataRange().getValues();
+      for (let i = assignmentsData.length - 1; i >= 1; i--) {
+        if (deletedTaskIdSet.has(assignmentsData[i][0])) {
+          assignmentsSheet.deleteRow(i + 1);
+        }
+      }
+    }
+
+    projectsSheet.deleteRow(projectRowIndex + 1);
+
+    return JSON.stringify({
+      success: true,
+      projectId: normalizedProjectId,
+      deletedTaskIds: deletedTaskIds
+    });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: error && error.message ? error.message : 'Failed to delete project.'
+    });
+  }
+}
+
+/**
  * API Endpoint: Deletes a task and any of its assignments.
  */
 function deleteTask(taskId) {

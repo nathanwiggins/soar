@@ -60,6 +60,11 @@
       const savingTask = ref(false);
       const deletingTask = ref(false);
       const completingTask = ref(false);
+      const showProjectDetailsModal = ref(false);
+      const projectDetailsForm = ref(null);
+      const deletingProject = ref(false);
+      const isEditingProject = ref(false);
+      const savingProject = ref(false);
 
       // Computed properties
       const currentUser = computed(() => {
@@ -94,6 +99,11 @@
         return selectedIds
           .map((id) => getUserById(id))
           .filter(Boolean);
+      });
+
+      const projectDetailsCreator = computed(() => {
+        if (!projectDetailsForm.value?.creatorId) return null;
+        return getUserById(projectDetailsForm.value.creatorId);
       });
 
       const managerOptions = computed(() => {
@@ -328,11 +338,49 @@
         };
       };
 
+      const buildProjectDetailsForm = (project) => {
+        return {
+          projectId: project.Project_ID,
+          projectTitle: project.Project_Title || '',
+          description: project.Description || '',
+          status: project.Status || 'Not Started',
+          createdDate: project.Created_Date || '',
+          dueDate: formatDateForInput(project.Due_Date),
+          creatorId: project.Creator_ID || ''
+        };
+      };
+
       const openTaskInfo = (task) => {
         taskDetailsForm.value = buildTaskDetailsForm(task);
         isEditingTask.value = false;
         showTaskDetailsAssigneeDropdown.value = false;
         showTaskDetailsModal.value = true;
+      };
+
+      const openProjectInfo = (project) => {
+        projectDetailsForm.value = buildProjectDetailsForm(project);
+        isEditingProject.value = false;
+        showProjectDetailsModal.value = true;
+      };
+
+      const closeProjectInfo = () => {
+        if (deletingProject.value || savingProject.value) return;
+        showProjectDetailsModal.value = false;
+        isEditingProject.value = false;
+        projectDetailsForm.value = null;
+      };
+
+      const enableProjectEdit = () => {
+        isEditingProject.value = true;
+      };
+
+      const cancelProjectEdit = () => {
+        if (!projectDetailsForm.value) return;
+        const latestProject = projects.value.find((p) => p.Project_ID === projectDetailsForm.value.projectId);
+        if (latestProject) {
+          projectDetailsForm.value = buildProjectDetailsForm(latestProject);
+        }
+        isEditingProject.value = false;
       };
 
       const closeTaskInfo = () => {
@@ -494,6 +542,89 @@
             alert('Error completing task.');
           })
           .completeTask(taskDetailsForm.value.taskId);
+      const deleteProject = () => {
+        if (!projectDetailsForm.value?.projectId || deletingProject.value || savingProject.value) return;
+
+        const confirmed = confirm(
+          'Are you sure you want to delete this project? All tasks in this project and their assignments will also be deleted.'
+        );
+        if (!confirmed) return;
+
+        deletingProject.value = true;
+
+        google.script.run
+          .withSuccessHandler((response) => {
+            deletingProject.value = false;
+
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (!result || !result.success) {
+              alert(result?.error || 'Failed to delete project.');
+              return;
+            }
+
+            const deletedProjectId = result.projectId;
+            projects.value = projects.value.filter((project) => !idsMatch(project.Project_ID, deletedProjectId));
+
+            if (Array.isArray(result.deletedTaskIds) && result.deletedTaskIds.length > 0) {
+              tasks.value = tasks.value.filter(
+                (task) => !result.deletedTaskIds.some((taskId) => idsMatch(task.Task_ID, taskId))
+              );
+              assignments.value = assignments.value.filter(
+                (assignment) => !result.deletedTaskIds.some((taskId) => idsMatch(assignment.Assignment_ID, taskId))
+              );
+            }
+
+            closeProjectInfo();
+          })
+          .withFailureHandler((error) => {
+            deletingProject.value = false;
+            console.error('Failed to delete project:', error);
+            alert('Error deleting project.');
+          })
+          .deleteProject(projectDetailsForm.value.projectId);
+      };
+
+      const saveProjectEdits = () => {
+        if (!projectDetailsForm.value?.projectId) return;
+
+        const trimmedTitle = projectDetailsForm.value.projectTitle.trim();
+        if (!trimmedTitle) {
+          alert('Project title cannot be empty.');
+          return;
+        }
+
+        savingProject.value = true;
+
+        google.script.run
+          .withSuccessHandler((response) => {
+            savingProject.value = false;
+
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (!result || !result.success || !result.project) {
+              alert(result?.error || 'Failed to update project.');
+              return;
+            }
+
+            const updatedProject = result.project;
+            const projectIndex = projects.value.findIndex((p) => idsMatch(p.Project_ID, updatedProject.Project_ID));
+            if (projectIndex >= 0) {
+              projects.value.splice(projectIndex, 1, updatedProject);
+            }
+
+            projectDetailsForm.value = buildProjectDetailsForm(updatedProject);
+            isEditingProject.value = false;
+          })
+          .withFailureHandler((error) => {
+            savingProject.value = false;
+            console.error('Failed to update project:', error);
+            alert('Error updating project.');
+          })
+          .updateProject(projectDetailsForm.value.projectId, {
+            projectTitle: trimmedTitle,
+            dueDate: projectDetailsForm.value.dueDate,
+            status: projectDetailsForm.value.status,
+            description: projectDetailsForm.value.description
+          });
       };
 
       const resetTaskForm = () => {
@@ -773,6 +904,12 @@
         savingTask,
         deletingTask,
         completingTask,
+        showProjectDetailsModal,
+        projectDetailsForm,
+        deletingProject,
+        isEditingProject,
+        savingProject,
+        projectDetailsCreator,
         getTasksForProject,
         getAssigneesForTask,
         getProjectById,
@@ -781,9 +918,13 @@
         formatDate,
         shouldStrikeTask,
         openTaskInfo,
+        openProjectInfo,
         openAddProject,
         closeAddProject,
         closeTaskInfo,
+        closeProjectInfo,
+        enableProjectEdit,
+        cancelProjectEdit,
         enableTaskEdit,
         cancelTaskEdit,
         toggleTaskDetailsAssignee,
@@ -791,6 +932,8 @@
         saveTaskEdits,
         deleteTask,
         completeTask,
+        deleteProject,
+        saveProjectEdits,
         openAddTask,
         closeAddTask,
         setComplexity,
