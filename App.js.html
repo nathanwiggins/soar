@@ -542,6 +542,8 @@
             alert('Error completing task.');
           })
           .completeTask(taskDetailsForm.value.taskId);
+      };
+      
       const deleteProject = () => {
         if (!projectDetailsForm.value?.projectId || deletingProject.value || savingProject.value) return;
 
