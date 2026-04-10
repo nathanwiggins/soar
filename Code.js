@@ -191,6 +191,8 @@ function addUser(userInput) {
  * API Endpoint: Fetches the full data payload for the frontend to initialize.
  */
 function getInitialPayload() {
+  purgeCompletedTasksPastDue();
+
   const currentUserEmail = normalizeEmail(getCurrentUser());
   const users = getTableData('Users');
   const currentUserExists = users.some((user) => normalizeEmail(user.Email) === currentUserEmail);
@@ -206,6 +208,98 @@ function getInitialPayload() {
   
   // Stringifying prevents Apps Script's silent serialization failures
   return JSON.stringify(payload); 
+}
+
+function hasDueDatePassed(dueDateValue) {
+  if (!dueDateValue) return false;
+  const dueDate = new Date(dueDateValue);
+  if (dueDate.toString() === 'Invalid Date') return false;
+
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const normalizedDueDate = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
+
+  return normalizedDueDate.getTime() < startOfToday.getTime();
+}
+
+function deleteTaskAndAssignments(taskId) {
+  const normalizedTaskId = taskId ? taskId.toString().trim() : '';
+  if (!normalizedTaskId) {
+    throw new Error('Task ID is required.');
+  }
+
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const tasksSheet = spreadsheet.getSheetByName('Tasks');
+  const assignmentsSheet = spreadsheet.getSheetByName('Assignments');
+
+  if (!tasksSheet) throw new Error('Tasks sheet was not found.');
+  if (!assignmentsSheet) throw new Error('Assignments sheet was not found.');
+
+  const taskData = tasksSheet.getDataRange().getValues();
+  if (taskData.length <= 1) {
+    throw new Error('Tasks sheet has no data rows.');
+  }
+
+  const headers = taskData[0];
+  const taskIdColumnIndex = headers.indexOf('Task_ID');
+  if (taskIdColumnIndex === -1) {
+    throw new Error('Tasks sheet is missing Task_ID column.');
+  }
+
+  const taskRowIndex = taskData.findIndex((row, index) => index > 0 && row[taskIdColumnIndex] === normalizedTaskId);
+  if (taskRowIndex < 0) {
+    throw new Error('Task not found.');
+  }
+
+  tasksSheet.deleteRow(taskRowIndex + 1);
+
+  const assignmentsData = assignmentsSheet.getDataRange().getValues();
+  for (let i = assignmentsData.length - 1; i >= 1; i--) {
+    if (assignmentsData[i][0] === normalizedTaskId) {
+      assignmentsSheet.deleteRow(i + 1);
+    }
+  }
+
+  return normalizedTaskId;
+}
+
+function purgeCompletedTasksPastDue() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const tasksSheet = spreadsheet.getSheetByName('Tasks');
+  const assignmentsSheet = spreadsheet.getSheetByName('Assignments');
+
+  if (!tasksSheet || !assignmentsSheet) return [];
+
+  const taskData = tasksSheet.getDataRange().getValues();
+  if (taskData.length <= 1) return [];
+
+  const headers = taskData[0];
+  const taskIdColumnIndex = headers.indexOf('Task_ID');
+  const statusColumnIndex = headers.indexOf('Status');
+  const dueDateColumnIndex = headers.indexOf('Due_Date');
+  if (taskIdColumnIndex === -1 || statusColumnIndex === -1 || dueDateColumnIndex === -1) return [];
+
+  const deletedTaskIds = [];
+  for (let i = taskData.length - 1; i >= 1; i--) {
+    const status = (taskData[i][statusColumnIndex] || '').toString().trim();
+    const dueDateValue = taskData[i][dueDateColumnIndex];
+    if (status === 'Completed' && hasDueDatePassed(dueDateValue)) {
+      deletedTaskIds.push(taskData[i][taskIdColumnIndex]);
+      tasksSheet.deleteRow(i + 1);
+    }
+  }
+
+  if (deletedTaskIds.length === 0) return [];
+
+  const assignmentIdSet = new Set(deletedTaskIds.map((id) => id.toString().trim()));
+  const assignmentsData = assignmentsSheet.getDataRange().getValues();
+  for (let i = assignmentsData.length - 1; i >= 1; i--) {
+    if (assignmentIdSet.has((assignmentsData[i][0] || '').toString().trim())) {
+      assignmentsSheet.deleteRow(i + 1);
+    }
+  }
+
+  return deletedTaskIds;
 }
 
 /**
@@ -778,8 +872,24 @@ function deleteTask(taskId) {
     return JSON.stringify({ success: false, error: 'Task ID is required.' });
   }
 
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  const tasksSheet = spreadsheet.getSheetByName('Tasks');
+  try {
+    deleteTaskAndAssignments(normalizedTaskId);
+    return JSON.stringify({ success: true, taskId: normalizedTaskId });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: error && error.message ? error.message : 'Failed to delete task.'
+    });
+  }
+}
+
+function completeTask(taskId) {
+  const normalizedTaskId = taskId ? taskId.toString().trim() : '';
+  if (!normalizedTaskId) {
+    return JSON.stringify({ success: false, error: 'Task ID is required.' });
+  }
+
+  const tasksSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Tasks');
   if (!tasksSheet) {
     return JSON.stringify({ success: false, error: 'Tasks sheet was not found.' });
   }
@@ -792,34 +902,35 @@ function deleteTask(taskId) {
 
     const headers = taskData[0];
     const taskIdColumnIndex = headers.indexOf('Task_ID');
-    if (taskIdColumnIndex === -1) {
-      throw new Error('Tasks sheet is missing Task_ID column.');
-    }
+    const statusColumnIndex = headers.indexOf('Status');
+    const dueDateColumnIndex = headers.indexOf('Due_Date');
+
+    if (taskIdColumnIndex === -1) throw new Error('Tasks sheet is missing Task_ID column.');
+    if (statusColumnIndex === -1) throw new Error('Tasks sheet is missing Status column.');
+    if (dueDateColumnIndex === -1) throw new Error('Tasks sheet is missing Due_Date column.');
 
     const taskRowIndex = taskData.findIndex((row, index) => index > 0 && row[taskIdColumnIndex] === normalizedTaskId);
-    if (taskRowIndex < 0) {
-      throw new Error('Task not found.');
+    if (taskRowIndex < 0) throw new Error('Task not found.');
+
+    const dueDateValue = taskData[taskRowIndex][dueDateColumnIndex];
+    if (hasDueDatePassed(dueDateValue)) {
+      deleteTaskAndAssignments(normalizedTaskId);
+      return JSON.stringify({ success: true, deleted: true, taskId: normalizedTaskId });
     }
 
-    tasksSheet.deleteRow(taskRowIndex + 1);
+    tasksSheet.getRange(taskRowIndex + 1, statusColumnIndex + 1).setValue('Completed');
+    const refreshedRow = tasksSheet.getRange(taskRowIndex + 1, 1, 1, headers.length).getValues()[0];
+    const completedTask = {};
+    headers.forEach((header, index) => {
+      const value = refreshedRow[index];
+      completedTask[header] = value instanceof Date ? value.toISOString() : value;
+    });
 
-    const assignmentsSheet = spreadsheet.getSheetByName('Assignments');
-    if (!assignmentsSheet) {
-      throw new Error('Assignments sheet was not found.');
-    }
-
-    const assignmentsData = assignmentsSheet.getDataRange().getValues();
-    for (let i = assignmentsData.length - 1; i >= 1; i--) {
-      if (assignmentsData[i][0] === normalizedTaskId) {
-        assignmentsSheet.deleteRow(i + 1);
-      }
-    }
-
-    return JSON.stringify({ success: true, taskId: normalizedTaskId });
+    return JSON.stringify({ success: true, deleted: false, task: completedTask });
   } catch (error) {
     return JSON.stringify({
       success: false,
-      error: error && error.message ? error.message : 'Failed to delete task.'
+      error: error && error.message ? error.message : 'Failed to complete task.'
     });
   }
 }
