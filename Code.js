@@ -24,6 +24,71 @@ function getCurrentUser() {
   return Session.getActiveUser().getEmail();
 }
 
+
+function getCurrentUserProfilePhotoUrl() {
+  const activeEmail = normalizeEmail(getCurrentUser());
+  if (!activeEmail) return '';
+
+  try {
+    const response = UrlFetchApp.fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: {
+        Authorization: `Bearer ${ScriptApp.getOAuthToken()}`
+      },
+      muteHttpExceptions: true
+    });
+
+    if (response.getResponseCode() !== 200) {
+      return '';
+    }
+
+    const data = JSON.parse(response.getContentText() || '{}');
+    const profileEmail = normalizeEmail(data.email);
+    if (profileEmail && profileEmail !== activeEmail) {
+      return '';
+    }
+
+    return data.picture ? data.picture.toString().trim() : '';
+  } catch (error) {
+    return '';
+  }
+}
+
+function syncCurrentUserProfilePhoto(sheet, data, headerIndex, currentUserEmail, profilePicUrl) {
+  if (!sheet || !data || !headerIndex) return false;
+  if (!currentUserEmail || !profilePicUrl) return false;
+
+  const emailColumnIndex = headerIndex.Email;
+  const profilePicColumnIndex = headerIndex.Profile_Pic_Url;
+
+  if (emailColumnIndex === undefined || profilePicColumnIndex === undefined) {
+    return false;
+  }
+
+  const matchingRowIndex = data.findIndex(
+    (row, index) => index > 0 && normalizeEmail(row[emailColumnIndex]) === currentUserEmail
+  );
+
+  if (matchingRowIndex < 0) {
+    return false;
+  }
+
+  const existingProfilePicUrl = data[matchingRowIndex][profilePicColumnIndex]
+    ? data[matchingRowIndex][profilePicColumnIndex].toString().trim()
+    : '';
+
+  if (existingProfilePicUrl === profilePicUrl) {
+    return false;
+  }
+
+  try {
+    sheet.getRange(matchingRowIndex + 1, profilePicColumnIndex + 1).setValue(profilePicUrl);
+    return true;
+  } catch (error) {
+    // Do not block app load for users who cannot edit the spreadsheet.
+    return false;
+  }
+}
+
 function normalizeEmail(email) {
   return email ? email.toString().trim().toLowerCase() : '';
 }
@@ -114,7 +179,8 @@ function addUser(userInput) {
   const normalizedEmail = normalizeEmail(userInput && userInput.email);
   const name = userInput && userInput.name ? userInput.name.toString().trim() : '';
   const managerId = userInput && userInput.managerId ? userInput.managerId.toString().trim() : '';
-  const profilePicUrl = userInput && userInput.profilePicUrl ? userInput.profilePicUrl.toString().trim() : '';
+  const currentUserEmail = normalizeEmail(getCurrentUser());
+  const profilePicUrl = normalizedEmail === currentUserEmail ? getCurrentUserProfilePhotoUrl() : '';
 
   if (!normalizedEmail) {
     return JSON.stringify({ success: false, error: 'Email is required.' });
@@ -195,7 +261,19 @@ function getInitialPayload() {
   purgeCompletedTasksPastDue();
 
   const currentUserEmail = normalizeEmail(getCurrentUser());
-  const users = getTableData('Users');
+  const currentUserProfilePhotoUrl = getCurrentUserProfilePhotoUrl();
+  const usersSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Users');
+  let users = [];
+
+  if (usersSheet) {
+    const data = usersSheet.getDataRange().getValues();
+    const headers = data[0] || [];
+    const headerIndex = getHeaderIndex(headers);
+
+    syncCurrentUserProfilePhoto(usersSheet, data, headerIndex, currentUserEmail, currentUserProfilePhotoUrl);
+    users = getTableData('Users');
+  }
+
   const currentUserExists = users.some((user) => normalizeEmail(user.Email) === currentUserEmail);
   const payload = {
     currentUserEmail: currentUserEmail,
@@ -599,7 +677,6 @@ function updateCurrentUserProfile(profileInput) {
   const activeEmail = normalizeEmail(getCurrentUser());
   const normalizedName = profileInput && profileInput.name ? profileInput.name.toString().trim() : '';
   const normalizedEmail = normalizeEmail(profileInput ? profileInput.email : '');
-  const normalizedProfilePicUrl = normalizeProfilePicUrl(profileInput ? profileInput.profilePicUrl : '');
 
   if (!normalizedName) {
     return JSON.stringify({ success: false, error: 'Name is required.' });
@@ -642,7 +719,10 @@ function updateCurrentUserProfile(profileInput) {
     usersSheet.getRange(currentUserRowIndex + 1, headerIndex.name + 1).setValue(normalizedName);
     usersSheet.getRange(currentUserRowIndex + 1, headerIndex.email + 1).setValue(normalizedEmail);
     if (headerIndex.profile_pic_url !== undefined) {
-      usersSheet.getRange(currentUserRowIndex + 1, headerIndex.profile_pic_url + 1).setValue(normalizedProfilePicUrl);
+      const latestProfilePicUrl = getCurrentUserProfilePhotoUrl();
+      if (latestProfilePicUrl) {
+        usersSheet.getRange(currentUserRowIndex + 1, headerIndex.profile_pic_url + 1).setValue(latestProfilePicUrl);
+      }
     }
 
     const updatedRow = usersSheet.getRange(currentUserRowIndex + 1, 1, 1, headers.length).getValues()[0];
