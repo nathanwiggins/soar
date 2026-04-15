@@ -53,6 +53,42 @@ function getCurrentUserProfilePhotoUrl() {
   }
 }
 
+function syncCurrentUserProfilePhoto(sheet, data, headerIndex, currentUserEmail, profilePicUrl) {
+  if (!sheet || !data || !headerIndex) return false;
+  if (!currentUserEmail || !profilePicUrl) return false;
+
+  const emailColumnIndex = headerIndex.Email;
+  const profilePicColumnIndex = headerIndex.Profile_Pic_Url;
+
+  if (emailColumnIndex === undefined || profilePicColumnIndex === undefined) {
+    return false;
+  }
+
+  const matchingRowIndex = data.findIndex(
+    (row, index) => index > 0 && normalizeEmail(row[emailColumnIndex]) === currentUserEmail
+  );
+
+  if (matchingRowIndex < 0) {
+    return false;
+  }
+
+  const existingProfilePicUrl = data[matchingRowIndex][profilePicColumnIndex]
+    ? data[matchingRowIndex][profilePicColumnIndex].toString().trim()
+    : '';
+
+  if (existingProfilePicUrl === profilePicUrl) {
+    return false;
+  }
+
+  try {
+    sheet.getRange(matchingRowIndex + 1, profilePicColumnIndex + 1).setValue(profilePicUrl);
+    return true;
+  } catch (error) {
+    // Do not block app load for users who cannot edit the spreadsheet.
+    return false;
+  }
+}
+
 function normalizeEmail(email) {
   return email ? email.toString().trim().toLowerCase() : '';
 }
@@ -143,7 +179,8 @@ function addUser(userInput) {
   const normalizedEmail = normalizeEmail(userInput && userInput.email);
   const name = userInput && userInput.name ? userInput.name.toString().trim() : '';
   const managerId = userInput && userInput.managerId ? userInput.managerId.toString().trim() : '';
-  const profilePicUrl = getCurrentUserProfilePhotoUrl();
+  const currentUserEmail = normalizeEmail(getCurrentUser());
+  const profilePicUrl = normalizedEmail === currentUserEmail ? getCurrentUserProfilePhotoUrl() : '';
 
   if (!normalizedEmail) {
     return JSON.stringify({ success: false, error: 'Email is required.' });
@@ -223,14 +260,17 @@ function getInitialPayload() {
   purgeCompletedTasksPastDue();
 
   const currentUserEmail = normalizeEmail(getCurrentUser());
-  const users = getTableData('Users');
   const currentUserProfilePhotoUrl = getCurrentUserProfilePhotoUrl();
-  if (currentUserProfilePhotoUrl) {
-    users.forEach((user) => {
-      if (normalizeEmail(user.Email) === currentUserEmail) {
-        user.Profile_Pic_Url = currentUserProfilePhotoUrl;
-      }
-    });
+  const usersSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Users');
+  let users = [];
+
+  if (usersSheet) {
+    const data = usersSheet.getDataRange().getValues();
+    const headers = data[0] || [];
+    const headerIndex = getHeaderIndex(headers);
+
+    syncCurrentUserProfilePhoto(usersSheet, data, headerIndex, currentUserEmail, currentUserProfilePhotoUrl);
+    users = getTableData('Users');
   }
 
   const currentUserExists = users.some((user) => normalizeEmail(user.Email) === currentUserEmail);
