@@ -812,6 +812,40 @@ function getCurrentUserIdByEmail(email) {
 }
 
 
+function getAssignableUserIdsForUser(actorUserId) {
+  const normalizedActorId = (actorUserId || '').toString().trim();
+  if (!normalizedActorId) return new Set();
+
+  const users = getTableData('Users');
+  if (!Array.isArray(users) || users.length === 0) {
+    return new Set([normalizedActorId]);
+  }
+
+  const directReportsByManager = users.reduce((acc, user) => {
+    const managerId = (user.Manager_ID || '').toString().trim();
+    const userId = (user.User_ID || '').toString().trim();
+    if (!managerId || !userId) return acc;
+    if (!acc[managerId]) acc[managerId] = [];
+    acc[managerId].push(userId);
+    return acc;
+  }, {});
+
+  const assignableIds = new Set([normalizedActorId]);
+  const queue = [normalizedActorId];
+  while (queue.length > 0) {
+    const managerId = queue.shift();
+    const reports = directReportsByManager[managerId] || [];
+    reports.forEach((reportId) => {
+      if (!assignableIds.has(reportId)) {
+        assignableIds.add(reportId);
+        queue.push(reportId);
+      }
+    });
+  }
+
+  return assignableIds;
+}
+
 function getValidAssigneeIds(assigneeIds) {
   if (!Array.isArray(assigneeIds)) return [];
 
@@ -827,6 +861,26 @@ function getValidAssigneeIds(assigneeIds) {
   }
 
   return uniqueAssigneeIds;
+}
+
+function validateAssigneePermissions(assigneeIds, actorUserId, grandfatheredAssigneeIds) {
+  const normalizedActorId = (actorUserId || '').toString().trim();
+  if (!normalizedActorId) {
+    throw new Error('Could not determine current user for assignment permissions.');
+  }
+
+  const assignableIds = getAssignableUserIdsForUser(normalizedActorId);
+  const grandfatheredIdSet = new Set(
+    Array.isArray(grandfatheredAssigneeIds)
+      ? grandfatheredAssigneeIds.map((assigneeId) => (assigneeId || '').toString().trim()).filter(Boolean)
+      : []
+  );
+  const invalidAssigneeIds = assigneeIds.filter(
+    (assigneeId) => !assignableIds.has(assigneeId) && !grandfatheredIdSet.has(assigneeId)
+  );
+  if (invalidAssigneeIds.length > 0) {
+    throw new Error('You can only assign tasks to yourself or your reporting chain.');
+  }
 }
 
 /**
@@ -920,11 +974,13 @@ function createTask(projectId, taskInput) {
     const description = taskInput && taskInput.description ? taskInput.description.toString().trim() : '';
     const assigneeIds = getValidAssigneeIds(taskInput ? taskInput.assigneeIds : []);
     const normalizedProjectId = ensureProjectExists(projectId);
-    const creatorId = getCurrentUserIdByEmail(getCurrentUser());
+    const creatorId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
 
     if (!creatorId) {
       throw new Error('Could not determine Creator_ID from current user email.');
     }
+
+    validateAssigneePermissions(assigneeIds, creatorId);
 
     if (headerIndex.Task_ID !== undefined) newRow[headerIndex.Task_ID] = generateNextId('Tasks', 'T');
     if (headerIndex.Project_ID !== undefined) newRow[headerIndex.Project_ID] = normalizedProjectId;
@@ -1049,6 +1105,7 @@ function updateTask(taskId, taskInput) {
     const assigneeIds = getValidAssigneeIds(taskInput ? taskInput.assigneeIds : []);
     const status = normalizeTaskStatus(taskInput ? taskInput.status : '');
     const projectId = ensureProjectExists(taskInput ? taskInput.projectId : '');
+    const editorId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
 
     if (headerIndex.Project_ID !== undefined) sheet.getRange(taskRowIndex + 1, headerIndex.Project_ID + 1).setValue(projectId);
     if (headerIndex.Task_Title !== undefined) sheet.getRange(taskRowIndex + 1, headerIndex.Task_Title + 1).setValue(taskTitle);
@@ -1067,6 +1124,7 @@ function updateTask(taskId, taskInput) {
       .filter((row, index) => index > 0 && row[0] === normalizedTaskId)
       .map((row) => (row[1] || '').toString().trim())
       .filter(Boolean);
+    validateAssigneePermissions(assigneeIds, editorId, previousAssigneeIds);
     for (let i = assignmentsData.length - 1; i >= 1; i--) {
       if (assignmentsData[i][0] === normalizedTaskId) {
         assignmentsSheet.deleteRow(i + 1);
