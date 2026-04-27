@@ -472,7 +472,7 @@
               :class="isDarkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'"
               class="absolute z-20 mt-2 w-full border rounded-lg shadow-lg max-h-48 overflow-y-auto p-2">
               <label
-                v-for="user in users"
+                v-for="user in assignableUsers"
                 :key="`assignee-${user.User_ID}`"
                 :class="isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'"
                 class="flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer text-sm">
@@ -869,7 +869,7 @@
               :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'"
               class="absolute z-20 mt-2 w-full border rounded-lg shadow-lg max-h-48 overflow-y-auto p-2">
               <label
-                v-for="user in users"
+                v-for="user in assignableUsers"
                 :key="`task-detail-assignee-${user.User_ID}`"
                 :class="isDarkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'"
                 class="flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer text-sm">
