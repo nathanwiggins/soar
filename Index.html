@@ -107,8 +107,19 @@
       </div>
       
       <nav class="flex-1 px-4 py-6 space-y-2">
-        <a href="#" class="flex items-center px-4 py-3 bg-[#DB0000]/10 text-[#DB0000] rounded-lg font-medium">
+        <a
+          href="#"
+          @click.prevent="setActiveTab('project-board')"
+          :class="currentTab === 'project-board' ? 'bg-[#DB0000]/10 text-[#DB0000] font-medium' : (isDarkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-gray-50')"
+          class="flex items-center px-4 py-3 rounded-lg transition-colors">
           <i class="fa-solid fa-layer-group w-6"></i> Project Board
+        </a>
+        <a
+          href="#"
+          @click.prevent="setActiveTab('supervisor-view')"
+          :class="currentTab === 'supervisor-view' ? 'bg-[#DB0000]/10 text-[#DB0000] font-medium' : (isDarkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-gray-50')"
+          class="flex items-center px-4 py-3 rounded-lg transition-colors">
+          <i class="fa-solid fa-users w-6"></i> Supervisor View
         </a>
         <a href="#" :class="isDarkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-gray-50'" class="flex items-center px-4 py-3 rounded-lg transition-colors">
           <i class="fa-solid fa-calendar w-6"></i> Calendar
@@ -158,12 +169,48 @@
 
     <main class="flex-1 flex flex-col h-full overflow-hidden">
       <header :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'" class="h-16 border-b flex items-center justify-between px-8">
-        <h2 :class="isDarkMode ? 'text-gray-100' : 'text-black'" class="text-xl font-semibold">Project Board</h2>
-        <button
-          class="bg-[#DB0000] hover:bg-[#C41425] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
-          @click="openAddProject">
-          <i class="fa-solid fa-plus mr-1"></i> New Project
-        </button>
+        <h2 :class="isDarkMode ? 'text-gray-100' : 'text-black'" class="text-xl font-semibold">{{ currentTab === 'supervisor-view' ? 'Supervisor View' : 'Project Board' }}</h2>
+        <div class="flex items-center gap-3">
+          <template v-if="currentTab === 'project-board'">
+            <button
+              class="bg-[#DB0000] hover:bg-[#C41425] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
+              @click="openAddProject">
+              <i class="fa-solid fa-plus mr-1"></i> New Project
+            </button>
+          </template>
+          <div v-else class="relative" @click.stop>
+            <button
+              @click="showSupervisorUserDropdown = !showSupervisorUserDropdown"
+              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100' : 'bg-white border-gray-300 text-gray-800'"
+              class="min-w-64 px-4 py-2 rounded-lg border text-sm flex items-center justify-between gap-3 transition-colors shadow-sm">
+              <span class="truncate text-left">{{ supervisorUserSummary }}</span>
+              <i class="fa-solid fa-chevron-down text-xs"></i>
+            </button>
+            <div
+              v-if="showSupervisorUserDropdown"
+              :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'"
+              class="absolute right-0 mt-2 w-72 rounded-xl border shadow-lg z-30 p-2 max-h-72 overflow-y-auto">
+              <label
+                v-for="user in directReportUsers"
+                :key="`supervisor-filter-${user.User_ID}`"
+                :class="isDarkMode ? 'hover:bg-gray-800 text-gray-100' : 'hover:bg-gray-100 text-gray-700'"
+                class="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer">
+                <input
+                  type="checkbox"
+                  :checked="isSupervisorUserSelected(user.User_ID)"
+                  @change="toggleSupervisorUserSelection(user.User_ID)"
+                  class="rounded border-gray-300 text-[#DB0000] focus:ring-[#DB0000]">
+                <span class="text-sm truncate">{{ user.Name }}</span>
+              </label>
+              <p
+                v-if="directReportUsers.length === 0"
+                :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'"
+                class="px-3 py-2 text-sm">
+                No direct reports found.
+              </p>
+            </div>
+          </div>
+        </div>
       </header>
 
       <div v-if="loading" class="flex-1 flex items-center justify-center">
@@ -173,7 +220,7 @@
       <div v-else :class="isDarkMode ? 'bg-gray-950' : 'bg-gray-50/50'" class="flex-1 overflow-x-auto kanban-scroll p-8 transition-colors duration-200">
         <div class="flex space-x-6 h-full items-start">
           
-          <div v-for="project in projects" :key="project.Project_ID" class="w-80 flex-shrink-0 flex flex-col max-h-full">
+          <div v-for="project in (currentTab === 'supervisor-view' ? supervisorVisibleProjects : visibleProjects)" :key="project.Project_ID" class="w-80 flex-shrink-0 flex flex-col max-h-full">
             <div class="flex items-center justify-between mb-4 px-1">
               <h3 :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="font-bold text-sm uppercase tracking-wide flex items-center">
                 <span class="w-2 h-2 rounded-full bg-[#DB0000] mr-2"></span>
@@ -185,11 +232,11 @@
                   {{ project.Project_Title }}
                 </button>
               </h3>
-              <span :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'" class="text-xs font-medium">{{ getTasksForProject(project.Project_ID).length }}</span>
+              <span :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'" class="text-xs font-medium">{{ currentTab === 'supervisor-view' ? getSupervisorTasksForProject(project.Project_ID).length : getTasksForProject(project.Project_ID).length }}</span>
             </div>
             
             <div class="flex-1 overflow-y-auto space-y-3 pb-4">
-              <div v-for="task in getTasksForProject(project.Project_ID)" :key="task.Task_ID" 
+              <div v-for="task in (currentTab === 'supervisor-view' ? getSupervisorTasksForProject(project.Project_ID) : getTasksForProject(project.Project_ID))" :key="task.Task_ID"
                    :class="isDarkMode ? 'bg-gray-900 border-gray-700 hover:shadow-gray-900' : 'bg-white border-gray-100'" class="p-4 rounded-xl shadow-sm border hover:shadow-md transition-shadow cursor-pointer group"
                    @click="openTaskInfo(task)">
                 
@@ -248,13 +295,32 @@
                 </div>
               </div>
               
-              <button 
+              <button
+                v-if="currentTab !== 'supervisor-view'"
                 @click="openAddTask(project)" 
                 :class="isDarkMode ? 'border-gray-700 text-gray-500 hover:border-[#C41425] hover:text-[#DB0000]' : 'border-gray-200 text-gray-400 hover:border-[#C41425] hover:text-[#DB0000]'" 
                 class="w-full py-2 border-2 border-dashed rounded-xl transition-colors text-sm font-medium">
                 + Add Task
               </button>
             </div>
+          </div>
+
+          <div
+            v-if="(currentTab === 'supervisor-view' ? supervisorVisibleProjects : visibleProjects).length === 0"
+            :class="isDarkMode ? 'bg-gray-900 border-gray-700 text-gray-300' : 'bg-white border-gray-200 text-gray-600'"
+            class="w-full max-w-xl rounded-xl border p-6 shadow-sm">
+            <template v-if="currentTab === 'supervisor-view'">
+              <p class="font-semibold mb-1">No supervisor assignments to show.</p>
+              <p class="text-sm">
+                Select one or more direct reports to view what they are assigned to.
+              </p>
+            </template>
+            <template v-else>
+              <p class="font-semibold mb-1">No assigned work to show.</p>
+              <p class="text-sm">
+                You are currently seeing assigned tasks/projects only.
+              </p>
+            </template>
           </div>
 
         </div>
@@ -954,41 +1020,22 @@
               :key="comment.Comment_ID"
               :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'"
               class="rounded-xl border p-3">
-<div class="flex items-start gap-3">
-  
-  <!-- Avatar -->
-  <div
-    :class="isDarkMode ? 'bg-gray-700 border-gray-900' : 'bg-gray-200 border-white'"
-    class="w-8 h-8 rounded-full border-2 overflow-hidden flex items-center justify-center text-xs font-bold flex-shrink-0">
-    
-    <img
-      v-if="getCommentAuthor(comment)?.Profile_Pic_Url"
-      :src="getCommentAuthor(comment).Profile_Pic_Url"
-      class="w-full h-full object-cover">
-    
-    <span v-else>
-      {{ getInitials(getCommentAuthor(comment)?.Name) }}
-    </span>
-  </div>
-
-  <!-- Content -->
-  <div class="flex-1 min-w-0">
-    <p class="text-sm font-medium truncate">
-      {{ getCommentAuthor(comment)?.Name || getCommentAuthor(comment)?.Email }}
-    </p>
-    <p class="text-xs text-gray-500">
-      {{ formatCommentTimestamp(comment.Timestamp) }}
-    </p>
-    <p class="text-sm mt-2 whitespace-pre-wrap">
-      {{ comment.Content }}
-    </p>
-  </div>
-
-</div>                <div class="min-w-0">
+              <div class="flex items-start gap-3">
+                <div
+                  :class="isDarkMode ? 'bg-gray-700 border-gray-900 text-gray-200' : 'bg-gray-200 border-white text-gray-600'"
+                  class="w-8 h-8 rounded-full border-2 overflow-hidden flex items-center justify-center text-xs font-bold flex-shrink-0">
+                  <img
+                    v-if="getCommentAuthor(comment)?.Profile_Pic_Url"
+                    :src="getCommentAuthor(comment).Profile_Pic_Url"
+                    class="w-full h-full object-cover">
+                  <span v-else>{{ getInitials(getCommentAuthor(comment)?.Name) }}</span>
+                </div>
+                <div class="flex-1 min-w-0">
                   <p :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'" class="text-sm font-medium truncate">
                     {{ getCommentAuthor(comment)?.Name || getCommentAuthor(comment)?.Email || comment.Commenter_ID }}
                   </p>
                   <p :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-xs">{{ formatCommentTimestamp(comment.Timestamp) }}</p>
+                  <p :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="text-sm mt-2 whitespace-pre-wrap">{{ comment.Content }}</p>
                 </div>
                 <div class="flex items-center gap-2">
                   <button
@@ -1005,7 +1052,6 @@
                   </button>
                 </div>
               </div>
-              <p :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="text-sm mt-3 whitespace-pre-wrap">{{ comment.Content }}</p>
             </div>
 
             <p

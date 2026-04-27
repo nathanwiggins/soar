@@ -40,6 +40,10 @@
       const mentionStartIndex = ref(-1);
       const mentionCursorIndex = ref(-1);
       const quickCommentTextarea = ref(null);
+      const showAllWorkItems = ref(false);
+      const currentTab = ref('project-board');
+      const showSupervisorUserDropdown = ref(false);
+      const selectedSupervisorUserIds = ref([]);
 
       // Add-task modal state
       const showAddTaskModal = ref(false);
@@ -170,6 +174,90 @@
         return users.value
           .filter((u) => normalizeEmail(u?.Email) !== currentEmail)
           .sort((a, b) => (a?.Name || '').localeCompare(b?.Name || ''));
+      });
+
+      const currentUserId = computed(() => {
+        return currentUser.value?.User_ID ? currentUser.value.User_ID.toString().trim() : '';
+      });
+
+      const assignedEntityIdsForCurrentUser = computed(() => {
+        const userId = currentUserId.value;
+        if (!userId) return new Set();
+
+        const ids = assignments.value
+          .filter((assignment) => idsMatch(assignment?.Assignee_ID, userId))
+          .map((assignment) => normalizeId(assignment?.Assignment_ID))
+          .filter(Boolean);
+
+        return new Set(ids);
+      });
+
+      const visibleTasks = computed(() => {
+        if (showAllWorkItems.value) return tasks.value;
+        const assignedIds = assignedEntityIdsForCurrentUser.value;
+        return tasks.value.filter((task) => assignedIds.has(normalizeId(task?.Task_ID)));
+      });
+
+      const visibleProjects = computed(() => {
+        if (showAllWorkItems.value) return projects.value;
+        const assignedIds = assignedEntityIdsForCurrentUser.value;
+        const visibleProjectIds = new Set(
+          visibleTasks.value
+            .map((task) => normalizeId(task?.Project_ID))
+            .filter(Boolean)
+        );
+
+        return projects.value.filter((project) => {
+          const projectId = normalizeId(project?.Project_ID);
+          return assignedIds.has(projectId) || visibleProjectIds.has(projectId);
+        });
+      });
+
+      const directReportUsers = computed(() => {
+        const managerId = currentUserId.value;
+        if (!managerId) return [];
+        return users.value
+          .filter((user) => idsMatch(user?.Manager_ID, managerId))
+          .sort((a, b) => (a?.Name || '').localeCompare(b?.Name || ''));
+      });
+
+      const supervisorUserSummary = computed(() => {
+        const count = selectedSupervisorUserIds.value.length;
+        if (count === 0) return 'Select team members';
+        if (count === 1) {
+          const selectedUser = users.value.find((u) => idsMatch(u.User_ID, selectedSupervisorUserIds.value[0]));
+          return selectedUser?.Name || '1 team member selected';
+        }
+        return `${count} team members selected`;
+      });
+
+      const assignedEntityIdsForSelectedSupervisorUsers = computed(() => {
+        if (selectedSupervisorUserIds.value.length === 0) return new Set();
+        const selectedUserIdSet = new Set(selectedSupervisorUserIds.value.map((id) => normalizeId(id)).filter(Boolean));
+        const ids = assignments.value
+          .filter((assignment) => selectedUserIdSet.has(normalizeId(assignment?.Assignee_ID)))
+          .map((assignment) => normalizeId(assignment?.Assignment_ID))
+          .filter(Boolean);
+        return new Set(ids);
+      });
+
+      const supervisorVisibleTasks = computed(() => {
+        const assignedIds = assignedEntityIdsForSelectedSupervisorUsers.value;
+        return tasks.value.filter((task) => assignedIds.has(normalizeId(task?.Task_ID)));
+      });
+
+      const supervisorVisibleProjects = computed(() => {
+        const assignedIds = assignedEntityIdsForSelectedSupervisorUsers.value;
+        const visibleProjectIds = new Set(
+          supervisorVisibleTasks.value
+            .map((task) => normalizeId(task?.Project_ID))
+            .filter(Boolean)
+        );
+
+        return projects.value.filter((project) => {
+          const projectId = normalizeId(project?.Project_ID);
+          return assignedIds.has(projectId) || visibleProjectIds.has(projectId);
+        });
       });
 
       // Methods
@@ -322,7 +410,11 @@
           });
       };
 
-      const getTasksForProject = (projectId) => tasks.value.filter((t) => t.Project_ID === projectId);
+      const getTasksForProject = (projectId) =>
+        visibleTasks.value.filter((task) => idsMatch(task.Project_ID, projectId));
+
+      const getSupervisorTasksForProject = (projectId) =>
+        supervisorVisibleTasks.value.filter((task) => idsMatch(task.Project_ID, projectId));
 
       const normalizeEmail = (email) => (email || '').toString().trim().toLowerCase();
       const normalizeId = (value) => (value === null || value === undefined ? '' : value.toString().trim());
@@ -335,6 +427,31 @@
 
       const getProjectById = (projectId) => projects.value.find((p) => idsMatch(p.Project_ID, projectId)) || null;
       const getUserById = (userId) => users.value.find((u) => idsMatch(u.User_ID, userId)) || null;
+
+      const toggleWorkVisibility = () => {
+        showAllWorkItems.value = !showAllWorkItems.value;
+      };
+
+      const setActiveTab = (tabId) => {
+        currentTab.value = tabId;
+        if (tabId !== 'supervisor-view') {
+          showSupervisorUserDropdown.value = false;
+        }
+      };
+
+      const toggleSupervisorUserSelection = (userId) => {
+        const selectedUserIds = selectedSupervisorUserIds.value;
+        const index = selectedUserIds.findIndex((selectedId) => idsMatch(selectedId, userId));
+        if (index >= 0) {
+          selectedUserIds.splice(index, 1);
+        } else {
+          selectedUserIds.push(userId);
+        }
+      };
+
+      const isSupervisorUserSelected = (userId) => {
+        return selectedSupervisorUserIds.value.some((selectedId) => idsMatch(selectedId, userId));
+      };
 
       const statusColor = (status) => {
         const colors = {
@@ -1091,6 +1208,7 @@
       return {
         loading,
         isDarkMode,
+        currentTab,
         isUserMenuOpen,
         showCreateAccountModal,
         createAccountForm,
@@ -1100,6 +1218,14 @@
         users,
         projects,
         tasks,
+        visibleProjects,
+        directReportUsers,
+        supervisorVisibleProjects,
+        supervisorVisibleTasks,
+        showSupervisorUserDropdown,
+        selectedSupervisorUserIds,
+        supervisorUserSummary,
+        showAllWorkItems,
         comments,
         taskComments,
         commentDraft,
@@ -1141,6 +1267,7 @@
         savingProject,
         projectDetailsCreator,
         getTasksForProject,
+        getSupervisorTasksForProject,
         getAssigneesForTask,
         getProjectById,
         statusColor,
@@ -1177,6 +1304,10 @@
         getCommentAuthor,
         getCommentCountForTask,
         formatCommentTimestamp,
+        toggleWorkVisibility,
+        setActiveTab,
+        toggleSupervisorUserSelection,
+        isSupervisorUserSelected,
         updateMentionSuggestions,
         applyMentionSuggestion,
         addComment,
