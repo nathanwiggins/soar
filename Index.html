@@ -283,15 +283,27 @@
                       <span v-else>{{ getInitials(assignee.Name) }}</span>
                     </div>
                   </div>
-                  <span
-                    v-if="task.Due_Date"
-                    :class="[
-                      isDarkMode ? 'text-gray-400' : 'text-gray-500',
-                      shouldStrikeTask(task) ? 'line-through opacity-70' : ''
-                    ]"
-                    class="text-xs font-medium">
-                    <i class="fa-regular fa-clock mr-1"></i> {{ formatDate(task.Due_Date) }}
-                  </span>
+                  <div class="flex items-center gap-3">
+                    <span
+                      :class="[
+                        isDarkMode ? 'text-gray-300' : 'text-gray-500',
+                        shouldStrikeTask(task) ? 'line-through opacity-70' : ''
+                      ]"
+                      class="text-xs font-semibold inline-flex items-center gap-1"
+                      :title="getPriorityTitle(task.Priority)">
+                      <i class="fa-solid" :class="priorityIconClass(task.Priority)"></i>
+                      <span>{{ getPriorityLabel(task.Priority) }}</span>
+                    </span>
+                    <span
+                      v-if="task.Due_Date"
+                      :class="[
+                        isDarkMode ? 'text-gray-400' : 'text-gray-500',
+                        shouldStrikeTask(task) ? 'line-through opacity-70' : ''
+                      ]"
+                      class="text-xs font-medium">
+                      <i class="fa-regular fa-clock mr-1"></i> {{ formatDate(task.Due_Date) }}
+                    </span>
+                  </div>
                 </div>
               </div>
               
@@ -427,30 +439,15 @@
           </div>
 
           <div>
-            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Complexity</label>
-            <div class="flex gap-2">
-              <button
-                v-for="value in [1,2,3,4,5]"
-                :key="`complexity-${value}`"
-                @click="setComplexity(value)"
-                type="button"
-                :class="newTaskForm.complexity === value ? 'btn-action-red border-[#DB0000]' : (isDarkMode ? 'bg-gray-800 text-gray-300 border-gray-600' : 'bg-gray-50 text-gray-700 border-gray-300')"
-                class="w-10 h-10 rounded-lg border text-sm font-semibold transition-colors">
-                {{ value }}
-              </button>
-            </div>
-          </div>
-
-          <div>
             <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Priority</label>
-            <div class="flex gap-2">
+            <div class="flex gap-2 flex-wrap">
               <button
-                v-for="value in [1,2,3,4,5]"
+                v-for="value in priorityOptions"
                 :key="`priority-${value}`"
                 @click="setPriority(value)"
                 type="button"
                 :class="newTaskForm.priority === value ? 'btn-action-red border-[#DB0000]' : (isDarkMode ? 'bg-gray-800 text-gray-300 border-gray-600' : 'bg-gray-50 text-gray-700 border-gray-300')"
-                class="w-10 h-10 rounded-lg border text-sm font-semibold transition-colors">
+                class="px-3 py-2 rounded-lg border text-sm font-semibold transition-colors">
                 {{ value }}
               </button>
             </div>
@@ -809,26 +806,14 @@
           </div>
 
           <div>
-            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Complexity</label>
-            <select
-              v-model.number="taskDetailsForm.complexity"
-              :disabled="!isEditingTask"
-              :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 disabled:bg-gray-800/70 disabled:text-gray-400' : 'bg-white border-gray-300 text-gray-800 disabled:bg-gray-100'"
-              class="w-full border rounded-lg px-3 py-2 text-sm">
-              <option :value="null">None</option>
-              <option v-for="value in [1,2,3,4,5]" :key="`detail-complexity-${value}`" :value="value">{{ value }}</option>
-            </select>
-          </div>
-
-          <div>
             <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Priority</label>
             <select
-              v-model.number="taskDetailsForm.priority"
+              v-model="taskDetailsForm.priority"
               :disabled="!isEditingTask"
               :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 disabled:bg-gray-800/70 disabled:text-gray-400' : 'bg-white border-gray-300 text-gray-800 disabled:bg-gray-100'"
               class="w-full border rounded-lg px-3 py-2 text-sm">
-              <option :value="null">None</option>
-              <option v-for="value in [1,2,3,4,5]" :key="`detail-priority-${value}`" :value="value">{{ value }}</option>
+              <option value="">None</option>
+              <option v-for="value in priorityOptions" :key="`detail-priority-${value}`" :value="value">{{ value }}</option>
             </select>
           </div>
 
