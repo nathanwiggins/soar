@@ -121,7 +121,11 @@
           class="flex items-center px-4 py-3 rounded-lg transition-colors">
           <i class="fa-solid fa-users w-6"></i> Supervisor View
         </a>
-        <a href="#" :class="isDarkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-gray-50'" class="flex items-center px-4 py-3 rounded-lg transition-colors">
+        <a
+          href="#"
+          @click.prevent="setActiveTab('calendar')"
+          :class="currentTab === 'calendar' ? 'bg-[#DB0000]/10 text-[#DB0000] font-medium' : (isDarkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-gray-50')"
+          class="flex items-center px-4 py-3 rounded-lg transition-colors">
           <i class="fa-solid fa-calendar w-6"></i> Calendar
         </a>
         <a href="#" :class="isDarkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-gray-50'" class="flex items-center px-4 py-3 rounded-lg transition-colors">
@@ -169,7 +173,7 @@
 
     <main class="flex-1 flex flex-col h-full overflow-hidden">
       <header :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'" class="h-16 border-b flex items-center justify-between px-8">
-        <h2 :class="isDarkMode ? 'text-gray-100' : 'text-black'" class="text-xl font-semibold">{{ currentTab === 'supervisor-view' ? 'Supervisor View' : 'Project Board' }}</h2>
+        <h2 :class="isDarkMode ? 'text-gray-100' : 'text-black'" class="text-xl font-semibold">{{ currentTabTitle }}</h2>
         <div class="flex items-center gap-3">
           <template v-if="currentTab === 'project-board'">
             <button
@@ -178,7 +182,7 @@
               <i class="fa-solid fa-plus mr-1"></i> New Project
             </button>
           </template>
-          <div v-else class="relative" @click.stop>
+          <div v-else-if="currentTab === 'supervisor-view'" class="relative" @click.stop>
             <button
               @click="showSupervisorUserDropdown = !showSupervisorUserDropdown"
               :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100' : 'bg-white border-gray-300 text-gray-800'"
@@ -215,6 +219,73 @@
 
       <div v-if="loading" class="flex-1 flex items-center justify-center">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-[#DB0000]"></div>
+      </div>
+
+      <div
+        v-else-if="currentTab === 'calendar'"
+        :class="isDarkMode ? 'bg-gray-950' : 'bg-gray-50/50'"
+        class="flex-1 overflow-y-auto p-8 transition-colors duration-200">
+        <div :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'" class="max-w-7xl mx-auto rounded-2xl border shadow-sm p-6">
+          <div class="flex items-center justify-between mb-6">
+            <div>
+              <h3 :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'" class="text-lg font-semibold">{{ calendarMonthLabel }}</h3>
+              <p :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-sm">Tasks are placed on their due date.</p>
+            </div>
+            <span
+              :class="isDarkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-600'"
+              class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium">
+              <span class="w-2 h-2 rounded-full bg-[#DB0000] mr-2"></span>
+              Today highlighted
+            </span>
+          </div>
+
+          <div class="grid grid-cols-7 gap-2 mb-2">
+            <div
+              v-for="dayName in calendarDayNames"
+              :key="`day-label-${dayName}`"
+              :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'"
+              class="text-xs font-semibold uppercase tracking-wide text-center py-2">
+              {{ dayName }}
+            </div>
+          </div>
+
+          <div class="grid grid-cols-7 gap-2 auto-rows-[140px]">
+            <div
+              v-for="calendarDay in calendarDays"
+              :key="calendarDay.key"
+              :class="[
+                isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200',
+                calendarDay.isCurrentMonth ? '' : (isDarkMode ? 'opacity-50' : 'opacity-60'),
+                calendarDay.isToday ? 'ring-2 ring-[#DB0000] border-[#DB0000]' : ''
+              ]"
+              class="border rounded-xl p-2 overflow-y-auto">
+              <div class="flex items-center justify-between mb-2">
+                <span
+                  :class="calendarDay.isToday ? 'bg-[#DB0000] text-white' : (isDarkMode ? 'text-gray-200' : 'text-gray-700')"
+                  class="text-xs font-semibold w-6 h-6 rounded-full flex items-center justify-center">
+                  {{ calendarDay.dayNumber }}
+                </span>
+                <span
+                  v-if="calendarDay.tasks.length > 0"
+                  :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'"
+                  class="text-[10px] font-medium">
+                  {{ calendarDay.tasks.length }}
+                </span>
+              </div>
+
+              <div class="space-y-1">
+                <div
+                  v-for="calendarTask in calendarDay.tasks"
+                  :key="`calendar-task-${calendarDay.key}-${calendarTask.Task_ID}`"
+                  :class="isDarkMode ? 'bg-gray-800 text-gray-100' : 'bg-[#DB0000]/10 text-[#DB0000]'"
+                  class="text-[11px] leading-tight px-2 py-1 rounded-md truncate"
+                  :title="calendarTask.Project_Title || 'Untitled Project'">
+                  {{ calendarTask.Project_Title || 'Untitled Project' }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div v-else :class="isDarkMode ? 'bg-gray-950' : 'bg-gray-50/50'" class="flex-1 overflow-x-auto kanban-scroll p-8 transition-colors duration-200">

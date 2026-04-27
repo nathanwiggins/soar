@@ -290,6 +290,95 @@
         });
       });
 
+      const calendarDayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+      const currentTabTitle = computed(() => {
+        if (currentTab.value === 'supervisor-view') return 'Supervisor View';
+        if (currentTab.value === 'calendar') return 'Calendar';
+        return 'Project Board';
+      });
+
+      const calendarCurrentMonthStart = computed(() => {
+        const today = new Date();
+        return new Date(today.getFullYear(), today.getMonth(), 1);
+      });
+
+      const calendarMonthLabel = computed(() => {
+        return calendarCurrentMonthStart.value.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      });
+
+      const parseDateParts = (dateValue) => {
+        if (!dateValue) return null;
+        const rawDate = dateValue.toString().trim();
+        if (!rawDate) return null;
+        const matchedIsoDate = rawDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (matchedIsoDate) {
+          return {
+            year: Number(matchedIsoDate[1]),
+            monthIndex: Number(matchedIsoDate[2]) - 1,
+            day: Number(matchedIsoDate[3])
+          };
+        }
+
+        const parsedDate = new Date(rawDate);
+        if (Number.isNaN(parsedDate.getTime())) return null;
+        return {
+          year: parsedDate.getFullYear(),
+          monthIndex: parsedDate.getMonth(),
+          day: parsedDate.getDate()
+        };
+      };
+
+      const buildDateKey = (year, monthIndex, day) =>
+        `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+      const dueTasksByDateKey = computed(() => {
+        const projectTitlesById = new Map(
+          projects.value.map((project) => [normalizeId(project?.Project_ID), project?.Project_Title || ''])
+        );
+        const groupedTasks = new Map();
+
+        visibleTasks.value.forEach((task) => {
+          const parsedDueDate = parseDateParts(task?.Due_Date);
+          if (!parsedDueDate) return;
+          const dateKey = buildDateKey(parsedDueDate.year, parsedDueDate.monthIndex, parsedDueDate.day);
+          if (!groupedTasks.has(dateKey)) groupedTasks.set(dateKey, []);
+          groupedTasks.get(dateKey).push({
+            ...task,
+            Project_Title: projectTitlesById.get(normalizeId(task?.Project_ID)) || ''
+          });
+        });
+
+        return groupedTasks;
+      });
+
+      const calendarDays = computed(() => {
+        const monthStart = calendarCurrentMonthStart.value;
+        const year = monthStart.getFullYear();
+        const monthIndex = monthStart.getMonth();
+        const today = new Date();
+        const todayKey = buildDateKey(today.getFullYear(), today.getMonth(), today.getDate());
+        const firstWeekday = monthStart.getDay();
+        const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+        const totalCells = Math.ceil((firstWeekday + daysInMonth) / 7) * 7;
+        const firstGridDate = new Date(year, monthIndex, 1 - firstWeekday);
+        const days = [];
+
+        for (let dayOffset = 0; dayOffset < totalCells; dayOffset += 1) {
+          const gridDate = new Date(firstGridDate.getFullYear(), firstGridDate.getMonth(), firstGridDate.getDate() + dayOffset);
+          const dayKey = buildDateKey(gridDate.getFullYear(), gridDate.getMonth(), gridDate.getDate());
+          days.push({
+            key: dayKey,
+            dayNumber: gridDate.getDate(),
+            isCurrentMonth: gridDate.getMonth() === monthIndex,
+            isToday: dayKey === todayKey,
+            tasks: dueTasksByDateKey.value.get(dayKey) || []
+          });
+        }
+
+        return days;
+      });
+
       // Methods
       const makeLogoTransparent = () => {
         const logo = document.querySelector('.soar-logo');
@@ -1300,6 +1389,7 @@
         loading,
         isDarkMode,
         currentTab,
+        currentTabTitle,
         isUserMenuOpen,
         showCreateAccountModal,
         createAccountForm,
@@ -1313,6 +1403,9 @@
         directReportUsers,
         supervisorVisibleProjects,
         supervisorVisibleTasks,
+        calendarDayNames,
+        calendarMonthLabel,
+        calendarDays,
         showSupervisorUserDropdown,
         selectedSupervisorUserIds,
         supervisorUserSummary,
