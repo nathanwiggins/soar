@@ -55,9 +55,8 @@
       const newTaskForm = ref({
         taskTitle: '',
         dueDate: '',
-        complexity: null,
         description: '',
-        priority: null,
+        priority: '',
         assigneeIds: []
       });
       const newProjectForm = ref({
@@ -410,11 +409,46 @@
           });
       };
 
+      const priorityOptions = ['Highest', 'High', 'Medium', 'Low', 'Lowest'];
+      const legacyPriorityByScore = {
+        5: 'Highest',
+        4: 'High',
+        3: 'Medium',
+        2: 'Low',
+        1: 'Lowest'
+      };
+      const priorityRank = {
+        Highest: 5,
+        High: 4,
+        Medium: 3,
+        Low: 2,
+        Lowest: 1
+      };
+
+      const normalizePriority = (priorityValue) => {
+        if (priorityValue === null || priorityValue === undefined || priorityValue === '') return '';
+        if (typeof priorityValue === 'number' && Number.isInteger(priorityValue)) {
+          return legacyPriorityByScore[priorityValue] || '';
+        }
+
+        const trimmedValue = priorityValue.toString().trim();
+        if (!trimmedValue) return '';
+
+        if (priorityRank[trimmedValue]) return trimmedValue;
+
+        const numericPriority = Number(trimmedValue);
+        if (Number.isInteger(numericPriority)) {
+          return legacyPriorityByScore[numericPriority] || '';
+        }
+
+        return '';
+      };
+
+      const getPriorityRank = (priorityValue) => priorityRank[normalizePriority(priorityValue)] || Number.NEGATIVE_INFINITY;
+
       const compareTasksByPriority = (leftTask, rightTask) => {
-        const leftPriority = Number(leftTask?.Priority);
-        const rightPriority = Number(rightTask?.Priority);
-        const normalizedLeftPriority = Number.isFinite(leftPriority) ? leftPriority : Number.NEGATIVE_INFINITY;
-        const normalizedRightPriority = Number.isFinite(rightPriority) ? rightPriority : Number.NEGATIVE_INFINITY;
+        const normalizedLeftPriority = getPriorityRank(leftTask?.Priority);
+        const normalizedRightPriority = getPriorityRank(rightTask?.Priority);
         if (normalizedLeftPriority !== normalizedRightPriority) {
           return normalizedRightPriority - normalizedLeftPriority;
         }
@@ -519,12 +553,22 @@
 
       const shouldStrikeTask = (task) => task?.Status === 'Completed' && !isPastDueDate(task?.Due_Date);
 
-      const complexityIconClass = (complexityValue) => {
-        const complexity = Number(complexityValue);
-        if (!Number.isFinite(complexity) || complexity <= 0) return 'fa-bolt text-gray-400';
-        if (complexity >= 5) return 'fa-bolt text-[#DB0000]';
-        if (complexity >= 3) return 'fa-bolt text-amber-500';
+      const priorityIconClass = (priorityValue) => {
+        const normalizedPriority = normalizePriority(priorityValue);
+        if (!normalizedPriority) return 'fa-bolt text-gray-400';
+        if (normalizedPriority === 'Highest') return 'fa-bolt text-[#DB0000]';
+        if (normalizedPriority === 'High' || normalizedPriority === 'Medium') return 'fa-bolt text-amber-500';
         return 'fa-bolt text-emerald-500';
+      };
+
+      const getPriorityLabel = (priorityValue) => {
+        const normalizedPriority = normalizePriority(priorityValue);
+        return normalizedPriority ? `${normalizedPriority} priority` : 'No priority';
+      };
+
+      const getPriorityTitle = (priorityValue) => {
+        const normalizedPriority = normalizePriority(priorityValue);
+        return normalizedPriority ? `${normalizedPriority} priority` : 'Priority not set';
       };
 
       const buildTaskDetailsForm = (task) => {
@@ -533,8 +577,7 @@
           taskTitle: task.Task_Title || '',
           description: task.Description || '',
           status: task.Status || 'Not Started',
-          complexity: task.Complexity === '' || task.Complexity === null ? null : Number(task.Complexity),
-          priority: task.Priority === '' || task.Priority === null ? null : Number(task.Priority),
+          priority: normalizePriority(task.Priority),
           createdDate: task.Created_Date || '',
           dueDate: formatDateForInput(task.Due_Date),
           projectId: task.Project_ID || '',
@@ -828,7 +871,6 @@
             taskTitle: trimmedTitle,
             dueDate: taskDetailsForm.value.dueDate,
             status: taskDetailsForm.value.status,
-            complexity: taskDetailsForm.value.complexity,
             description: taskDetailsForm.value.description,
             priority: taskDetailsForm.value.priority,
             assigneeIds: taskDetailsForm.value.assigneeIds,
@@ -998,9 +1040,8 @@
         newTaskForm.value = {
           taskTitle: '',
           dueDate: '',
-          complexity: null,
           description: '',
-          priority: null,
+          priority: '',
           assigneeIds: []
         };
       };
@@ -1036,10 +1077,6 @@
         showAssigneeDropdown.value = false;
         showAddTaskModal.value = false;
         selectedProject.value = null;
-      };
-
-      const setComplexity = (value) => {
-        newTaskForm.value.complexity = value;
       };
 
       const setPriority = (value) => {
@@ -1101,7 +1138,6 @@
           .createTask(selectedProject.value.Project_ID, {
             taskTitle: trimmedTitle,
             dueDate: newTaskForm.value.dueDate,
-            complexity: newTaskForm.value.complexity,
             description: newTaskForm.value.description,
             priority: newTaskForm.value.priority,
             assigneeIds: newTaskForm.value.assigneeIds
@@ -1302,7 +1338,11 @@
         getInitials,
         formatDate,
         shouldStrikeTask,
-        complexityIconClass,
+        priorityIconClass,
+        getPriorityLabel,
+        getPriorityTitle,
+        normalizePriority,
+        priorityOptions,
         openTaskInfo,
         openTaskComments,
         closeCommentModal,
@@ -1324,7 +1364,6 @@
         saveProjectEdits,
         openAddTask,
         closeAddTask,
-        setComplexity,
         setPriority,
         toggleAssignee,
         isAssigneeSelected,
