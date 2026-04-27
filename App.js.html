@@ -1,20 +1,51 @@
 <script>
-  const { createApp, ref, computed, onMounted } = Vue;
+  const { createApp, ref, computed, onMounted, nextTick } = Vue;
 
   createApp({
     setup() {
       const loading = ref(true);
       const currentUserEmail = ref('');
+      const showCreateAccountModal = ref(false);
+      const creatingAccount = ref(false);
+      const createAccountForm = ref({
+        name: '',
+        managerId: '',
+      });
 
       const isDarkMode = ref(false);
       const isUserMenuOpen = ref(false);
-      
+      const showProfileModal = ref(false);
+      const isEditingProfile = ref(false);
+      const savingProfile = ref(false);
+      const profileForm = ref({
+        name: '',
+        email: '',
+      });
+
       // Data models based on Data Dictionary
       const users = ref([]);
       const projects = ref([]);
       const tasks = ref([]);
       const assignments = ref([]);
+      const comments = ref([]);
+      const commentDraft = ref('');
+      const creatingComment = ref(false);
+      const resolvingCommentIds = ref([]);
+      const deletingCommentIds = ref([]);
+      const showCommentModal = ref(false);
+      const commentModalTask = ref(null);
+      const activeCommentTaskId = ref('');
+      const showMentionSuggestions = ref(false);
+      const mentionQuery = ref('');
+      const mentionStartIndex = ref(-1);
+      const mentionCursorIndex = ref(-1);
+      const quickCommentTextarea = ref(null);
+      const showAllWorkItems = ref(false);
+      const currentTab = ref('project-board');
+      const showSupervisorUserDropdown = ref(false);
+      const selectedSupervisorUserIds = ref([]);
 
+      // Add-task modal state
       const showAddTaskModal = ref(false);
       const showAddProjectModal = ref(false);
       const selectedProject = ref(null);
@@ -24,9 +55,8 @@
       const newTaskForm = ref({
         taskTitle: '',
         dueDate: '',
-        complexity: null,
         description: '',
-        priority: null,
+        priority: '',
         assigneeIds: []
       });
       const newProjectForm = ref({
@@ -36,9 +66,228 @@
         status: 'Not Started'
       });
 
+      // Task details/edit modal state
+      const showTaskDetailsModal = ref(false);
+      const taskDetailsForm = ref(null);
+      const showTaskDetailsAssigneeDropdown = ref(false);
+      const isEditingTask = ref(false);
+      const savingTask = ref(false);
+      const deletingTask = ref(false);
+      const completingTask = ref(false);
+      const showProjectDetailsModal = ref(false);
+      const projectDetailsForm = ref(null);
+      const deletingProject = ref(false);
+      const isEditingProject = ref(false);
+      const savingProject = ref(false);
+
       // Computed properties
       const currentUser = computed(() => {
-        return users.value.find(u => u.Email === currentUserEmail.value) || { Email: currentUserEmail.value, Name: 'Unknown User' };
+        return users.value.find((u) => normalizeEmail(u?.Email) === normalizeEmail(currentUserEmail.value)) || {
+          Email: currentUserEmail.value,
+          Name: 'Unknown User'
+        };
+      });
+
+      const assigneeSummary = computed(() => {
+        const count = newTaskForm.value.assigneeIds.length;
+        if (count === 0) return 'Select assignees';
+        if (count === 1) {
+          const selectedUser = users.value.find((u) => u.User_ID === newTaskForm.value.assigneeIds[0]);
+          return selectedUser ? selectedUser.Name : '1 assignee selected';
+        }
+        return `${count} assignees selected`;
+      });
+
+      const taskDetailsAssigneeSummary = computed(() => {
+        const selectedIds = taskDetailsForm.value?.assigneeIds || [];
+        if (selectedIds.length === 0) return 'Select assignees';
+        if (selectedIds.length === 1) {
+          const selectedUser = users.value.find((u) => u.User_ID === selectedIds[0]);
+          return selectedUser ? selectedUser.Name : '1 assignee selected';
+        }
+        return `${selectedIds.length} assignees selected`;
+      });
+
+      const taskDetailsAssigneeUsers = computed(() => {
+        const selectedIds = taskDetailsForm.value?.assigneeIds || [];
+        return selectedIds
+          .map((id) => getUserById(id))
+          .filter(Boolean);
+      });
+
+      const projectDetailsCreator = computed(() => {
+        if (!projectDetailsForm.value?.creatorId) return null;
+        return getUserById(projectDetailsForm.value.creatorId);
+      });
+
+      const taskComments = computed(() => {
+        const topicId = activeCommentTaskId.value;
+        if (!topicId) return [];
+
+        return comments.value
+          .filter((comment) => idsMatch(comment.Topic_ID, topicId))
+          .slice()
+          .sort((left, right) => {
+            const leftTime = new Date(left.Timestamp || 0).getTime();
+            const rightTime = new Date(right.Timestamp || 0).getTime();
+            return rightTime - leftTime;
+          });
+      });
+
+      const mentionableUsers = computed(() => {
+        const byHandle = new Map();
+        users.value.forEach((user) => {
+          const emailLocalPart = normalizeEmail(user?.Email).split('@')[0];
+          const fallbackHandle = (user?.Name || '')
+            .toString()
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, '.')
+            .replace(/[^a-z0-9._-]/g, '');
+          const handle = emailLocalPart || fallbackHandle;
+          if (!handle) return;
+
+          if (!byHandle.has(handle)) {
+            byHandle.set(handle, {
+              handle,
+              userId: user.User_ID,
+              name: user.Name || '',
+              email: user.Email || ''
+            });
+          }
+        });
+
+        return Array.from(byHandle.values()).sort((a, b) => a.handle.localeCompare(b.handle));
+      });
+
+      const filteredMentionSuggestions = computed(() => {
+        if (!showMentionSuggestions.value) return [];
+        const query = mentionQuery.value.toLowerCase();
+        return mentionableUsers.value
+          .filter((entry) => !query || entry.handle.toLowerCase().startsWith(query))
+          .slice(0, 6);
+      });
+
+      const managerOptions = computed(() => {
+        const currentEmail = normalizeEmail(currentUserEmail.value);
+        return users.value
+          .filter((u) => normalizeEmail(u?.Email) !== currentEmail)
+          .sort((a, b) => (a?.Name || '').localeCompare(b?.Name || ''));
+      });
+
+      const currentUserId = computed(() => {
+        return currentUser.value?.User_ID ? currentUser.value.User_ID.toString().trim() : '';
+      });
+
+      const assignedEntityIdsForCurrentUser = computed(() => {
+        const userId = currentUserId.value;
+        if (!userId) return new Set();
+
+        const ids = assignments.value
+          .filter((assignment) => idsMatch(assignment?.Assignee_ID, userId))
+          .map((assignment) => normalizeId(assignment?.Assignment_ID))
+          .filter(Boolean);
+
+        return new Set(ids);
+      });
+
+      const visibleTasks = computed(() => {
+        if (showAllWorkItems.value) return tasks.value;
+        const assignedIds = assignedEntityIdsForCurrentUser.value;
+        return tasks.value.filter((task) => assignedIds.has(normalizeId(task?.Task_ID)));
+      });
+
+      const visibleProjects = computed(() => {
+        if (showAllWorkItems.value) return projects.value;
+        const assignedIds = assignedEntityIdsForCurrentUser.value;
+        const visibleProjectIds = new Set(
+          visibleTasks.value
+            .map((task) => normalizeId(task?.Project_ID))
+            .filter(Boolean)
+        );
+
+        return projects.value.filter((project) => {
+          const projectId = normalizeId(project?.Project_ID);
+          return assignedIds.has(projectId) || visibleProjectIds.has(projectId);
+        });
+      });
+
+      const directReportUsers = computed(() => {
+        const managerId = currentUserId.value;
+        if (!managerId) return [];
+        return users.value
+          .filter((user) => idsMatch(user?.Manager_ID, managerId))
+          .sort((a, b) => (a?.Name || '').localeCompare(b?.Name || ''));
+      });
+
+      const assignableUsers = computed(() => {
+        const normalizedCurrentUserId = normalizeId(currentUserId.value);
+        if (!normalizedCurrentUserId) return [];
+
+        const reportsByManager = new Map();
+        users.value.forEach((user) => {
+          const managerId = normalizeId(user?.Manager_ID);
+          const userId = normalizeId(user?.User_ID);
+          if (!managerId || !userId) return;
+          if (!reportsByManager.has(managerId)) reportsByManager.set(managerId, []);
+          reportsByManager.get(managerId).push(userId);
+        });
+
+        const assignableIdSet = new Set([normalizedCurrentUserId]);
+        const queue = [normalizedCurrentUserId];
+        while (queue.length > 0) {
+          const managerId = queue.shift();
+          const directReports = reportsByManager.get(managerId) || [];
+          directReports.forEach((reportId) => {
+            if (!assignableIdSet.has(reportId)) {
+              assignableIdSet.add(reportId);
+              queue.push(reportId);
+            }
+          });
+        }
+
+        return users.value
+          .filter((user) => assignableIdSet.has(normalizeId(user?.User_ID)))
+          .sort((a, b) => (a?.Name || '').localeCompare(b?.Name || ''));
+      });
+
+      const supervisorUserSummary = computed(() => {
+        const count = selectedSupervisorUserIds.value.length;
+        if (count === 0) return 'Select team members';
+        if (count === 1) {
+          const selectedUser = users.value.find((u) => idsMatch(u.User_ID, selectedSupervisorUserIds.value[0]));
+          return selectedUser?.Name || '1 team member selected';
+        }
+        return `${count} team members selected`;
+      });
+
+      const assignedEntityIdsForSelectedSupervisorUsers = computed(() => {
+        if (selectedSupervisorUserIds.value.length === 0) return new Set();
+        const selectedUserIdSet = new Set(selectedSupervisorUserIds.value.map((id) => normalizeId(id)).filter(Boolean));
+        const ids = assignments.value
+          .filter((assignment) => selectedUserIdSet.has(normalizeId(assignment?.Assignee_ID)))
+          .map((assignment) => normalizeId(assignment?.Assignment_ID))
+          .filter(Boolean);
+        return new Set(ids);
+      });
+
+      const supervisorVisibleTasks = computed(() => {
+        const assignedIds = assignedEntityIdsForSelectedSupervisorUsers.value;
+        return tasks.value.filter((task) => assignedIds.has(normalizeId(task?.Task_ID)));
+      });
+
+      const supervisorVisibleProjects = computed(() => {
+        const assignedIds = assignedEntityIdsForSelectedSupervisorUsers.value;
+        const visibleProjectIds = new Set(
+          supervisorVisibleTasks.value
+            .map((task) => normalizeId(task?.Project_ID))
+            .filter(Boolean)
+        );
+
+        return projects.value.filter((project) => {
+          const projectId = normalizeId(project?.Project_ID);
+          return assignedIds.has(projectId) || visibleProjectIds.has(projectId);
+        });
       });
 
       // Methods
@@ -65,7 +314,10 @@
             [canvas.width - 1, canvas.height - 1]
           ];
 
-          let r = 0, g = 0, b = 0;
+          let r = 0;
+          let g = 0;
+          let b = 0;
+
           corners.forEach(([x, y]) => {
             const index = (y * canvas.width + x) * 4;
             r += pixels[index];
@@ -87,7 +339,6 @@
             return distance <= tolerance || nearWhite;
           };
 
-          // Remove any pixel close to detected background color (or near-white).
           for (let i = 0; i < pixels.length; i += 4) {
             const rVal = pixels[i];
             const gVal = pixels[i + 1];
@@ -97,7 +348,6 @@
             }
           }
 
-          // Recolor dark logo strokes to brand red.
           for (let i = 0; i < pixels.length; i += 4) {
             const alpha = pixels[i + 3];
             if (alpha === 0) continue;
@@ -107,7 +357,7 @@
             const bVal = pixels[i + 2];
 
             if (rVal < 80 && gVal < 80 && bVal < 80) {
-              pixels[i] = 219;     // #DB0000
+              pixels[i] = 219;
               pixels[i + 1] = 0;
               pixels[i + 2] = 0;
             }
@@ -127,15 +377,23 @@
       const fetchData = () => {
         google.script.run
           .withSuccessHandler((response) => {
-            // Parse the stringified JSON back into a JavaScript object
             const payload = JSON.parse(response);
 
-            currentUserEmail.value = payload.currentUserEmail;
+            currentUserEmail.value = normalizeEmail(payload.currentUserEmail);
             users.value = payload.users;
             projects.value = payload.projects;
             tasks.value = payload.tasks;
             assignments.value = payload.assignments;
+            comments.value = payload.comments || [];
             loading.value = false;
+
+            if (payload.requiresAccountSetup) {
+              const fallbackName = currentUserEmail.value.split('@')[0] || '';
+              createAccountForm.value.name = fallbackName;
+              showCreateAccountModal.value = true;
+            } else {
+              showCreateAccountModal.value = false;
+            }
           })
           .withFailureHandler((error) => {
             console.error('Failed to load data:', error);
@@ -144,51 +402,669 @@
           .getInitialPayload();
       };
 
-      const getTasksForProject = (projectId) => {
-        return tasks.value.filter(t => t.Project_ID === projectId);
+      const createAccount = () => {
+        const trimmedName = createAccountForm.value.name.trim();
+        if (!trimmedName) {
+          alert('Please enter your name.');
+          return;
+        }
+
+        creatingAccount.value = true;
+        google.script.run
+          .withSuccessHandler((response) => {
+            creatingAccount.value = false;
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (!result || !result.success || !result.user) {
+              alert(result?.error || 'Failed to create account.');
+              return;
+            }
+
+            const existingUserIndex = users.value.findIndex((user) => user.User_ID === result.user.User_ID);
+            if (existingUserIndex >= 0) {
+              users.value.splice(existingUserIndex, 1, result.user);
+            } else {
+              users.value.push(result.user);
+            }
+
+            showCreateAccountModal.value = false;
+          })
+          .withFailureHandler((error) => {
+            creatingAccount.value = false;
+            console.error('Failed to create account:', error);
+            alert('Error creating account.');
+          })
+          .addUser({
+            email: currentUserEmail.value,
+            name: trimmedName,
+            managerId: createAccountForm.value.managerId,
+          });
       };
 
+<<<<<<< ours
+=======
+      const priorityOptions = ['Highest', 'High', 'Medium', 'Low', 'Lowest'];
+      const legacyPriorityByScore = {
+        5: 'Highest',
+        4: 'High',
+        3: 'Medium',
+        2: 'Low',
+        1: 'Lowest'
+      };
+      const priorityRank = {
+        Highest: 5,
+        High: 4,
+        Medium: 3,
+        Low: 2,
+        Lowest: 1
+      };
+
+      const normalizePriority = (priorityValue) => {
+        if (priorityValue === null || priorityValue === undefined || priorityValue === '') return '';
+        if (typeof priorityValue === 'number' && Number.isInteger(priorityValue)) {
+          return legacyPriorityByScore[priorityValue] || '';
+        }
+
+        const trimmedValue = priorityValue.toString().trim();
+        if (!trimmedValue) return '';
+
+        if (priorityRank[trimmedValue]) return trimmedValue;
+
+        const numericPriority = Number(trimmedValue);
+        if (Number.isInteger(numericPriority)) {
+          return legacyPriorityByScore[numericPriority] || '';
+        }
+
+        return '';
+      };
+
+      const getPriorityRank = (priorityValue) => priorityRank[normalizePriority(priorityValue)] || Number.NEGATIVE_INFINITY;
+
+      const compareTasksByPriority = (leftTask, rightTask) => {
+        const normalizedLeftPriority = getPriorityRank(leftTask?.Priority);
+        const normalizedRightPriority = getPriorityRank(rightTask?.Priority);
+        if (normalizedLeftPriority !== normalizedRightPriority) {
+          return normalizedRightPriority - normalizedLeftPriority;
+        }
+
+        const leftDueDate = new Date(leftTask?.Due_Date || 0).getTime();
+        const rightDueDate = new Date(rightTask?.Due_Date || 0).getTime();
+        return leftDueDate - rightDueDate;
+      };
+
+>>>>>>> theirs
+      const getTasksForProject = (projectId) =>
+        visibleTasks.value.filter((task) => idsMatch(task.Project_ID, projectId));
+
+      const getSupervisorTasksForProject = (projectId) =>
+        supervisorVisibleTasks.value.filter((task) => idsMatch(task.Project_ID, projectId));
+
+      const normalizeEmail = (email) => (email || '').toString().trim().toLowerCase();
+      const normalizeId = (value) => (value === null || value === undefined ? '' : value.toString().trim());
+      const idsMatch = (left, right) => normalizeId(left) !== '' && normalizeId(left) === normalizeId(right);
+
       const getAssigneesForTask = (taskId) => {
-        // Find assignments for this task (using Topic_ID/Assignment_ID alias concept from README)
-        const taskAssignments = assignments.value.filter(a => a.Assignment_ID === taskId);
-        // Map assignee IDs to actual User objects
-        return taskAssignments.map(a => users.value.find(u => u.User_ID === a.Assignee_ID)).filter(Boolean);
+        const taskAssignments = assignments.value.filter((a) => idsMatch(a.Assignment_ID, taskId));
+        return taskAssignments.map((a) => users.value.find((u) => idsMatch(u.User_ID, a.Assignee_ID))).filter(Boolean);
+      };
+
+      const getProjectById = (projectId) => projects.value.find((p) => idsMatch(p.Project_ID, projectId)) || null;
+      const getUserById = (userId) => users.value.find((u) => idsMatch(u.User_ID, userId)) || null;
+
+      const toggleWorkVisibility = () => {
+        showAllWorkItems.value = !showAllWorkItems.value;
+      };
+
+      const setActiveTab = (tabId) => {
+        currentTab.value = tabId;
+        if (tabId !== 'supervisor-view') {
+          showSupervisorUserDropdown.value = false;
+        }
+      };
+
+      const toggleSupervisorUserSelection = (userId) => {
+        const selectedUserIds = selectedSupervisorUserIds.value;
+        const index = selectedUserIds.findIndex((selectedId) => idsMatch(selectedId, userId));
+        if (index >= 0) {
+          selectedUserIds.splice(index, 1);
+        } else {
+          selectedUserIds.push(userId);
+        }
+      };
+
+      const isSupervisorUserSelected = (userId) => {
+        return selectedSupervisorUserIds.value.some((selectedId) => idsMatch(selectedId, userId));
       };
 
       const statusColor = (status) => {
         const colors = {
           'Not Started': 'bg-gray-100 text-gray-600',
           'In Progress': 'bg-[#DB0000]/10 text-[#DB0000]',
-          'Completed': 'bg-green-100 text-green-700',
-          'Delayed': 'bg-[#C41425]/10 text-[#C41425]'
+          Completed: 'bg-green-100 text-green-700',
+          Delayed: 'bg-[#C41425]/10 text-[#C41425]'
         };
         return colors[status] || 'bg-gray-100 text-gray-600';
       };
 
       const getInitials = (name) => {
         if (!name) return '';
-        return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+        return name
+          .split(' ')
+          .map((n) => n[0])
+          .join('')
+          .substring(0, 2)
+          .toUpperCase();
       };
 
       const formatDate = (dateString) => {
+        if (!dateString) return '—';
+        const date = new Date(dateString);
+        if (Number.isNaN(date.getTime())) return '—';
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      };
+
+      const formatDateForInput = (dateString) => {
         if (!dateString) return '';
         const date = new Date(dateString);
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        if (Number.isNaN(date.getTime())) return '';
+        return date.toISOString().split('T')[0];
+      };
+
+      const isPastDueDate = (dueDateValue) => {
+        if (!dueDateValue) return false;
+        const dueDate = new Date(dueDateValue);
+        if (Number.isNaN(dueDate.getTime())) return false;
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const normalizedDueDate = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
+        return normalizedDueDate.getTime() < startOfToday.getTime();
+      };
+
+      const shouldStrikeTask = (task) => task?.Status === 'Completed' && !isPastDueDate(task?.Due_Date);
+
+<<<<<<< ours
+=======
+      const priorityIconClass = (priorityValue) => {
+        const normalizedPriority = normalizePriority(priorityValue);
+        if (!normalizedPriority) return 'fa-bolt text-gray-400';
+        if (normalizedPriority === 'Highest') return 'fa-bolt text-[#DB0000]';
+        if (normalizedPriority === 'High' || normalizedPriority === 'Medium') return 'fa-bolt text-amber-500';
+        return 'fa-bolt text-emerald-500';
+      };
+
+>>>>>>> theirs
+      const buildTaskDetailsForm = (task) => {
+        return {
+          taskId: task.Task_ID,
+          taskTitle: task.Task_Title || '',
+          description: task.Description || '',
+          status: task.Status || 'Not Started',
+          priority: normalizePriority(task.Priority),
+          createdDate: task.Created_Date || '',
+          dueDate: formatDateForInput(task.Due_Date),
+          projectId: task.Project_ID || '',
+          assigneeIds: getAssigneesForTask(task.Task_ID).map((u) => u.User_ID)
+        };
+      };
+
+      const buildProjectDetailsForm = (project) => {
+        return {
+          projectId: project.Project_ID,
+          projectTitle: project.Project_Title || '',
+          description: project.Description || '',
+          status: project.Status || 'Not Started',
+          createdDate: project.Created_Date || '',
+          dueDate: formatDateForInput(project.Due_Date),
+          creatorId: project.Creator_ID || ''
+        };
       };
 
       const openTaskInfo = (task) => {
-        // Placeholder for the detailed modal you requested (comments, drive links, etc.)
-        console.log('Opening task modal for:', task.Task_Title);
-        alert(`Opening details for: ${task.Task_Title}\n(Next Step: Build the Task Detail Modal!)`);
+        taskDetailsForm.value = buildTaskDetailsForm(task);
+        isEditingTask.value = false;
+        showTaskDetailsAssigneeDropdown.value = false;
+        showTaskDetailsModal.value = true;
+      };
+
+      const openTaskComments = (task) => {
+        commentModalTask.value = task;
+        activeCommentTaskId.value = task?.Task_ID || '';
+        commentDraft.value = '';
+        showMentionSuggestions.value = false;
+        mentionQuery.value = '';
+        mentionStartIndex.value = -1;
+        mentionCursorIndex.value = -1;
+        showCommentModal.value = true;
+        nextTick(() => {
+          if (quickCommentTextarea.value) {
+            quickCommentTextarea.value.focus();
+          }
+        });
+      };
+
+      const closeCommentModal = () => {
+        if (creatingComment.value) return;
+        showCommentModal.value = false;
+        commentModalTask.value = null;
+        activeCommentTaskId.value = '';
+        commentDraft.value = '';
+        showMentionSuggestions.value = false;
+        mentionQuery.value = '';
+        mentionStartIndex.value = -1;
+        mentionCursorIndex.value = -1;
+      };
+
+      const openProjectInfo = (project) => {
+        projectDetailsForm.value = buildProjectDetailsForm(project);
+        isEditingProject.value = false;
+        showProjectDetailsModal.value = true;
+      };
+
+      const closeProjectInfo = () => {
+        if (deletingProject.value || savingProject.value) return;
+        showProjectDetailsModal.value = false;
+        isEditingProject.value = false;
+        projectDetailsForm.value = null;
+      };
+
+      const enableProjectEdit = () => {
+        isEditingProject.value = true;
+      };
+
+      const cancelProjectEdit = () => {
+        if (!projectDetailsForm.value) return;
+        const latestProject = projects.value.find((p) => p.Project_ID === projectDetailsForm.value.projectId);
+        if (latestProject) {
+          projectDetailsForm.value = buildProjectDetailsForm(latestProject);
+        }
+        isEditingProject.value = false;
+      };
+
+      const closeTaskInfo = () => {
+        if (savingTask.value) return;
+        showTaskDetailsModal.value = false;
+        showTaskDetailsAssigneeDropdown.value = false;
+        isEditingTask.value = false;
+        taskDetailsForm.value = null;
+      };
+
+      const getCommentCountForTask = (taskId) => {
+        return comments.value.filter((comment) => idsMatch(comment.Topic_ID, taskId)).length;
+      };
+
+      const getCommentAuthor = (comment) => {
+        return getUserById(comment?.Commenter_ID);
+      };
+
+      const formatCommentTimestamp = (timestamp) => {
+        if (!timestamp) return '—';
+        const date = new Date(timestamp);
+        if (Number.isNaN(date.getTime())) return '—';
+        return date.toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit'
+        });
+      };
+
+      const addComment = () => {
+        if (!activeCommentTaskId.value) return;
+        const trimmedContent = commentDraft.value.trim();
+        if (!trimmedContent) {
+          alert('Please enter a comment before posting.');
+          return;
+        }
+
+        creatingComment.value = true;
+        google.script.run
+          .withSuccessHandler((response) => {
+            creatingComment.value = false;
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (!result || !result.success || !result.comment) {
+              alert(result?.error || 'Failed to add comment.');
+              return;
+            }
+            comments.value.push(result.comment);
+            commentDraft.value = '';
+            showMentionSuggestions.value = false;
+          })
+          .withFailureHandler((error) => {
+            creatingComment.value = false;
+            console.error('Failed to add comment:', error);
+            alert('Error adding comment.');
+          })
+          .addComment(activeCommentTaskId.value, {
+            content: trimmedContent
+          });
+      };
+
+      const updateMentionSuggestions = (event) => {
+        const cursorIndex = event?.target?.selectionStart ?? commentDraft.value.length;
+        mentionCursorIndex.value = cursorIndex;
+        const beforeCursor = commentDraft.value.slice(0, cursorIndex);
+        const match = beforeCursor.match(/(^|\s)@([a-zA-Z0-9._-]*)$/);
+        if (!match) {
+          showMentionSuggestions.value = false;
+          mentionQuery.value = '';
+          mentionStartIndex.value = -1;
+          return;
+        }
+
+        mentionQuery.value = (match[2] || '').toLowerCase();
+        mentionStartIndex.value = cursorIndex - mentionQuery.value.length - 1;
+        showMentionSuggestions.value = true;
+      };
+
+      const applyMentionSuggestion = (handle) => {
+        if (!handle || mentionStartIndex.value < 0) return;
+        const cursorIndex = mentionCursorIndex.value >= 0 ? mentionCursorIndex.value : commentDraft.value.length;
+        const before = commentDraft.value.slice(0, mentionStartIndex.value);
+        const after = commentDraft.value.slice(cursorIndex);
+        commentDraft.value = `${before}@${handle} ${after}`;
+        showMentionSuggestions.value = false;
+        mentionQuery.value = '';
+        mentionStartIndex.value = -1;
+
+        nextTick(() => {
+          if (!quickCommentTextarea.value) return;
+          quickCommentTextarea.value.focus();
+          const nextCursor = `${before}@${handle} `.length;
+          quickCommentTextarea.value.setSelectionRange(nextCursor, nextCursor);
+        });
+      };
+
+      const resolveComment = (commentId) => {
+        if (!commentId || resolvingCommentIds.value.includes(commentId)) return;
+        resolvingCommentIds.value.push(commentId);
+
+        google.script.run
+          .withSuccessHandler((response) => {
+            resolvingCommentIds.value = resolvingCommentIds.value.filter((id) => id !== commentId);
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (!result || !result.success) {
+              alert(result?.error || 'Failed to resolve comment.');
+              return;
+            }
+            comments.value = comments.value.filter((comment) => !idsMatch(comment.Comment_ID, commentId));
+          })
+          .withFailureHandler((error) => {
+            resolvingCommentIds.value = resolvingCommentIds.value.filter((id) => id !== commentId);
+            console.error('Failed to resolve comment:', error);
+            alert('Error resolving comment.');
+          })
+          .resolveComment(commentId);
+      };
+
+      const deleteComment = (commentId) => {
+        if (!commentId || deletingCommentIds.value.includes(commentId)) return;
+        const confirmed = confirm('Delete this comment?');
+        if (!confirmed) return;
+
+        deletingCommentIds.value.push(commentId);
+        google.script.run
+          .withSuccessHandler((response) => {
+            deletingCommentIds.value = deletingCommentIds.value.filter((id) => id !== commentId);
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (!result || !result.success) {
+              alert(result?.error || 'Failed to delete comment.');
+              return;
+            }
+            comments.value = comments.value.filter((comment) => !idsMatch(comment.Comment_ID, commentId));
+          })
+          .withFailureHandler((error) => {
+            deletingCommentIds.value = deletingCommentIds.value.filter((id) => id !== commentId);
+            console.error('Failed to delete comment:', error);
+            alert('Error deleting comment.');
+          })
+          .deleteComment(commentId);
+      };
+
+      const enableTaskEdit = () => {
+        isEditingTask.value = true;
+      };
+
+      const cancelTaskEdit = () => {
+        if (!taskDetailsForm.value) return;
+        const latestTask = tasks.value.find((t) => t.Task_ID === taskDetailsForm.value.taskId);
+        if (latestTask) {
+          taskDetailsForm.value = buildTaskDetailsForm(latestTask);
+        }
+        isEditingTask.value = false;
+        showTaskDetailsAssigneeDropdown.value = false;
+      };
+
+      const toggleTaskDetailsAssignee = (userId) => {
+        if (!taskDetailsForm.value || !isEditingTask.value) return;
+        const assignableIdSet = new Set(assignableUsers.value.map((user) => normalizeId(user?.User_ID)).filter(Boolean));
+        if (!assignableIdSet.has(normalizeId(userId))) return;
+        const selectedAssignees = taskDetailsForm.value.assigneeIds;
+        const index = selectedAssignees.indexOf(userId);
+        if (index >= 0) {
+          selectedAssignees.splice(index, 1);
+        } else {
+          selectedAssignees.push(userId);
+        }
+      };
+
+      const isTaskDetailsAssigneeSelected = (userId) => (taskDetailsForm.value?.assigneeIds || []).includes(userId);
+
+      const saveTaskEdits = () => {
+        if (!taskDetailsForm.value) return;
+
+        const trimmedTitle = taskDetailsForm.value.taskTitle.trim();
+        if (!trimmedTitle) {
+          alert('Task title cannot be empty.');
+          return;
+        }
+
+        savingTask.value = true;
+
+        google.script.run
+          .withSuccessHandler((response) => {
+            savingTask.value = false;
+
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (!result || !result.success) {
+              alert(result?.error || 'Failed to update task.');
+              return;
+            }
+
+            const updatedTask = result.task;
+            const taskIndex = tasks.value.findIndex((t) => t.Task_ID === updatedTask.Task_ID);
+            if (taskIndex >= 0) {
+              tasks.value.splice(taskIndex, 1, updatedTask);
+            }
+
+            assignments.value = assignments.value.filter((a) => a.Assignment_ID !== updatedTask.Task_ID);
+            if (Array.isArray(result.assignments) && result.assignments.length > 0) {
+              assignments.value.push(...result.assignments);
+            }
+
+            taskDetailsForm.value = buildTaskDetailsForm(updatedTask);
+            isEditingTask.value = false;
+            showTaskDetailsAssigneeDropdown.value = false;
+          })
+          .withFailureHandler((error) => {
+            savingTask.value = false;
+            console.error('Failed to update task:', error);
+            alert('Error updating task.');
+          })
+          .updateTask(taskDetailsForm.value.taskId, {
+            taskTitle: trimmedTitle,
+            dueDate: taskDetailsForm.value.dueDate,
+            status: taskDetailsForm.value.status,
+            description: taskDetailsForm.value.description,
+            priority: taskDetailsForm.value.priority,
+            assigneeIds: taskDetailsForm.value.assigneeIds,
+            projectId: taskDetailsForm.value.projectId
+          });
+      };
+
+      const deleteTask = () => {
+        if (!taskDetailsForm.value?.taskId || savingTask.value || deletingTask.value) return;
+
+        const confirmed = confirm('Are you sure you want to delete this task? This action cannot be undone.');
+        if (!confirmed) return;
+
+        deletingTask.value = true;
+
+        google.script.run
+          .withSuccessHandler((response) => {
+            deletingTask.value = false;
+
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (!result || !result.success) {
+              alert(result?.error || 'Failed to delete task.');
+              return;
+            }
+
+            const deletedTaskId = result.taskId;
+            tasks.value = tasks.value.filter((task) => !idsMatch(task.Task_ID, deletedTaskId));
+            assignments.value = assignments.value.filter((assignment) => !idsMatch(assignment.Assignment_ID, deletedTaskId));
+
+            closeTaskInfo();
+          })
+          .withFailureHandler((error) => {
+            deletingTask.value = false;
+            console.error('Failed to delete task:', error);
+            alert('Error deleting task.');
+          })
+          .deleteTask(taskDetailsForm.value.taskId);
+      };
+
+      const completeTask = () => {
+        if (!taskDetailsForm.value?.taskId || savingTask.value || deletingTask.value || completingTask.value) return;
+
+        completingTask.value = true;
+
+        google.script.run
+          .withSuccessHandler((response) => {
+            completingTask.value = false;
+
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (!result || !result.success) {
+              alert(result?.error || 'Failed to complete task.');
+              return;
+            }
+
+            if (result.deleted) {
+              const deletedTaskId = result.taskId;
+              tasks.value = tasks.value.filter((task) => !idsMatch(task.Task_ID, deletedTaskId));
+              assignments.value = assignments.value.filter((assignment) => !idsMatch(assignment.Assignment_ID, deletedTaskId));
+              closeTaskInfo();
+              return;
+            }
+
+            if (result.task) {
+              const taskIndex = tasks.value.findIndex((task) => idsMatch(task.Task_ID, result.task.Task_ID));
+              if (taskIndex >= 0) {
+                tasks.value.splice(taskIndex, 1, result.task);
+              } else {
+                tasks.value.push(result.task);
+              }
+              taskDetailsForm.value = buildTaskDetailsForm(result.task);
+            }
+          })
+          .withFailureHandler((error) => {
+            completingTask.value = false;
+            console.error('Failed to complete task:', error);
+            alert('Error completing task.');
+          })
+          .completeTask(taskDetailsForm.value.taskId);
+      };
+      
+      const deleteProject = () => {
+        if (!projectDetailsForm.value?.projectId || deletingProject.value || savingProject.value) return;
+
+        const confirmed = confirm(
+          'Are you sure you want to delete this project? All tasks in this project and their assignments will also be deleted.'
+        );
+        if (!confirmed) return;
+
+        deletingProject.value = true;
+
+        google.script.run
+          .withSuccessHandler((response) => {
+            deletingProject.value = false;
+
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (!result || !result.success) {
+              alert(result?.error || 'Failed to delete project.');
+              return;
+            }
+
+            const deletedProjectId = result.projectId;
+            projects.value = projects.value.filter((project) => !idsMatch(project.Project_ID, deletedProjectId));
+
+            if (Array.isArray(result.deletedTaskIds) && result.deletedTaskIds.length > 0) {
+              tasks.value = tasks.value.filter(
+                (task) => !result.deletedTaskIds.some((taskId) => idsMatch(task.Task_ID, taskId))
+              );
+              assignments.value = assignments.value.filter(
+                (assignment) => !result.deletedTaskIds.some((taskId) => idsMatch(assignment.Assignment_ID, taskId))
+              );
+            }
+
+            closeProjectInfo();
+          })
+          .withFailureHandler((error) => {
+            deletingProject.value = false;
+            console.error('Failed to delete project:', error);
+            alert('Error deleting project.');
+          })
+          .deleteProject(projectDetailsForm.value.projectId);
+      };
+
+      const saveProjectEdits = () => {
+        if (!projectDetailsForm.value?.projectId) return;
+
+        const trimmedTitle = projectDetailsForm.value.projectTitle.trim();
+        if (!trimmedTitle) {
+          alert('Project title cannot be empty.');
+          return;
+        }
+
+        savingProject.value = true;
+
+        google.script.run
+          .withSuccessHandler((response) => {
+            savingProject.value = false;
+
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (!result || !result.success || !result.project) {
+              alert(result?.error || 'Failed to update project.');
+              return;
+            }
+
+            const updatedProject = result.project;
+            const projectIndex = projects.value.findIndex((p) => idsMatch(p.Project_ID, updatedProject.Project_ID));
+            if (projectIndex >= 0) {
+              projects.value.splice(projectIndex, 1, updatedProject);
+            }
+
+            projectDetailsForm.value = buildProjectDetailsForm(updatedProject);
+            isEditingProject.value = false;
+          })
+          .withFailureHandler((error) => {
+            savingProject.value = false;
+            console.error('Failed to update project:', error);
+            alert('Error updating project.');
+          })
+          .updateProject(projectDetailsForm.value.projectId, {
+            projectTitle: trimmedTitle,
+            dueDate: projectDetailsForm.value.dueDate,
+            status: projectDetailsForm.value.status,
+            description: projectDetailsForm.value.description
+          });
       };
 
       const resetTaskForm = () => {
         newTaskForm.value = {
           taskTitle: '',
           dueDate: '',
-          complexity: null,
           description: '',
-          priority: null,
+          priority: '',
           assigneeIds: []
         };
       };
@@ -215,6 +1091,8 @@
       const openAddTask = (project) => {
         selectedProject.value = project;
         resetTaskForm();
+        const assignableIdSet = new Set(assignableUsers.value.map((user) => normalizeId(user?.User_ID)).filter(Boolean));
+        newTaskForm.value.assigneeIds = newTaskForm.value.assigneeIds.filter((id) => assignableIdSet.has(normalizeId(id)));
         showAssigneeDropdown.value = false;
         showAddTaskModal.value = true;
       };
@@ -226,15 +1104,13 @@
         selectedProject.value = null;
       };
 
-      const setComplexity = (value) => {
-        newTaskForm.value.complexity = value;
-      };
-
       const setPriority = (value) => {
         newTaskForm.value.priority = value;
       };
 
       const toggleAssignee = (userId) => {
+        const assignableIdSet = new Set(assignableUsers.value.map((user) => normalizeId(user?.User_ID)).filter(Boolean));
+        if (!assignableIdSet.has(normalizeId(userId))) return;
         const selectedAssignees = newTaskForm.value.assigneeIds;
         const index = selectedAssignees.indexOf(userId);
         if (index >= 0) {
@@ -245,16 +1121,6 @@
       };
 
       const isAssigneeSelected = (userId) => newTaskForm.value.assigneeIds.includes(userId);
-
-      const assigneeSummary = computed(() => {
-        const count = newTaskForm.value.assigneeIds.length;
-        if (count === 0) return 'Select assignees';
-        if (count === 1) {
-          const selectedUser = users.value.find((u) => u.User_ID === newTaskForm.value.assigneeIds[0]);
-          return selectedUser ? selectedUser.Name : '1 assignee selected';
-        }
-        return `${count} assignees selected`;
-      });
 
       const createTask = () => {
         const trimmedTitle = newTaskForm.value.taskTitle.trim();
@@ -299,7 +1165,6 @@
           .createTask(selectedProject.value.Project_ID, {
             taskTitle: trimmedTitle,
             dueDate: newTaskForm.value.dueDate,
-            complexity: newTaskForm.value.complexity,
             description: newTaskForm.value.description,
             priority: newTaskForm.value.priority,
             assigneeIds: newTaskForm.value.assigneeIds
@@ -354,7 +1219,78 @@
         isDarkMode.value = !isDarkMode.value;
       };
 
-      // Lifecycle hooks
+      const buildProfileForm = () => ({
+        name: currentUser.value?.Name || '',
+        email: currentUser.value?.Email || ''
+      });
+
+      const openProfileModal = () => {
+        profileForm.value = buildProfileForm();
+        isEditingProfile.value = false;
+        showProfileModal.value = true;
+        isUserMenuOpen.value = false;
+      };
+
+      const closeProfileModal = () => {
+        if (savingProfile.value) return;
+        showProfileModal.value = false;
+        isEditingProfile.value = false;
+      };
+
+      const enableProfileEdit = () => {
+        isEditingProfile.value = true;
+      };
+
+      const cancelProfileEdit = () => {
+        profileForm.value = buildProfileForm();
+        isEditingProfile.value = false;
+      };
+
+      const saveProfile = () => {
+        const trimmedName = (profileForm.value?.name || '').trim();
+        const trimmedEmail = (profileForm.value?.email || '').trim();
+        if (!trimmedName) {
+          alert('Name is required.');
+          return;
+        }
+        if (!trimmedEmail) {
+          alert('Email is required.');
+          return;
+        }
+
+        savingProfile.value = true;
+        google.script.run
+          .withSuccessHandler((response) => {
+            savingProfile.value = false;
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (!result || !result.success || !result.user) {
+              alert(result?.error || 'Failed to update profile.');
+              return;
+            }
+
+            const updatedUser = result.user;
+            const userIndex = users.value.findIndex((u) => idsMatch(u.User_ID, updatedUser.User_ID));
+            if (userIndex >= 0) {
+              users.value.splice(userIndex, 1, updatedUser);
+            } else {
+              users.value.push(updatedUser);
+            }
+
+            currentUserEmail.value = updatedUser.Email || trimmedEmail;
+            profileForm.value = buildProfileForm();
+            isEditingProfile.value = false;
+          })
+          .withFailureHandler((error) => {
+            savingProfile.value = false;
+            console.error('Failed to update profile:', error);
+            alert('Error updating profile.');
+          })
+          .updateCurrentUserProfile({
+            name: trimmedName,
+            email: trimmedEmail
+          });
+      };
+
       onMounted(() => {
         fetchData();
         makeLogoTransparent();
@@ -363,38 +1299,125 @@
       return {
         loading,
         isDarkMode,
+        currentTab,
         isUserMenuOpen,
+        showCreateAccountModal,
+        createAccountForm,
+        creatingAccount,
+        managerOptions,
         currentUser,
+        users,
         projects,
         tasks,
+        visibleProjects,
+        directReportUsers,
+        supervisorVisibleProjects,
+        supervisorVisibleTasks,
+        showSupervisorUserDropdown,
+        selectedSupervisorUserIds,
+        supervisorUserSummary,
+        showAllWorkItems,
+        comments,
+        taskComments,
+        commentDraft,
+        creatingComment,
+        showCommentModal,
+        commentModalTask,
+        activeCommentTaskId,
+        showMentionSuggestions,
+        filteredMentionSuggestions,
+        quickCommentTextarea,
+        resolvingCommentIds,
+        deletingCommentIds,
+        showProfileModal,
+        isEditingProfile,
+        savingProfile,
+        profileForm,
         showAddTaskModal,
         showAddProjectModal,
         selectedProject,
         creatingTask,
         creatingProject,
-        users,
         showAssigneeDropdown,
         assigneeSummary,
+        assignableUsers,
         newTaskForm,
         newProjectForm,
+        showTaskDetailsModal,
+        taskDetailsForm,
+        showTaskDetailsAssigneeDropdown,
+        taskDetailsAssigneeSummary,
+        taskDetailsAssigneeUsers,
+        isEditingTask,
+        savingTask,
+        deletingTask,
+        completingTask,
+        showProjectDetailsModal,
+        projectDetailsForm,
+        deletingProject,
+        isEditingProject,
+        savingProject,
+        projectDetailsCreator,
         getTasksForProject,
+        getSupervisorTasksForProject,
         getAssigneesForTask,
+        getProjectById,
         statusColor,
         getInitials,
         formatDate,
+        shouldStrikeTask,
+<<<<<<< ours
+=======
+        priorityIconClass,
+        normalizePriority,
+        priorityOptions,
+>>>>>>> theirs
         openTaskInfo,
+        openTaskComments,
+        closeCommentModal,
+        openProjectInfo,
         openAddProject,
         closeAddProject,
+        closeTaskInfo,
+        closeProjectInfo,
+        enableProjectEdit,
+        cancelProjectEdit,
+        enableTaskEdit,
+        cancelTaskEdit,
+        toggleTaskDetailsAssignee,
+        isTaskDetailsAssigneeSelected,
+        saveTaskEdits,
+        deleteTask,
+        completeTask,
+        deleteProject,
+        saveProjectEdits,
         openAddTask,
         closeAddTask,
-        setComplexity,
         setPriority,
         toggleAssignee,
         isAssigneeSelected,
         createTask,
         createProject,
+        getCommentAuthor,
+        getCommentCountForTask,
+        formatCommentTimestamp,
+        toggleWorkVisibility,
+        setActiveTab,
+        toggleSupervisorUserSelection,
+        isSupervisorUserSelected,
+        updateMentionSuggestions,
+        applyMentionSuggestion,
+        addComment,
+        resolveComment,
+        deleteComment,
+        createAccount,
         toggleUserMenu,
-        toggleDarkMode
+        toggleDarkMode,
+        openProfileModal,
+        closeProfileModal,
+        enableProfileEdit,
+        cancelProfileEdit,
+        saveProfile
       };
     }
   }).mount('#app');
