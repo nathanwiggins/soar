@@ -55,8 +55,9 @@
       const newTaskForm = ref({
         taskTitle: '',
         dueDate: '',
+        complexity: null,
         description: '',
-        priority: '',
+        priority: null,
         assigneeIds: []
       });
       const newProjectForm = ref({
@@ -290,95 +291,6 @@
         });
       });
 
-      const calendarDayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-      const currentTabTitle = computed(() => {
-        if (currentTab.value === 'supervisor-view') return 'Supervisor View';
-        if (currentTab.value === 'calendar') return 'Calendar';
-        return 'Project Board';
-      });
-
-      const calendarCurrentMonthStart = computed(() => {
-        const today = new Date();
-        return new Date(today.getFullYear(), today.getMonth(), 1);
-      });
-
-      const calendarMonthLabel = computed(() => {
-        return calendarCurrentMonthStart.value.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-      });
-
-      const parseDateParts = (dateValue) => {
-        if (!dateValue) return null;
-        const rawDate = dateValue.toString().trim();
-        if (!rawDate) return null;
-        const matchedIsoDate = rawDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
-        if (matchedIsoDate) {
-          return {
-            year: Number(matchedIsoDate[1]),
-            monthIndex: Number(matchedIsoDate[2]) - 1,
-            day: Number(matchedIsoDate[3])
-          };
-        }
-
-        const parsedDate = new Date(rawDate);
-        if (Number.isNaN(parsedDate.getTime())) return null;
-        return {
-          year: parsedDate.getFullYear(),
-          monthIndex: parsedDate.getMonth(),
-          day: parsedDate.getDate()
-        };
-      };
-
-      const buildDateKey = (year, monthIndex, day) =>
-        `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-
-      const dueTasksByDateKey = computed(() => {
-        const projectTitlesById = new Map(
-          projects.value.map((project) => [normalizeId(project?.Project_ID), project?.Project_Title || ''])
-        );
-        const groupedTasks = new Map();
-
-        visibleTasks.value.forEach((task) => {
-          const parsedDueDate = parseDateParts(task?.Due_Date);
-          if (!parsedDueDate) return;
-          const dateKey = buildDateKey(parsedDueDate.year, parsedDueDate.monthIndex, parsedDueDate.day);
-          if (!groupedTasks.has(dateKey)) groupedTasks.set(dateKey, []);
-          groupedTasks.get(dateKey).push({
-            ...task,
-            Project_Title: projectTitlesById.get(normalizeId(task?.Project_ID)) || ''
-          });
-        });
-
-        return groupedTasks;
-      });
-
-      const calendarDays = computed(() => {
-        const monthStart = calendarCurrentMonthStart.value;
-        const year = monthStart.getFullYear();
-        const monthIndex = monthStart.getMonth();
-        const today = new Date();
-        const todayKey = buildDateKey(today.getFullYear(), today.getMonth(), today.getDate());
-        const firstWeekday = monthStart.getDay();
-        const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
-        const totalCells = Math.ceil((firstWeekday + daysInMonth) / 7) * 7;
-        const firstGridDate = new Date(year, monthIndex, 1 - firstWeekday);
-        const days = [];
-
-        for (let dayOffset = 0; dayOffset < totalCells; dayOffset += 1) {
-          const gridDate = new Date(firstGridDate.getFullYear(), firstGridDate.getMonth(), firstGridDate.getDate() + dayOffset);
-          const dayKey = buildDateKey(gridDate.getFullYear(), gridDate.getMonth(), gridDate.getDate());
-          days.push({
-            key: dayKey,
-            dayNumber: gridDate.getDate(),
-            isCurrentMonth: gridDate.getMonth() === monthIndex,
-            isToday: dayKey === todayKey,
-            tasks: dueTasksByDateKey.value.get(dayKey) || []
-          });
-        }
-
-        return days;
-      });
-
       // Methods
       const makeLogoTransparent = () => {
         const logo = document.querySelector('.soar-logo');
@@ -529,58 +441,6 @@
           });
       };
 
-<<<<<<< ours
-=======
-      const priorityOptions = ['Highest', 'High', 'Medium', 'Low', 'Lowest'];
-      const legacyPriorityByScore = {
-        5: 'Highest',
-        4: 'High',
-        3: 'Medium',
-        2: 'Low',
-        1: 'Lowest'
-      };
-      const priorityRank = {
-        Highest: 5,
-        High: 4,
-        Medium: 3,
-        Low: 2,
-        Lowest: 1
-      };
-
-      const normalizePriority = (priorityValue) => {
-        if (priorityValue === null || priorityValue === undefined || priorityValue === '') return '';
-        if (typeof priorityValue === 'number' && Number.isInteger(priorityValue)) {
-          return legacyPriorityByScore[priorityValue] || '';
-        }
-
-        const trimmedValue = priorityValue.toString().trim();
-        if (!trimmedValue) return '';
-
-        if (priorityRank[trimmedValue]) return trimmedValue;
-
-        const numericPriority = Number(trimmedValue);
-        if (Number.isInteger(numericPriority)) {
-          return legacyPriorityByScore[numericPriority] || '';
-        }
-
-        return '';
-      };
-
-      const getPriorityRank = (priorityValue) => priorityRank[normalizePriority(priorityValue)] || Number.NEGATIVE_INFINITY;
-
-      const compareTasksByPriority = (leftTask, rightTask) => {
-        const normalizedLeftPriority = getPriorityRank(leftTask?.Priority);
-        const normalizedRightPriority = getPriorityRank(rightTask?.Priority);
-        if (normalizedLeftPriority !== normalizedRightPriority) {
-          return normalizedRightPriority - normalizedLeftPriority;
-        }
-
-        const leftDueDate = new Date(leftTask?.Due_Date || 0).getTime();
-        const rightDueDate = new Date(rightTask?.Due_Date || 0).getTime();
-        return leftDueDate - rightDueDate;
-      };
-
->>>>>>> theirs
       const getTasksForProject = (projectId) =>
         visibleTasks.value.filter((task) => idsMatch(task.Project_ID, projectId));
 
@@ -670,24 +530,14 @@
 
       const shouldStrikeTask = (task) => task?.Status === 'Completed' && !isPastDueDate(task?.Due_Date);
 
-<<<<<<< ours
-=======
-      const priorityIconClass = (priorityValue) => {
-        const normalizedPriority = normalizePriority(priorityValue);
-        if (!normalizedPriority) return 'fa-bolt text-gray-400';
-        if (normalizedPriority === 'Highest') return 'fa-bolt text-[#DB0000]';
-        if (normalizedPriority === 'High' || normalizedPriority === 'Medium') return 'fa-bolt text-amber-500';
-        return 'fa-bolt text-emerald-500';
-      };
-
->>>>>>> theirs
       const buildTaskDetailsForm = (task) => {
         return {
           taskId: task.Task_ID,
           taskTitle: task.Task_Title || '',
           description: task.Description || '',
           status: task.Status || 'Not Started',
-          priority: normalizePriority(task.Priority),
+          complexity: task.Complexity === '' || task.Complexity === null ? null : Number(task.Complexity),
+          priority: task.Priority === '' || task.Priority === null ? null : Number(task.Priority),
           createdDate: task.Created_Date || '',
           dueDate: formatDateForInput(task.Due_Date),
           projectId: task.Project_ID || '',
@@ -983,6 +833,7 @@
             taskTitle: trimmedTitle,
             dueDate: taskDetailsForm.value.dueDate,
             status: taskDetailsForm.value.status,
+            complexity: taskDetailsForm.value.complexity,
             description: taskDetailsForm.value.description,
             priority: taskDetailsForm.value.priority,
             assigneeIds: taskDetailsForm.value.assigneeIds,
@@ -1152,8 +1003,9 @@
         newTaskForm.value = {
           taskTitle: '',
           dueDate: '',
+          complexity: null,
           description: '',
-          priority: '',
+          priority: null,
           assigneeIds: []
         };
       };
@@ -1191,6 +1043,10 @@
         showAssigneeDropdown.value = false;
         showAddTaskModal.value = false;
         selectedProject.value = null;
+      };
+
+      const setComplexity = (value) => {
+        newTaskForm.value.complexity = value;
       };
 
       const setPriority = (value) => {
@@ -1254,6 +1110,7 @@
           .createTask(selectedProject.value.Project_ID, {
             taskTitle: trimmedTitle,
             dueDate: newTaskForm.value.dueDate,
+            complexity: newTaskForm.value.complexity,
             description: newTaskForm.value.description,
             priority: newTaskForm.value.priority,
             assigneeIds: newTaskForm.value.assigneeIds
@@ -1389,7 +1246,6 @@
         loading,
         isDarkMode,
         currentTab,
-        currentTabTitle,
         isUserMenuOpen,
         showCreateAccountModal,
         createAccountForm,
@@ -1403,9 +1259,6 @@
         directReportUsers,
         supervisorVisibleProjects,
         supervisorVisibleTasks,
-        calendarDayNames,
-        calendarMonthLabel,
-        calendarDays,
         showSupervisorUserDropdown,
         selectedSupervisorUserIds,
         supervisorUserSummary,
@@ -1459,12 +1312,6 @@
         getInitials,
         formatDate,
         shouldStrikeTask,
-<<<<<<< ours
-=======
-        priorityIconClass,
-        normalizePriority,
-        priorityOptions,
->>>>>>> theirs
         openTaskInfo,
         openTaskComments,
         closeCommentModal,
@@ -1486,6 +1333,7 @@
         saveProjectEdits,
         openAddTask,
         closeAddTask,
+        setComplexity,
         setPriority,
         toggleAssignee,
         isAssigneeSelected,

@@ -1,7 +1,7 @@
 /**
  * Main entry point for the web app.
  * Serves the Index.html file.
- * is version 2 even getting there
+ * asdfasdfasdfasdfasdf
  */
 function doGet() {
   return HtmlService.createTemplateFromFile('Index')
@@ -768,28 +768,14 @@ function updateTaskStatus(taskId, newStatus) {
   return { success: false, error: "Task not found" };
 }
 
-function normalizePriorityValue(value) {
+function normalizeScaleValue(value, fieldName) {
   if (value === null || value === undefined || value === '') return '';
 
-  const validPriorities = ['Highest', 'High', 'Medium', 'Low', 'Lowest'];
-  const legacyPriorityMap = {
-    5: 'Highest',
-    4: 'High',
-    3: 'Medium',
-    2: 'Low',
-    1: 'Lowest'
-  };
-  const stringValue = value.toString().trim();
-
-  if (!stringValue) return '';
-  if (validPriorities.includes(stringValue)) return stringValue;
-
-  const numericValue = Number(stringValue);
-  if (Number.isInteger(numericValue) && legacyPriorityMap[numericValue]) {
-    return legacyPriorityMap[numericValue];
+  const parsedValue = Number(value);
+  if (!Number.isInteger(parsedValue) || parsedValue < 1 || parsedValue > 5) {
+    throw new Error(`${fieldName} must be an integer between 1 and 5.`);
   }
-
-  throw new Error(`Priority must be one of: ${validPriorities.join(', ')}.`);
+  return parsedValue;
 }
 
 function normalizeStatusValue(value) {
@@ -970,7 +956,8 @@ function createTask(projectId, taskInput) {
     const now = new Date();
     const parsedDueDate = taskInput && taskInput.dueDate ? new Date(taskInput.dueDate) : '';
     const hasValidDueDate = parsedDueDate && parsedDueDate.toString() !== 'Invalid Date';
-    const priority = normalizePriorityValue(taskInput ? taskInput.priority : '');
+    const complexity = normalizeScaleValue(taskInput ? taskInput.complexity : '', 'Complexity');
+    const priority = normalizeScaleValue(taskInput ? taskInput.priority : '', 'Priority');
     const description = taskInput && taskInput.description ? taskInput.description.toString().trim() : '';
     const assigneeIds = getValidAssigneeIds(taskInput ? taskInput.assigneeIds : []);
     const normalizedProjectId = ensureProjectExists(projectId);
@@ -983,6 +970,7 @@ function createTask(projectId, taskInput) {
     if (headerIndex.Task_Title !== undefined) newRow[headerIndex.Task_Title] = taskTitle;
     if (headerIndex.Due_Date !== undefined) newRow[headerIndex.Due_Date] = hasValidDueDate ? parsedDueDate : '';
     if (headerIndex.Status !== undefined) newRow[headerIndex.Status] = 'Not Started';
+    if (headerIndex.Complexity !== undefined) newRow[headerIndex.Complexity] = complexity;
     if (headerIndex.Created_Date !== undefined) newRow[headerIndex.Created_Date] = now;
     if (headerIndex.Description !== undefined) newRow[headerIndex.Description] = description;
     if (headerIndex.Priority !== undefined) newRow[headerIndex.Priority] = priority;
@@ -1096,7 +1084,8 @@ function updateTask(taskId, taskInput) {
 
     const parsedDueDate = taskInput && taskInput.dueDate ? new Date(taskInput.dueDate) : '';
     const hasValidDueDate = parsedDueDate && parsedDueDate.toString() !== 'Invalid Date';
-    const priority = normalizePriorityValue(taskInput ? taskInput.priority : '');
+    const complexity = normalizeScaleValue(taskInput ? taskInput.complexity : '', 'Complexity');
+    const priority = normalizeScaleValue(taskInput ? taskInput.priority : '', 'Priority');
     const description = taskInput && taskInput.description ? taskInput.description.toString().trim() : '';
     const assigneeIds = getValidAssigneeIds(taskInput ? taskInput.assigneeIds : []);
     const status = normalizeTaskStatus(taskInput ? taskInput.status : '');
@@ -1107,6 +1096,7 @@ function updateTask(taskId, taskInput) {
     if (headerIndex.Task_Title !== undefined) sheet.getRange(taskRowIndex + 1, headerIndex.Task_Title + 1).setValue(taskTitle);
     if (headerIndex.Due_Date !== undefined) sheet.getRange(taskRowIndex + 1, headerIndex.Due_Date + 1).setValue(hasValidDueDate ? parsedDueDate : '');
     if (headerIndex.Status !== undefined) sheet.getRange(taskRowIndex + 1, headerIndex.Status + 1).setValue(status);
+    if (headerIndex.Complexity !== undefined) sheet.getRange(taskRowIndex + 1, headerIndex.Complexity + 1).setValue(complexity);
     if (headerIndex.Description !== undefined) sheet.getRange(taskRowIndex + 1, headerIndex.Description + 1).setValue(description);
     if (headerIndex.Priority !== undefined) sheet.getRange(taskRowIndex + 1, headerIndex.Priority + 1).setValue(priority);
 
