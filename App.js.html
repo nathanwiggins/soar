@@ -410,11 +410,31 @@
           });
       };
 
+      const compareTasksByPriority = (leftTask, rightTask) => {
+        const leftPriority = Number(leftTask?.Priority);
+        const rightPriority = Number(rightTask?.Priority);
+        const normalizedLeftPriority = Number.isFinite(leftPriority) ? leftPriority : Number.NEGATIVE_INFINITY;
+        const normalizedRightPriority = Number.isFinite(rightPriority) ? rightPriority : Number.NEGATIVE_INFINITY;
+        if (normalizedLeftPriority !== normalizedRightPriority) {
+          return normalizedRightPriority - normalizedLeftPriority;
+        }
+
+        const leftDueDate = new Date(leftTask?.Due_Date || 0).getTime();
+        const rightDueDate = new Date(rightTask?.Due_Date || 0).getTime();
+        return leftDueDate - rightDueDate;
+      };
+
       const getTasksForProject = (projectId) =>
-        visibleTasks.value.filter((task) => idsMatch(task.Project_ID, projectId));
+        visibleTasks.value
+          .filter((task) => idsMatch(task.Project_ID, projectId))
+          .slice()
+          .sort(compareTasksByPriority);
 
       const getSupervisorTasksForProject = (projectId) =>
-        supervisorVisibleTasks.value.filter((task) => idsMatch(task.Project_ID, projectId));
+        supervisorVisibleTasks.value
+          .filter((task) => idsMatch(task.Project_ID, projectId))
+          .slice()
+          .sort(compareTasksByPriority);
 
       const normalizeEmail = (email) => (email || '').toString().trim().toLowerCase();
       const normalizeId = (value) => (value === null || value === undefined ? '' : value.toString().trim());
@@ -498,6 +518,14 @@
       };
 
       const shouldStrikeTask = (task) => task?.Status === 'Completed' && !isPastDueDate(task?.Due_Date);
+
+      const complexityIconClass = (complexityValue) => {
+        const complexity = Number(complexityValue);
+        if (!Number.isFinite(complexity) || complexity <= 0) return 'fa-bolt text-gray-400';
+        if (complexity >= 5) return 'fa-bolt text-[#DB0000]';
+        if (complexity >= 3) return 'fa-bolt text-amber-500';
+        return 'fa-bolt text-emerald-500';
+      };
 
       const buildTaskDetailsForm = (task) => {
         return {
@@ -1274,6 +1302,7 @@
         getInitials,
         formatDate,
         shouldStrikeTask,
+        complexityIconClass,
         openTaskInfo,
         openTaskComments,
         closeCommentModal,

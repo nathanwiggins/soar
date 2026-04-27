@@ -283,15 +283,27 @@
                       <span v-else>{{ getInitials(assignee.Name) }}</span>
                     </div>
                   </div>
-                  <span
-                    v-if="task.Due_Date"
-                    :class="[
-                      isDarkMode ? 'text-gray-400' : 'text-gray-500',
-                      shouldStrikeTask(task) ? 'line-through opacity-70' : ''
-                    ]"
-                    class="text-xs font-medium">
-                    <i class="fa-regular fa-clock mr-1"></i> {{ formatDate(task.Due_Date) }}
-                  </span>
+                  <div class="flex items-center gap-3">
+                    <span
+                      :class="[
+                        isDarkMode ? 'text-gray-300' : 'text-gray-500',
+                        shouldStrikeTask(task) ? 'line-through opacity-70' : ''
+                      ]"
+                      class="text-xs font-semibold inline-flex items-center gap-1"
+                      :title="task.Complexity ? `Complexity: ${task.Complexity}/5` : 'Complexity not set'">
+                      <i class="fa-solid" :class="complexityIconClass(task.Complexity)"></i>
+                      <span>{{ task.Complexity || '—' }}</span>
+                    </span>
+                    <span
+                      v-if="task.Due_Date"
+                      :class="[
+                        isDarkMode ? 'text-gray-400' : 'text-gray-500',
+                        shouldStrikeTask(task) ? 'line-through opacity-70' : ''
+                      ]"
+                      class="text-xs font-medium">
+                      <i class="fa-regular fa-clock mr-1"></i> {{ formatDate(task.Due_Date) }}
+                    </span>
+                  </div>
                 </div>
               </div>
               
