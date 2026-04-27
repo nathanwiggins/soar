@@ -221,6 +221,37 @@
           .sort((a, b) => (a?.Name || '').localeCompare(b?.Name || ''));
       });
 
+      const assignableUsers = computed(() => {
+        const normalizedCurrentUserId = normalizeId(currentUserId.value);
+        if (!normalizedCurrentUserId) return [];
+
+        const reportsByManager = new Map();
+        users.value.forEach((user) => {
+          const managerId = normalizeId(user?.Manager_ID);
+          const userId = normalizeId(user?.User_ID);
+          if (!managerId || !userId) return;
+          if (!reportsByManager.has(managerId)) reportsByManager.set(managerId, []);
+          reportsByManager.get(managerId).push(userId);
+        });
+
+        const assignableIdSet = new Set([normalizedCurrentUserId]);
+        const queue = [normalizedCurrentUserId];
+        while (queue.length > 0) {
+          const managerId = queue.shift();
+          const directReports = reportsByManager.get(managerId) || [];
+          directReports.forEach((reportId) => {
+            if (!assignableIdSet.has(reportId)) {
+              assignableIdSet.add(reportId);
+              queue.push(reportId);
+            }
+          });
+        }
+
+        return users.value
+          .filter((user) => assignableIdSet.has(normalizeId(user?.User_ID)))
+          .sort((a, b) => (a?.Name || '').localeCompare(b?.Name || ''));
+      });
+
       const supervisorUserSummary = computed(() => {
         const count = selectedSupervisorUserIds.value.length;
         if (count === 0) return 'Select team members';
@@ -744,6 +775,8 @@
 
       const toggleTaskDetailsAssignee = (userId) => {
         if (!taskDetailsForm.value || !isEditingTask.value) return;
+        const assignableIdSet = new Set(assignableUsers.value.map((user) => normalizeId(user?.User_ID)).filter(Boolean));
+        if (!assignableIdSet.has(normalizeId(userId))) return;
         const selectedAssignees = taskDetailsForm.value.assigneeIds;
         const index = selectedAssignees.indexOf(userId);
         if (index >= 0) {
@@ -999,6 +1032,8 @@
       const openAddTask = (project) => {
         selectedProject.value = project;
         resetTaskForm();
+        const assignableIdSet = new Set(assignableUsers.value.map((user) => normalizeId(user?.User_ID)).filter(Boolean));
+        newTaskForm.value.assigneeIds = newTaskForm.value.assigneeIds.filter((id) => assignableIdSet.has(normalizeId(id)));
         showAssigneeDropdown.value = false;
         showAddTaskModal.value = true;
       };
@@ -1019,6 +1054,8 @@
       };
 
       const toggleAssignee = (userId) => {
+        const assignableIdSet = new Set(assignableUsers.value.map((user) => normalizeId(user?.User_ID)).filter(Boolean));
+        if (!assignableIdSet.has(normalizeId(userId))) return;
         const selectedAssignees = newTaskForm.value.assigneeIds;
         const index = selectedAssignees.indexOf(userId);
         if (index >= 0) {
@@ -1249,6 +1286,7 @@
         creatingProject,
         showAssigneeDropdown,
         assigneeSummary,
+        assignableUsers,
         newTaskForm,
         newProjectForm,
         showTaskDetailsModal,
