@@ -325,10 +325,20 @@ function extractMentionedUsers(content, users) {
   }
   if (mentions.size === 0) return [];
 
+  const toHandle = (user) => {
+    const emailLocalPart = normalizeEmail(user && user.Email).split('@')[0];
+    const fallbackHandle = (user && user.Name ? user.Name : '')
+      .toString()
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '.')
+      .replace(/[^a-z0-9._-]/g, '');
+    return emailLocalPart || fallbackHandle;
+  };
+
   return users.filter((user) => {
-    const name = (user.Name || '').toString().trim().toLowerCase();
-    const emailLocalPart = (user.Email || '').toString().trim().toLowerCase().split('@')[0];
-    return mentions.has(name) || mentions.has(emailLocalPart);
+    const handle = toHandle(user);
+    return handle && mentions.has(handle);
   });
 }
 

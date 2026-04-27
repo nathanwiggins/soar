@@ -40,6 +40,7 @@
       const mentionStartIndex = ref(-1);
       const mentionCursorIndex = ref(-1);
       const quickCommentTextarea = ref(null);
+      const showAllWorkItems = ref(false);
 
       // Add-task modal state
       const showAddTaskModal = ref(false);
@@ -170,6 +171,43 @@
         return users.value
           .filter((u) => normalizeEmail(u?.Email) !== currentEmail)
           .sort((a, b) => (a?.Name || '').localeCompare(b?.Name || ''));
+      });
+
+      const currentUserId = computed(() => {
+        return currentUser.value?.User_ID ? currentUser.value.User_ID.toString().trim() : '';
+      });
+
+      const assignedEntityIdsForCurrentUser = computed(() => {
+        const userId = currentUserId.value;
+        if (!userId) return new Set();
+
+        const ids = assignments.value
+          .filter((assignment) => idsMatch(assignment?.Assignee_ID, userId))
+          .map((assignment) => normalizeId(assignment?.Assignment_ID))
+          .filter(Boolean);
+
+        return new Set(ids);
+      });
+
+      const visibleTasks = computed(() => {
+        if (showAllWorkItems.value) return tasks.value;
+        const assignedIds = assignedEntityIdsForCurrentUser.value;
+        return tasks.value.filter((task) => assignedIds.has(normalizeId(task?.Task_ID)));
+      });
+
+      const visibleProjects = computed(() => {
+        if (showAllWorkItems.value) return projects.value;
+        const assignedIds = assignedEntityIdsForCurrentUser.value;
+        const visibleProjectIds = new Set(
+          visibleTasks.value
+            .map((task) => normalizeId(task?.Project_ID))
+            .filter(Boolean)
+        );
+
+        return projects.value.filter((project) => {
+          const projectId = normalizeId(project?.Project_ID);
+          return assignedIds.has(projectId) || visibleProjectIds.has(projectId);
+        });
       });
 
       // Methods
@@ -322,7 +360,8 @@
           });
       };
 
-      const getTasksForProject = (projectId) => tasks.value.filter((t) => t.Project_ID === projectId);
+      const getTasksForProject = (projectId) =>
+        visibleTasks.value.filter((task) => idsMatch(task.Project_ID, projectId));
 
       const normalizeEmail = (email) => (email || '').toString().trim().toLowerCase();
       const normalizeId = (value) => (value === null || value === undefined ? '' : value.toString().trim());
@@ -335,6 +374,10 @@
 
       const getProjectById = (projectId) => projects.value.find((p) => idsMatch(p.Project_ID, projectId)) || null;
       const getUserById = (userId) => users.value.find((u) => idsMatch(u.User_ID, userId)) || null;
+
+      const toggleWorkVisibility = () => {
+        showAllWorkItems.value = !showAllWorkItems.value;
+      };
 
       const statusColor = (status) => {
         const colors = {
@@ -1100,6 +1143,8 @@
         users,
         projects,
         tasks,
+        visibleProjects,
+        showAllWorkItems,
         comments,
         taskComments,
         commentDraft,
@@ -1177,6 +1222,7 @@
         getCommentAuthor,
         getCommentCountForTask,
         formatCommentTimestamp,
+        toggleWorkVisibility,
         updateMentionSuggestions,
         applyMentionSuggestion,
         addComment,
