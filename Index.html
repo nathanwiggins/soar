@@ -173,13 +173,6 @@
         <div class="flex items-center gap-3">
           <template v-if="currentTab === 'project-board'">
             <button
-              :class="showAllWorkItems ? 'bg-gray-700 hover:bg-gray-800 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'"
-              class="px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
-              @click="toggleWorkVisibility">
-              <i class="fa-solid fa-filter mr-1"></i>
-              {{ showAllWorkItems ? 'Show My Work' : 'Show All Work' }}
-            </button>
-            <button
               class="bg-[#DB0000] hover:bg-[#C41425] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
               @click="openAddProject">
               <i class="fa-solid fa-plus mr-1"></i> New Project
@@ -325,7 +318,7 @@
             <template v-else>
               <p class="font-semibold mb-1">No assigned work to show.</p>
               <p class="text-sm">
-                You are currently seeing assigned tasks/projects only. Use <strong>Show All Work</strong> to view everything.
+                You are currently seeing assigned tasks/projects only.
               </p>
             </template>
           </div>
