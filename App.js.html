@@ -572,6 +572,83 @@
         return date.toISOString().split('T')[0];
       };
 
+      const today = computed(() => {
+        const now = new Date();
+        return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      });
+
+      const calendarMonthStart = computed(() => {
+        const baseDate = today.value;
+        return new Date(baseDate.getFullYear(), baseDate.getMonth(), 1);
+      });
+
+      const calendarMonthLabel = computed(() => {
+        return calendarMonthStart.value.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      });
+
+      const calendarWeekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+      const toCalendarDateKey = (dateValue) => {
+        const parsedDate = new Date(dateValue);
+        if (Number.isNaN(parsedDate.getTime())) return '';
+        const localDate = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate());
+        return localDate.toISOString().split('T')[0];
+      };
+
+      const calendarTaskEntries = computed(() => {
+        return tasks.value
+          .filter((task) => task?.Due_Date)
+          .map((task) => {
+            const dateKey = toCalendarDateKey(task.Due_Date);
+            if (!dateKey) return null;
+
+            const project = getProjectById(task.Project_ID);
+            return {
+              dateKey,
+              projectTitle: project?.Project_Title || 'Untitled Project'
+            };
+          })
+          .filter(Boolean);
+      });
+
+      const calendarTasksByDate = computed(() => {
+        const byDate = new Map();
+        calendarTaskEntries.value.forEach((entry) => {
+          if (!byDate.has(entry.dateKey)) byDate.set(entry.dateKey, []);
+          byDate.get(entry.dateKey).push(entry.projectTitle);
+        });
+        return byDate;
+      });
+
+      const calendarDays = computed(() => {
+        const monthStart = calendarMonthStart.value;
+        const firstDayOfMonth = monthStart.getDay();
+        const gridStartDate = new Date(monthStart);
+        gridStartDate.setDate(monthStart.getDate() - firstDayOfMonth);
+
+        return Array.from({ length: 42 }, (_, index) => {
+          const cellDate = new Date(gridStartDate);
+          cellDate.setDate(gridStartDate.getDate() + index);
+
+          const dateKey = toCalendarDateKey(cellDate);
+          const normalizedToday = today.value;
+
+          return {
+            dateKey,
+            dayOfMonth: cellDate.getDate(),
+            inCurrentMonth: cellDate.getMonth() === monthStart.getMonth(),
+            isToday:
+              cellDate.getFullYear() === normalizedToday.getFullYear() &&
+              cellDate.getMonth() === normalizedToday.getMonth() &&
+              cellDate.getDate() === normalizedToday.getDate()
+          };
+        });
+      });
+
+      const getCalendarTaskProjectTitles = (dateKey) => {
+        return calendarTasksByDate.value.get(dateKey) || [];
+      };
+
       const isPastDueDate = (dueDateValue) => {
         if (!dueDateValue) return false;
         const dueDate = new Date(dueDateValue);
@@ -1375,6 +1452,10 @@
         statusColor,
         getInitials,
         formatDate,
+        calendarMonthLabel,
+        calendarWeekdays,
+        calendarDays,
+        getCalendarTaskProjectTitles,
         shouldStrikeTask,
         priorityIconClass,
         getPriorityLabel,
