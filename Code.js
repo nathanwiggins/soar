@@ -122,6 +122,51 @@ function getUserEmailFromRow(row, headerIndex) {
   return normalizeEmail(row[emailColumnIndex]);
 }
 
+function safeSendEmail(recipient, subject, body) {
+  const normalizedRecipient = normalizeEmail(recipient);
+  if (!normalizedRecipient) return false;
+
+  try {
+    MailApp.sendEmail(normalizedRecipient, subject || '', body || '');
+    return true;
+  } catch (error) {
+    // Notifications should never block core CRUD actions.
+    Logger.log(`Failed to send notification email to ${normalizedRecipient}: ${error && error.message ? error.message : error}`);
+    return false;
+  }
+}
+
+function parseDateInput(dateInput) {
+  if (!dateInput) return '';
+
+  if (Object.prototype.toString.call(dateInput) === '[object Date]') {
+    if (Number.isNaN(dateInput.getTime())) return '';
+    return new Date(dateInput.getFullYear(), dateInput.getMonth(), dateInput.getDate());
+  }
+
+  const trimmedValue = dateInput.toString().trim();
+  if (!trimmedValue) return '';
+
+  const dateOnlyMatch = trimmedValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnlyMatch) {
+    const year = Number(dateOnlyMatch[1]);
+    const month = Number(dateOnlyMatch[2]) - 1;
+    const day = Number(dateOnlyMatch[3]);
+    return new Date(year, month, day);
+  }
+
+  const parsedDate = new Date(trimmedValue);
+  if (parsedDate.toString() === 'Invalid Date') return '';
+  return new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate());
+}
+
+function serializeDateOnlyForClient(dateValue) {
+  if (!(Object.prototype.toString.call(dateValue) === '[object Date]') || Number.isNaN(dateValue.getTime())) {
+    return dateValue;
+  }
+  return Utilities.formatDate(dateValue, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
 /**
  * Core DB Function: Reads a sheet and returns an array of JSON objects.
  */
@@ -356,7 +401,7 @@ function sendMentionNotifications(comment, topicId, commenter, mentionedUsers) {
     const email = normalizeEmail(user.Email);
     if (!email || sentEmails.has(email)) return;
     sentEmails.add(email);
-    MailApp.sendEmail(email, subject, body);
+    safeSendEmail(email, subject, body);
   });
 }
 
@@ -381,7 +426,7 @@ function sendTaskAssignmentNotifications(task, assigneeIds) {
     const email = normalizeEmail(user && user.Email);
     if (!email || sentEmails.has(email)) return;
     sentEmails.add(email);
-    MailApp.sendEmail(email, subject, body);
+    safeSendEmail(email, subject, body);
   });
 }
 
@@ -416,7 +461,7 @@ function sendManagerTaskCompletedNotifications(task, assigneeIds, completedByUse
     const email = normalizeEmail(manager && manager.Email);
     if (!email || sentEmails.has(email)) return;
     sentEmails.add(email);
-    MailApp.sendEmail(email, subject, body);
+    safeSendEmail(email, subject, body);
   });
 }
 
@@ -434,7 +479,7 @@ function sendManagerAccountCreatedNotification(createdUser) {
   const userEmail = normalizeEmail(createdUser.Email);
   const subject = `New direct report created: ${userName}`;
   const body = `${userName}${userEmail ? ` (${userEmail})` : ''} created an account and listed you as their manager.\n\nUser ID: ${userId || 'N/A'}\n`;
-  MailApp.sendEmail(managerEmail, subject, body);
+  safeSendEmail(managerEmail, subject, body);
 }
 
 function addComment(topicId, commentInput) {
@@ -576,7 +621,7 @@ function resolveComment(commentId) {
       const resolverName = resolver && resolver.Name ? resolver.Name : 'A teammate';
       const subject = `Your comment ${normalizedCommentId} was resolved`;
       const body = `${resolverName} resolved your comment on ${topicId || 'a task'}.\n\nResolved comment:\n${content}\n`;
-      MailApp.sendEmail(commenterEmail, subject, body);
+      safeSendEmail(commenterEmail, subject, body);
     }
 
     return JSON.stringify({ success: true, commentId: normalizedCommentId, resolved: true });
@@ -908,7 +953,7 @@ function createProject(projectInput) {
     const now = new Date();
     const status = normalizeStatusValue(projectInput ? projectInput.status : '');
     const description = projectInput && projectInput.description ? projectInput.description.toString().trim() : '';
-    const parsedDueDate = projectInput && projectInput.dueDate ? new Date(projectInput.dueDate) : '';
+    const parsedDueDate = parseDateInput(projectInput ? projectInput.dueDate : '');
     const hasValidDueDate = parsedDueDate && parsedDueDate.toString() !== 'Invalid Date';
     const creatorId = getCurrentUserIdByEmail(getCurrentUser());
 
@@ -929,7 +974,9 @@ function createProject(projectInput) {
     const createdProject = {};
     headers.forEach((header, index) => {
       const value = newRow[index];
-      createdProject[header] = value instanceof Date ? value.toISOString() : value;
+      createdProject[header] = header === 'Due_Date'
+        ? serializeDateOnlyForClient(value)
+        : (value instanceof Date ? value.toISOString() : value);
     });
 
     return JSON.stringify({ success: true, project: createdProject });
@@ -968,7 +1015,7 @@ function createTask(projectId, taskInput) {
 
     const newRow = new Array(headers.length).fill('');
     const now = new Date();
-    const parsedDueDate = taskInput && taskInput.dueDate ? new Date(taskInput.dueDate) : '';
+    const parsedDueDate = parseDateInput(taskInput ? taskInput.dueDate : '');
     const hasValidDueDate = parsedDueDate && parsedDueDate.toString() !== 'Invalid Date';
     const priority = normalizePriorityValue(taskInput ? taskInput.priority : '');
     const description = taskInput && taskInput.description ? taskInput.description.toString().trim() : '';
@@ -1013,7 +1060,9 @@ function createTask(projectId, taskInput) {
     const createdTask = {};
     headers.forEach((header, index) => {
       const value = newRow[index];
-      createdTask[header] = value instanceof Date ? value.toISOString() : value;
+      createdTask[header] = header === 'Due_Date'
+        ? serializeDateOnlyForClient(value)
+        : (value instanceof Date ? value.toISOString() : value);
     });
     sendTaskAssignmentNotifications(createdTask, assigneeIds);
 
@@ -1098,7 +1147,7 @@ function updateTask(taskId, taskInput) {
     }
     const previousStatus = (data[taskRowIndex][headerIndex.Status] || '').toString().trim();
 
-    const parsedDueDate = taskInput && taskInput.dueDate ? new Date(taskInput.dueDate) : '';
+    const parsedDueDate = parseDateInput(taskInput ? taskInput.dueDate : '');
     const hasValidDueDate = parsedDueDate && parsedDueDate.toString() !== 'Invalid Date';
     const priority = normalizePriorityValue(taskInput ? taskInput.priority : '');
     const description = taskInput && taskInput.description ? taskInput.description.toString().trim() : '';
@@ -1148,7 +1197,9 @@ function updateTask(taskId, taskInput) {
     const updatedTask = {};
     headers.forEach((header, index) => {
       const value = refreshedRow[index];
-      updatedTask[header] = value instanceof Date ? value.toISOString() : value;
+      updatedTask[header] = header === 'Due_Date'
+        ? serializeDateOnlyForClient(value)
+        : (value instanceof Date ? value.toISOString() : value);
     });
     const previousAssigneeSet = new Set(previousAssigneeIds);
     const newlyAssignedIds = assigneeIds.filter((assigneeId) => !previousAssigneeSet.has(assigneeId));
@@ -1211,7 +1262,7 @@ function updateProject(projectId, projectInput) {
 
     const status = normalizeStatusValue(projectInput ? projectInput.status : '');
     const description = projectInput && projectInput.description ? projectInput.description.toString().trim() : '';
-    const parsedDueDate = projectInput && projectInput.dueDate ? new Date(projectInput.dueDate) : '';
+    const parsedDueDate = parseDateInput(projectInput ? projectInput.dueDate : '');
     const hasValidDueDate = parsedDueDate && parsedDueDate.toString() !== 'Invalid Date';
 
     if (headerIndex.Project_Title !== undefined) {
@@ -1233,7 +1284,9 @@ function updateProject(projectId, projectInput) {
     const updatedProject = {};
     headers.forEach((header, index) => {
       const value = refreshedRow[index];
-      updatedProject[header] = value instanceof Date ? value.toISOString() : value;
+      updatedProject[header] = header === 'Due_Date'
+        ? serializeDateOnlyForClient(value)
+        : (value instanceof Date ? value.toISOString() : value);
     });
 
     return JSON.stringify({ success: true, project: updatedProject });

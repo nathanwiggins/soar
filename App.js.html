@@ -501,8 +501,8 @@
           return normalizedRightPriority - normalizedLeftPriority;
         }
 
-        const leftDueDate = new Date(leftTask?.Due_Date || 0).getTime();
-        const rightDueDate = new Date(rightTask?.Due_Date || 0).getTime();
+        const leftDueDate = parseAsLocalDate(leftTask?.Due_Date || 0).getTime();
+        const rightDueDate = parseAsLocalDate(rightTask?.Due_Date || 0).getTime();
         return leftDueDate - rightDueDate;
       };
 
@@ -529,6 +529,30 @@
 
       const getProjectById = (projectId) => projects.value.find((p) => idsMatch(p.Project_ID, projectId)) || null;
       const getUserById = (userId) => users.value.find((u) => idsMatch(u.User_ID, userId)) || null;
+
+      function parseAsLocalDate(dateValue) {
+        if (!dateValue) return new Date('');
+
+        if (dateValue instanceof Date) {
+          if (Number.isNaN(dateValue.getTime())) return new Date('');
+          return new Date(dateValue.getFullYear(), dateValue.getMonth(), dateValue.getDate());
+        }
+
+        const trimmedValue = dateValue.toString().trim();
+        if (!trimmedValue) return new Date('');
+
+        const dateOnlyMatch = trimmedValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (dateOnlyMatch) {
+          const year = Number(dateOnlyMatch[1]);
+          const month = Number(dateOnlyMatch[2]);
+          const day = Number(dateOnlyMatch[3]);
+          return new Date(year, month - 1, day);
+        }
+
+        const parsedDate = new Date(trimmedValue);
+        if (Number.isNaN(parsedDate.getTime())) return new Date('');
+        return new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate());
+      }
 
       const toggleWorkVisibility = () => {
         showAllWorkItems.value = !showAllWorkItems.value;
@@ -577,16 +601,19 @@
 
       const formatDate = (dateString) => {
         if (!dateString) return '—';
-        const date = new Date(dateString);
+        const date = parseAsLocalDate(dateString);
         if (Number.isNaN(date.getTime())) return '—';
         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       };
 
       const formatDateForInput = (dateString) => {
         if (!dateString) return '';
-        const date = new Date(dateString);
+        const date = parseAsLocalDate(dateString);
         if (Number.isNaN(date.getTime())) return '';
-        return date.toISOString().split('T')[0];
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
       };
 
       const today = computed(() => {
@@ -606,10 +633,9 @@
       const calendarWeekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
       const toCalendarDateKey = (dateValue) => {
-        const parsedDate = new Date(dateValue);
+        const parsedDate = parseAsLocalDate(dateValue);
         if (Number.isNaN(parsedDate.getTime())) return '';
-        const localDate = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate());
-        return localDate.toISOString().split('T')[0];
+        return formatDateForInput(parsedDate);
       };
 
       const calendarTaskEntries = computed(() => {
@@ -668,15 +694,40 @@
 
       const isPastDueDate = (dueDateValue) => {
         if (!dueDateValue) return false;
-        const dueDate = new Date(dueDateValue);
+        const dueDate = parseAsLocalDate(dueDateValue);
         if (Number.isNaN(dueDate.getTime())) return false;
         const now = new Date();
         const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const normalizedDueDate = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
-        return normalizedDueDate.getTime() < startOfToday.getTime();
+        return dueDate.getTime() < startOfToday.getTime();
       };
 
       const shouldStrikeTask = (task) => task?.Status === 'Completed' && !isPastDueDate(task?.Due_Date);
+
+      const getDaysUntilDueDate = (dueDateValue) => {
+        if (!dueDateValue) return null;
+        const dueDate = parseAsLocalDate(dueDateValue);
+        if (Number.isNaN(dueDate.getTime())) return null;
+
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const msPerDay = 24 * 60 * 60 * 1000;
+        return Math.round((dueDate.getTime() - startOfToday.getTime()) / msPerDay);
+      };
+
+      const isTaskDueTomorrowAndOpen = (task) => {
+        if (!task || task?.Status === 'Completed') return false;
+        return getDaysUntilDueDate(task?.Due_Date) === 1;
+      };
+
+      const getDueDateTooltip = (task) => {
+        const daysLeft = getDaysUntilDueDate(task?.Due_Date);
+        if (daysLeft === null) return '';
+        if (daysLeft > 1) return `${daysLeft} days left`;
+        if (daysLeft === 1) return '1 day left';
+        if (daysLeft === 0) return 'Due today';
+        if (daysLeft === -1) return 'Overdue by 1 day';
+        return `Overdue by ${Math.abs(daysLeft)} days`;
+      };
 
       const priorityIconClass = (priorityValue) => {
         const normalizedPriority = normalizePriority(priorityValue);
@@ -1531,6 +1582,8 @@
         calendarDays,
         getCalendarTaskProjectTitles,
         shouldStrikeTask,
+        isTaskDueTomorrowAndOpen,
+        getDueDateTooltip,
         priorityIconClass,
         getPriorityLabel,
         getPriorityTitle,
