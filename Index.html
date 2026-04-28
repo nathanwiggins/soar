@@ -464,10 +464,13 @@
                     <span
                       v-if="task.Due_Date"
                       :class="[
-                        isDarkMode ? 'text-gray-400' : 'text-gray-500',
+                        isTaskDueTomorrowAndOpen(task)
+                          ? (isDarkMode ? 'text-red-400' : 'text-red-600')
+                          : (isDarkMode ? 'text-gray-400' : 'text-gray-500'),
                         shouldStrikeTask(task) ? 'line-through opacity-70' : ''
                       ]"
-                      class="text-xs font-medium">
+                      class="text-xs font-medium"
+                      :title="getDueDateTooltip(task)">
                       <i class="fa-regular fa-clock mr-1"></i> {{ formatDate(task.Due_Date) }}
                     </span>
                   </div>
