@@ -61,10 +61,9 @@ This project management system is implemented using **Google Apps Script** as th
 | `Task_Title` | String | Task title displayed to users. | No |
 | `Due_Date` | Date | Planned completion date for the task. | Yes |
 | `Status` | String | Task state (`Not Started`, `In Progress`, `Completed`, `Delayed`, etc.). | No |
-| `Complexity` | Int, 1–5 | Estimated task complexity on a Likert scale (1 easy, 5 hard). | Yes |
 | `Created_Date` | Date, auto-fill | Date the task was created. | No |
 | `Description` | String | Detailed task description. | Yes |
-| `Priority` | Int, 1–5 | Task urgency on a Likert scale (1 low, 5 high). | Yes |
+| `Priority` | Enum (`Highest`, `High`, `Medium`, `Low`, `Lowest`) | Task urgency level. | Yes |
 
 #### Comments
 
