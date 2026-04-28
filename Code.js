@@ -1,7 +1,7 @@
 /**
  * Main entry point for the web app.
  * Serves the Index.html file.
- * is version 2 even getting there
+ *
  */
 function doGet() {
   return HtmlService.createTemplateFromFile('Index')
@@ -868,18 +868,8 @@ function updateCurrentUserProfile(profileInput) {
       throw new Error('Current user record was not found.');
     }
 
-    const duplicateEmailIndex = data.findIndex(
-      (row, index) =>
-        index > 0 &&
-        index !== currentUserRowIndex &&
-        getUserEmailFromRow(row, headerIndex) === normalizedEmail
-    );
-    if (duplicateEmailIndex > 0) {
-      throw new Error('Email already exists for another user.');
-    }
-
     usersSheet.getRange(currentUserRowIndex + 1, headerIndex.name + 1).setValue(normalizedName);
-    usersSheet.getRange(currentUserRowIndex + 1, headerIndex.email + 1).setValue(normalizedEmail);
+    
     if (headerIndex.profile_pic_url !== undefined) {
       const latestProfilePicUrl = getCurrentUserProfilePhotoUrl();
       if (latestProfilePicUrl) {

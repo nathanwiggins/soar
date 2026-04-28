@@ -640,6 +640,8 @@
         return `${year}-${month}-${day}`;
       };
 
+      const calendarMonthOffset = ref(0);
+      
       const today = computed(() => {
         const now = new Date();
         return new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -647,7 +649,7 @@
 
       const calendarMonthStart = computed(() => {
         const baseDate = today.value;
-        return new Date(baseDate.getFullYear(), baseDate.getMonth(), 1);
+        return new Date(baseDate.getFullYear(), baseDate.getMonth() + calendarMonthOffset.value, 1);
       });
 
       const calendarMonthLabel = computed(() => {
@@ -663,7 +665,7 @@
       };
 
       const calendarTaskEntries = computed(() => {
-        return tasks.value
+        return visibleTasks.value // <-- Preserves Codex visibility fix!
           .filter((task) => task?.Due_Date)
           .map((task) => {
             const dateKey = toCalendarDateKey(task.Due_Date);
@@ -672,7 +674,8 @@
             const project = getProjectById(task.Project_ID);
             return {
               dateKey,
-              projectTitle: project?.Project_Title || 'Untitled Project'
+              projectTitle: project?.Project_Title || 'Untitled Project',
+              task // <-- Now passing the full task object
             };
           })
           .filter(Boolean);
@@ -682,7 +685,7 @@
         const byDate = new Map();
         calendarTaskEntries.value.forEach((entry) => {
           if (!byDate.has(entry.dateKey)) byDate.set(entry.dateKey, []);
-          byDate.get(entry.dateKey).push(entry.projectTitle);
+          byDate.get(entry.dateKey).push(entry); // <-- Pushing the full entry object
         });
         return byDate;
       });
@@ -712,8 +715,20 @@
         });
       });
 
-      const getCalendarTaskProjectTitles = (dateKey) => {
+      const getCalendarTaskEntries = (dateKey) => {
         return calendarTasksByDate.value.get(dateKey) || [];
+      };
+
+      const goToPreviousCalendarMonth = () => {
+        calendarMonthOffset.value -= 1;
+      };
+
+      const goToNextCalendarMonth = () => {
+        calendarMonthOffset.value += 1;
+      };
+
+      const goToCurrentCalendarMonth = () => {
+        calendarMonthOffset.value = 0;
       };
 
       const isPastDueDate = (dueDateValue) => {
@@ -1642,7 +1657,10 @@
         calendarMonthLabel,
         calendarWeekdays,
         calendarDays,
-        getCalendarTaskProjectTitles,
+        getCalendarTaskEntries,
+        goToPreviousCalendarMonth,
+        goToNextCalendarMonth,
+        goToCurrentCalendarMonth,
         shouldStrikeTask,
         isTaskDueTomorrowAndOpen,
         getDueDateTooltip,
