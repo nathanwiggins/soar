@@ -100,6 +100,110 @@
         </div>
       </div>
     </div>
+
+    <div
+      v-if="showSettingsModal"
+      class="fixed inset-0 bg-gray-900/50 flex items-center justify-center z-50 px-4"
+      @click.self="closeSettingsModal">
+      <div :class="isDarkMode ? 'bg-gray-900 border-gray-700 text-gray-100' : 'bg-white border-gray-100 text-gray-800'" class="w-full max-w-2xl rounded-2xl shadow-2xl border">
+        <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="px-6 py-4 border-b flex items-center justify-between">
+          <div>
+            <h3 :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'" class="text-lg font-semibold">Settings</h3>
+            <p :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-sm">Accessibility and notification preferences</p>
+          </div>
+          <button
+            :class="isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'"
+            class="transition-colors"
+            @click="closeSettingsModal">
+            <i class="fa-solid fa-xmark text-lg"></i>
+          </button>
+        </div>
+
+        <div class="p-6 space-y-6">
+          <section>
+            <div class="flex items-center justify-between mb-3">
+              <h4 :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'" class="font-semibold">Font Size</h4>
+              <span :class="isDarkMode ? 'text-gray-300' : 'text-gray-600'" class="text-sm">{{ settingsForm.fontScale }}% ({{ fontScaleLabel }})</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <button
+                :class="isDarkMode ? 'border-gray-600 text-gray-200 hover:bg-gray-800' : 'border-gray-300 text-gray-700 hover:bg-gray-50'"
+                class="px-3 py-2 rounded-lg border text-sm font-medium"
+                @click="adjustFontScale(-5)">
+                <i class="fa-solid fa-minus mr-1"></i> Decrease
+              </button>
+              <input
+                type="range"
+                min="85"
+                max="130"
+                step="5"
+                :value="settingsForm.fontScale"
+                @input="applyFontScale($event.target.value)"
+                class="flex-1 accent-[#DB0000]">
+              <button
+                :class="isDarkMode ? 'border-gray-600 text-gray-200 hover:bg-gray-800' : 'border-gray-300 text-gray-700 hover:bg-gray-50'"
+                class="px-3 py-2 rounded-lg border text-sm font-medium"
+                @click="adjustFontScale(5)">
+                <i class="fa-solid fa-plus mr-1"></i> Increase
+              </button>
+            </div>
+          </section>
+
+          <section>
+            <h4 :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'" class="font-semibold mb-3">Notifications</h4>
+            <div class="space-y-3">
+              <label :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'" class="flex items-center justify-between rounded-lg border px-4 py-3">
+                <span class="text-sm">Task assignments</span>
+                <input
+                  type="checkbox"
+                  :checked="settingsForm.notifications.taskAssignments"
+                  @change="updateNotificationSetting('taskAssignments', $event.target.checked)"
+                  class="rounded border-gray-300 text-[#DB0000] focus:ring-[#DB0000]">
+              </label>
+              <label :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'" class="flex items-center justify-between rounded-lg border px-4 py-3">
+                <span class="text-sm">Comments and mentions</span>
+                <input
+                  type="checkbox"
+                  :checked="settingsForm.notifications.commentsAndMentions"
+                  @change="updateNotificationSetting('commentsAndMentions', $event.target.checked)"
+                  class="rounded border-gray-300 text-[#DB0000] focus:ring-[#DB0000]">
+              </label>
+              <label :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'" class="flex items-center justify-between rounded-lg border px-4 py-3">
+                <span class="text-sm">Due-date reminders</span>
+                <input
+                  type="checkbox"
+                  :checked="settingsForm.notifications.dueDateReminders"
+                  @change="updateNotificationSetting('dueDateReminders', $event.target.checked)"
+                  class="rounded border-gray-300 text-[#DB0000] focus:ring-[#DB0000]">
+              </label>
+              <label :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'" class="flex items-center justify-between rounded-lg border px-4 py-3">
+                <span class="text-sm">Weekly digest</span>
+                <input
+                  type="checkbox"
+                  :checked="settingsForm.notifications.weeklyDigest"
+                  @change="updateNotificationSetting('weeklyDigest', $event.target.checked)"
+                  class="rounded border-gray-300 text-[#DB0000] focus:ring-[#DB0000]">
+              </label>
+            </div>
+          </section>
+
+        </div>
+
+        <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="px-6 py-4 border-t flex justify-end gap-3">
+          <button
+            :class="isDarkMode ? 'border-gray-600 text-gray-200 hover:bg-gray-800' : 'border-gray-300 text-gray-700 hover:bg-gray-50'"
+            class="px-4 py-2 rounded-lg text-sm font-medium border"
+            @click="closeSettingsModal">
+            Cancel
+          </button>
+          <button
+            class="btn-action-red px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            @click="persistSettings(); closeSettingsModal();">
+            Save Settings
+          </button>
+        </div>
+      </div>
+    </div>
     
     <aside :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'" class="w-64 border-r flex flex-col transition-all duration-300">
       <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="h-16 flex items-center justify-center px-6 border-b overflow-hidden">        <h1 class="text-2xl font-bold text-[#DB0000] flex items-center gap-2">
@@ -157,6 +261,12 @@
               :class="isDarkMode ? 'hover:bg-gray-700 text-gray-100' : 'hover:bg-gray-100 text-gray-700'"
               class="w-full flex items-center px-3 py-2 rounded-md text-sm">
               <span><i class="fa-solid fa-user mr-2"></i> Profile</span>
+            </button>
+            <button
+              @click="openSettingsModal"
+              :class="isDarkMode ? 'hover:bg-gray-700 text-gray-100' : 'hover:bg-gray-100 text-gray-700'"
+              class="w-full flex items-center px-3 py-2 rounded-md text-sm">
+              <span><i class="fa-solid fa-gear mr-2"></i> Settings</span>
             </button>
             <button
               @click="toggleDarkMode"

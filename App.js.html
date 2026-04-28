@@ -15,11 +15,21 @@
       const isDarkMode = ref(false);
       const isUserMenuOpen = ref(false);
       const showProfileModal = ref(false);
+      const showSettingsModal = ref(false);
       const isEditingProfile = ref(false);
       const savingProfile = ref(false);
       const profileForm = ref({
         name: '',
         email: '',
+      });
+      const settingsForm = ref({
+        fontScale: 100,
+        notifications: {
+          taskAssignments: true,
+          commentsAndMentions: true,
+          dueDateReminders: true,
+          weeklyDigest: false
+        }
       });
 
       // Data models based on Data Dictionary
@@ -288,6 +298,13 @@
           const projectId = normalizeId(project?.Project_ID);
           return assignedIds.has(projectId) || visibleProjectIds.has(projectId);
         });
+      });
+
+      const fontScaleLabel = computed(() => {
+        const scale = Number(settingsForm.value?.fontScale) || 100;
+        if (scale <= 90) return 'Smaller';
+        if (scale >= 115) return 'Larger';
+        return 'Default';
       });
 
       // Methods
@@ -1306,6 +1323,49 @@
         isDarkMode.value = !isDarkMode.value;
       };
 
+      const setRootFontScale = (scalePercent) => {
+        const rootFontPx = (16 * scalePercent) / 100;
+        document.documentElement.style.fontSize = `${rootFontPx}px`;
+      };
+
+      const applyFontScale = (nextScale) => {
+        const parsed = Number(nextScale);
+        if (Number.isNaN(parsed)) return;
+        const normalizedScale = Math.min(130, Math.max(85, Math.round(parsed)));
+        settingsForm.value.fontScale = normalizedScale;
+        setRootFontScale(normalizedScale);
+      };
+
+      const adjustFontScale = (delta) => {
+        applyFontScale((Number(settingsForm.value.fontScale) || 100) + delta);
+      };
+
+      const updateNotificationSetting = (key, enabled) => {
+        if (!Object.prototype.hasOwnProperty.call(settingsForm.value.notifications, key)) return;
+        settingsForm.value.notifications[key] = Boolean(enabled);
+      };
+
+      const persistSettings = () => {
+        localStorage.setItem('soar_user_settings_v1', JSON.stringify(settingsForm.value));
+      };
+
+      const loadSettings = () => {
+        const raw = localStorage.getItem('soar_user_settings_v1');
+        if (!raw) return;
+
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return;
+
+        applyFontScale(parsed.fontScale);
+
+        const knownNotificationKeys = Object.keys(settingsForm.value.notifications);
+        knownNotificationKeys.forEach((key) => {
+          if (typeof parsed?.notifications?.[key] === 'boolean') {
+            settingsForm.value.notifications[key] = parsed.notifications[key];
+          }
+        });
+      };
+
       const buildProfileForm = () => ({
         name: currentUser.value?.Name || '',
         email: currentUser.value?.Email || ''
@@ -1316,6 +1376,15 @@
         isEditingProfile.value = false;
         showProfileModal.value = true;
         isUserMenuOpen.value = false;
+      };
+
+      const openSettingsModal = () => {
+        showSettingsModal.value = true;
+        isUserMenuOpen.value = false;
+      };
+
+      const closeSettingsModal = () => {
+        showSettingsModal.value = false;
       };
 
       const closeProfileModal = () => {
@@ -1379,6 +1448,8 @@
       };
 
       onMounted(() => {
+        applyFontScale(settingsForm.value.fontScale);
+        loadSettings();
         fetchData();
         makeLogoTransparent();
       });
@@ -1417,9 +1488,12 @@
         resolvingCommentIds,
         deletingCommentIds,
         showProfileModal,
+        showSettingsModal,
         isEditingProfile,
         savingProfile,
         profileForm,
+        settingsForm,
+        fontScaleLabel,
         showAddTaskModal,
         showAddProjectModal,
         selectedProject,
@@ -1503,7 +1577,13 @@
         createAccount,
         toggleUserMenu,
         toggleDarkMode,
+        applyFontScale,
+        adjustFontScale,
+        updateNotificationSetting,
+        persistSettings,
         openProfileModal,
+        openSettingsModal,
+        closeSettingsModal,
         closeProfileModal,
         enableProfileEdit,
         cancelProfileEdit,
