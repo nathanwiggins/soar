@@ -1,7 +1,7 @@
 /**
  * Main entry point for the web app.
  * Serves the Index.html file.
- * asdfasdfasdfasdfasdf
+ *
  */
 function doGet() {
   return HtmlService.createTemplateFromFile('Index')
