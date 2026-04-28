@@ -217,11 +217,31 @@
             </div>
           </div>
           <template v-else-if="currentTab === 'calendar'">
-            <span
-              :class="isDarkMode ? 'text-gray-300 bg-gray-800 border-gray-700' : 'text-gray-700 bg-white border-gray-200'"
-              class="px-3 py-2 rounded-lg border text-sm font-medium">
-              {{ calendarMonthLabel }}
-            </span>
+            <div class="flex items-center gap-2">
+              <button
+                @click="goToPreviousCalendarMonth"
+                :class="isDarkMode ? 'bg-gray-800 border-gray-700 text-gray-200 hover:bg-gray-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'"
+                class="h-9 w-9 rounded-lg border text-sm font-semibold">
+                <i class="fa-solid fa-chevron-left"></i>
+              </button>
+              <button
+                @click="goToCurrentCalendarMonth"
+                :class="isDarkMode ? 'bg-gray-800 border-gray-700 text-gray-200 hover:bg-gray-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'"
+                class="px-3 py-2 rounded-lg border text-sm font-medium">
+                Today
+              </button>
+              <span
+                :class="isDarkMode ? 'text-gray-300 bg-gray-800 border-gray-700' : 'text-gray-700 bg-white border-gray-200'"
+                class="px-3 py-2 rounded-lg border text-sm font-medium min-w-40 text-center">
+                {{ calendarMonthLabel }}
+              </span>
+              <button
+                @click="goToNextCalendarMonth"
+                :class="isDarkMode ? 'bg-gray-800 border-gray-700 text-gray-200 hover:bg-gray-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'"
+                class="h-9 w-9 rounded-lg border text-sm font-semibold">
+                <i class="fa-solid fa-chevron-right"></i>
+              </button>
+            </div>
           </template>
         </div>
       </header>
@@ -260,14 +280,16 @@
               </div>
 
               <div class="space-y-1">
-                <p
-                  v-for="(projectTitle, index) in getCalendarTaskProjectTitles(day.dateKey)"
-                  :key="`${day.dateKey}-${projectTitle}-${index}`"
+                <button
+                  v-for="(calendarEntry, index) in getCalendarTaskEntries(day.dateKey)"
+                  :key="`${day.dateKey}-${calendarEntry.task?.Task_ID || index}-${index}`"
+                  type="button"
+                  @click.stop="openTaskInfo(calendarEntry.task)"
                   :class="isDarkMode ? 'bg-[#DB0000]/20 text-red-100' : 'bg-[#DB0000]/10 text-[#8F0000]'"
-                  class="text-[11px] px-2 py-1 rounded-md font-medium truncate"
-                  :title="projectTitle">
-                  {{ projectTitle }}
-                </p>
+                  class="w-full text-left text-[11px] px-2 py-1 rounded-md font-medium truncate hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#DB0000]/40"
+                  :title="calendarEntry.projectTitle">
+                  {{ calendarEntry.projectTitle }}
+                </button>
               </div>
             </div>
           </div>
