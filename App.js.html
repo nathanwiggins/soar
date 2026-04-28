@@ -84,6 +84,7 @@
       const savingTask = ref(false);
       const deletingTask = ref(false);
       const completingTask = ref(false);
+      const permanentlyDeletingTaskIds = ref([]);
       const showProjectDetailsModal = ref(false);
       const projectDetailsForm = ref(null);
       const deletingProject = ref(false);
@@ -128,6 +129,11 @@
       const projectDetailsCreator = computed(() => {
         if (!projectDetailsForm.value?.creatorId) return null;
         return getUserById(projectDetailsForm.value.creatorId);
+      });
+
+      const completedTaskByUser = computed(() => {
+        if (!taskDetailsForm.value?.completedById) return null;
+        return getUserById(taskDetailsForm.value.completedById);
       });
 
       const taskComments = computed(() => {
@@ -204,7 +210,22 @@
       const visibleTasks = computed(() => {
         if (showAllWorkItems.value) return tasks.value;
         const assignedIds = assignedEntityIdsForCurrentUser.value;
-        return tasks.value.filter((task) => assignedIds.has(normalizeId(task?.Task_ID)));
+        return tasks.value.filter((task) => {
+          if (task?.Status === 'Completed') return false;
+          return assignedIds.has(normalizeId(task?.Task_ID));
+        });
+      });
+
+      const pastAssignments = computed(() => {
+        const assignedIds = assignedEntityIdsForCurrentUser.value;
+        return tasks.value
+          .filter((task) => task?.Status === 'Completed' && assignedIds.has(normalizeId(task?.Task_ID)))
+          .slice()
+          .sort((left, right) => {
+            const leftTime = parseAsLocalDate(left?.Due_Date || 0).getTime();
+            const rightTime = parseAsLocalDate(right?.Due_Date || 0).getTime();
+            return rightTime - leftTime;
+          });
       });
 
       const visibleProjects = computed(() => {
@@ -283,7 +304,10 @@
 
       const supervisorVisibleTasks = computed(() => {
         const assignedIds = assignedEntityIdsForSelectedSupervisorUsers.value;
-        return tasks.value.filter((task) => assignedIds.has(normalizeId(task?.Task_ID)));
+        return tasks.value.filter((task) => {
+          if (task?.Status === 'Completed') return false;
+          return assignedIds.has(normalizeId(task?.Task_ID));
+        });
       });
 
       const supervisorVisibleProjects = computed(() => {
@@ -757,7 +781,9 @@
           createdDate: task.Created_Date || '',
           dueDate: formatDateForInput(task.Due_Date),
           projectId: task.Project_ID || '',
-          assigneeIds: getAssigneesForTask(task.Task_ID).map((u) => u.User_ID)
+          assigneeIds: getAssigneesForTask(task.Task_ID).map((u) => u.User_ID),
+          completedById: task.Completed_By || '',
+          completedAt: task.Completed_At || ''
         };
       };
 
@@ -851,6 +877,19 @@
       };
 
       const formatCommentTimestamp = (timestamp) => {
+        if (!timestamp) return '—';
+        const date = new Date(timestamp);
+        if (Number.isNaN(date.getTime())) return '—';
+        return date.toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit'
+        });
+      };
+
+      const formatDateTime = (timestamp) => {
         if (!timestamp) return '—';
         const date = new Date(timestamp);
         if (Number.isNaN(date.getTime())) return '—';
@@ -1103,14 +1142,6 @@
               return;
             }
 
-            if (result.deleted) {
-              const deletedTaskId = result.taskId;
-              tasks.value = tasks.value.filter((task) => !idsMatch(task.Task_ID, deletedTaskId));
-              assignments.value = assignments.value.filter((assignment) => !idsMatch(assignment.Assignment_ID, deletedTaskId));
-              closeTaskInfo();
-              return;
-            }
-
             if (result.task) {
               const taskIndex = tasks.value.findIndex((task) => idsMatch(task.Task_ID, result.task.Task_ID));
               if (taskIndex >= 0) {
@@ -1127,6 +1158,34 @@
             alert('Error completing task.');
           })
           .completeTask(taskDetailsForm.value.taskId);
+      };
+
+      const deleteTaskPermanently = (task) => {
+        const taskId = normalizeId(task?.Task_ID);
+        if (!taskId || permanentlyDeletingTaskIds.value.includes(taskId)) return;
+
+        const confirmed = confirm('Delete this completed task permanently? This action cannot be undone.');
+        if (!confirmed) return;
+
+        permanentlyDeletingTaskIds.value.push(taskId);
+        google.script.run
+          .withSuccessHandler((response) => {
+            permanentlyDeletingTaskIds.value = permanentlyDeletingTaskIds.value.filter((id) => !idsMatch(id, taskId));
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (!result || !result.success) {
+              alert(result?.error || 'Failed to delete task.');
+              return;
+            }
+
+            tasks.value = tasks.value.filter((item) => !idsMatch(item.Task_ID, taskId));
+            assignments.value = assignments.value.filter((assignment) => !idsMatch(assignment.Assignment_ID, taskId));
+          })
+          .withFailureHandler((error) => {
+            permanentlyDeletingTaskIds.value = permanentlyDeletingTaskIds.value.filter((id) => !idsMatch(id, taskId));
+            console.error('Failed to delete task:', error);
+            alert('Error deleting task.');
+          })
+          .deleteTask(taskId);
       };
       
       const deleteProject = () => {
@@ -1518,6 +1577,7 @@
         users,
         projects,
         tasks,
+        pastAssignments,
         visibleProjects,
         directReportUsers,
         supervisorVisibleProjects,
@@ -1564,12 +1624,14 @@
         savingTask,
         deletingTask,
         completingTask,
+        permanentlyDeletingTaskIds,
         showProjectDetailsModal,
         projectDetailsForm,
         deletingProject,
         isEditingProject,
         savingProject,
         projectDetailsCreator,
+        completedTaskByUser,
         getTasksForProject,
         getSupervisorTasksForProject,
         getAssigneesForTask,
@@ -1606,6 +1668,7 @@
         saveTaskEdits,
         deleteTask,
         completeTask,
+        deleteTaskPermanently,
         deleteProject,
         saveProjectEdits,
         openAddTask,
@@ -1618,6 +1681,7 @@
         getCommentAuthor,
         getCommentCountForTask,
         formatCommentTimestamp,
+        formatDateTime,
         toggleWorkVisibility,
         setActiveTab,
         toggleSupervisorUserSelection,

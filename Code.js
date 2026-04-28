@@ -167,6 +167,110 @@ function serializeDateOnlyForClient(dateValue) {
   return Utilities.formatDate(dateValue, Session.getScriptTimeZone(), 'yyyy-MM-dd');
 }
 
+const TASK_COMPLETION_METADATA_SHEET = 'TaskCompletionMetadata';
+
+function getTaskCompletionSheet(createIfMissing) {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = spreadsheet.getSheetByName(TASK_COMPLETION_METADATA_SHEET);
+  if (!sheet && createIfMissing) {
+    sheet = spreadsheet.insertSheet(TASK_COMPLETION_METADATA_SHEET);
+    sheet.getRange(1, 1, 1, 3).setValues([['Task_ID', 'Completed_By', 'Completed_At']]);
+  }
+  return sheet;
+}
+
+function getTaskCompletionMetadataMap() {
+  const sheet = getTaskCompletionSheet(false);
+  const byTaskId = new Map();
+  if (!sheet) return byTaskId;
+
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return byTaskId;
+  const headers = data[0];
+  const headerIndex = getHeaderIndex(headers);
+  const taskIdIndex = headerIndex.Task_ID;
+  const completedByIndex = headerIndex.Completed_By;
+  const completedAtIndex = headerIndex.Completed_At;
+  if (taskIdIndex === undefined) return byTaskId;
+
+  data.slice(1).forEach((row) => {
+    const taskId = (row[taskIdIndex] || '').toString().trim();
+    if (!taskId) return;
+    const completedAtValue = completedAtIndex === undefined ? '' : row[completedAtIndex];
+    byTaskId.set(taskId, {
+      Completed_By: completedByIndex === undefined ? '' : (row[completedByIndex] || '').toString().trim(),
+      Completed_At: completedAtValue instanceof Date ? completedAtValue.toISOString() : completedAtValue
+    });
+  });
+
+  return byTaskId;
+}
+
+function upsertTaskCompletionMetadata(taskId, completedBy, completedAt) {
+  const normalizedTaskId = taskId ? taskId.toString().trim() : '';
+  if (!normalizedTaskId) return;
+  const sheet = getTaskCompletionSheet(true);
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0] || [];
+  const headerIndex = getHeaderIndex(headers);
+  const taskIdIndex = headerIndex.Task_ID;
+  const completedByIndex = headerIndex.Completed_By;
+  const completedAtIndex = headerIndex.Completed_At;
+  if (taskIdIndex === undefined || completedByIndex === undefined || completedAtIndex === undefined) return;
+
+  const rowIndex = data.findIndex((row, index) => index > 0 && (row[taskIdIndex] || '').toString().trim() === normalizedTaskId);
+  const normalizedCompletedBy = completedBy ? completedBy.toString().trim() : '';
+  const completedAtValue = completedAt || new Date();
+  if (rowIndex > -1) {
+    sheet.getRange(rowIndex + 1, completedByIndex + 1).setValue(normalizedCompletedBy);
+    sheet.getRange(rowIndex + 1, completedAtIndex + 1).setValue(completedAtValue);
+    return;
+  }
+
+  const newRow = new Array(headers.length).fill('');
+  newRow[taskIdIndex] = normalizedTaskId;
+  newRow[completedByIndex] = normalizedCompletedBy;
+  newRow[completedAtIndex] = completedAtValue;
+  sheet.appendRow(newRow);
+}
+
+function removeTaskCompletionMetadata(taskId) {
+  const normalizedTaskId = taskId ? taskId.toString().trim() : '';
+  if (!normalizedTaskId) return;
+  const sheet = getTaskCompletionSheet(false);
+  if (!sheet) return;
+
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return;
+  const headerIndex = getHeaderIndex(data[0]);
+  const taskIdIndex = headerIndex.Task_ID;
+  if (taskIdIndex === undefined) return;
+
+  for (let i = data.length - 1; i >= 1; i--) {
+    if ((data[i][taskIdIndex] || '').toString().trim() === normalizedTaskId) {
+      sheet.deleteRow(i + 1);
+    }
+  }
+}
+
+function appendTaskCompletionMetadataToTask(task, metadataByTaskId) {
+  if (!task) return task;
+  const taskId = (task.Task_ID || '').toString().trim();
+  if (!taskId) return task;
+  const metadataMap = metadataByTaskId || getTaskCompletionMetadataMap();
+  const metadata = metadataMap.get(taskId);
+
+  const completedBy = (task.Completed_By || '').toString().trim();
+  const completedAt = task.Completed_At || '';
+  if (completedBy || completedAt) return task;
+
+  if (metadata) {
+    task.Completed_By = metadata.Completed_By || '';
+    task.Completed_At = metadata.Completed_At || '';
+  }
+  return task;
+}
+
 /**
  * Core DB Function: Reads a sheet and returns an array of JSON objects.
  */
@@ -303,8 +407,6 @@ function addUser(userInput) {
  * API Endpoint: Fetches the full data payload for the frontend to initialize.
  */
 function getInitialPayload() {
-  purgeCompletedTasksPastDue();
-
   const currentUserEmail = normalizeEmail(getCurrentUser());
   const currentUserProfilePhotoUrl = getCurrentUserProfilePhotoUrl();
   const usersSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Users');
@@ -320,13 +422,14 @@ function getInitialPayload() {
   }
 
   const currentUserExists = users.some((user) => normalizeEmail(user.Email) === currentUserEmail);
+  const completionMetadataByTaskId = getTaskCompletionMetadataMap();
   const payload = {
     currentUserEmail: currentUserEmail,
     currentUserExists: currentUserExists,
     requiresAccountSetup: Boolean(currentUserEmail) && !currentUserExists,
     users: users,
     projects: getTableData('Projects'),
-    tasks: getTableData('Tasks'),
+    tasks: getTableData('Tasks').map((task) => appendTaskCompletionMetadataToTask(task, completionMetadataByTaskId)),
     assignments: getTableData('Assignments'),
     comments: getTableData('Comments')
   };
@@ -683,6 +786,8 @@ function deleteTaskAndAssignments(taskId) {
     }
   }
 
+  removeTaskCompletionMetadata(normalizedTaskId);
+
   return normalizedTaskId;
 }
 
@@ -721,6 +826,8 @@ function purgeCompletedTasksPastDue() {
       assignmentsSheet.deleteRow(i + 1);
     }
   }
+
+  deletedTaskIds.forEach((taskId) => removeTaskCompletionMetadata(taskId));
 
   return deletedTaskIds;
 }
@@ -1156,12 +1263,35 @@ function updateTask(taskId, taskInput) {
     const projectId = ensureProjectExists(taskInput ? taskInput.projectId : '');
     const editorId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
 
+    const currentUserId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
+    const isMarkingCompleted = status === 'Completed' && previousStatus !== 'Completed';
+    const isReopeningCompleted = status !== 'Completed' && previousStatus === 'Completed';
+
     if (headerIndex.Project_ID !== undefined) sheet.getRange(taskRowIndex + 1, headerIndex.Project_ID + 1).setValue(projectId);
     if (headerIndex.Task_Title !== undefined) sheet.getRange(taskRowIndex + 1, headerIndex.Task_Title + 1).setValue(taskTitle);
     if (headerIndex.Due_Date !== undefined) sheet.getRange(taskRowIndex + 1, headerIndex.Due_Date + 1).setValue(hasValidDueDate ? parsedDueDate : '');
     if (headerIndex.Status !== undefined) sheet.getRange(taskRowIndex + 1, headerIndex.Status + 1).setValue(status);
     if (headerIndex.Description !== undefined) sheet.getRange(taskRowIndex + 1, headerIndex.Description + 1).setValue(description);
     if (headerIndex.Priority !== undefined) sheet.getRange(taskRowIndex + 1, headerIndex.Priority + 1).setValue(priority);
+    if (headerIndex.Completed_By !== undefined) {
+      if (isMarkingCompleted) {
+        sheet.getRange(taskRowIndex + 1, headerIndex.Completed_By + 1).setValue(currentUserId || '');
+      } else if (isReopeningCompleted) {
+        sheet.getRange(taskRowIndex + 1, headerIndex.Completed_By + 1).setValue('');
+      }
+    }
+    if (headerIndex.Completed_At !== undefined) {
+      if (isMarkingCompleted) {
+        sheet.getRange(taskRowIndex + 1, headerIndex.Completed_At + 1).setValue(new Date());
+      } else if (isReopeningCompleted) {
+        sheet.getRange(taskRowIndex + 1, headerIndex.Completed_At + 1).setValue('');
+      }
+    }
+    if (isMarkingCompleted) {
+      upsertTaskCompletionMetadata(normalizedTaskId, currentUserId, new Date());
+    } else if (isReopeningCompleted) {
+      removeTaskCompletionMetadata(normalizedTaskId);
+    }
 
     const assignmentsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Assignments');
     if (!assignmentsSheet) {
@@ -1201,11 +1331,11 @@ function updateTask(taskId, taskInput) {
         ? serializeDateOnlyForClient(value)
         : (value instanceof Date ? value.toISOString() : value);
     });
+    appendTaskCompletionMetadataToTask(updatedTask);
     const previousAssigneeSet = new Set(previousAssigneeIds);
     const newlyAssignedIds = assigneeIds.filter((assigneeId) => !previousAssigneeSet.has(assigneeId));
     sendTaskAssignmentNotifications(updatedTask, newlyAssignedIds);
-    if (status === 'Completed' && previousStatus !== 'Completed') {
-      const currentUserId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
+    if (isMarkingCompleted) {
       sendManagerTaskCompletedNotifications(updatedTask, assigneeIds, currentUserId);
     }
 
@@ -1365,6 +1495,7 @@ function deleteProject(projectId) {
           assignmentsSheet.deleteRow(i + 1);
         }
       }
+      deletedTaskIds.forEach((taskId) => removeTaskCompletionMetadata(taskId));
     }
 
     projectsSheet.deleteRow(projectRowIndex + 1);
@@ -1422,37 +1553,39 @@ function completeTask(taskId) {
     const headers = taskData[0];
     const taskIdColumnIndex = headers.indexOf('Task_ID');
     const statusColumnIndex = headers.indexOf('Status');
-    const dueDateColumnIndex = headers.indexOf('Due_Date');
+    const completedByColumnIndex = headers.indexOf('Completed_By');
+    const completedAtColumnIndex = headers.indexOf('Completed_At');
 
     if (taskIdColumnIndex === -1) throw new Error('Tasks sheet is missing Task_ID column.');
     if (statusColumnIndex === -1) throw new Error('Tasks sheet is missing Status column.');
-    if (dueDateColumnIndex === -1) throw new Error('Tasks sheet is missing Due_Date column.');
 
     const taskRowIndex = taskData.findIndex((row, index) => index > 0 && row[taskIdColumnIndex] === normalizedTaskId);
     if (taskRowIndex < 0) throw new Error('Task not found.');
 
-    const dueDateValue = taskData[taskRowIndex][dueDateColumnIndex];
-    if (hasDueDatePassed(dueDateValue)) {
-      deleteTaskAndAssignments(normalizedTaskId);
-      return JSON.stringify({ success: true, deleted: true, taskId: normalizedTaskId });
-    }
-
     tasksSheet.getRange(taskRowIndex + 1, statusColumnIndex + 1).setValue('Completed');
+    const currentUserId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
+    if (completedByColumnIndex > -1) {
+      tasksSheet.getRange(taskRowIndex + 1, completedByColumnIndex + 1).setValue(currentUserId || '');
+    }
+    if (completedAtColumnIndex > -1) {
+      tasksSheet.getRange(taskRowIndex + 1, completedAtColumnIndex + 1).setValue(new Date());
+    }
+    upsertTaskCompletionMetadata(normalizedTaskId, currentUserId, new Date());
     const refreshedRow = tasksSheet.getRange(taskRowIndex + 1, 1, 1, headers.length).getValues()[0];
     const completedTask = {};
     headers.forEach((header, index) => {
       const value = refreshedRow[index];
       completedTask[header] = value instanceof Date ? value.toISOString() : value;
     });
+    appendTaskCompletionMetadataToTask(completedTask);
     const assignments = getTableData('Assignments');
     const assigneeIds = assignments
       .filter((assignment) => (assignment.Assignment_ID || '').toString().trim() === normalizedTaskId)
       .map((assignment) => (assignment.Assignee_ID || '').toString().trim())
       .filter(Boolean);
-    const currentUserId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
     sendManagerTaskCompletedNotifications(completedTask, assigneeIds, currentUserId);
 
-    return JSON.stringify({ success: true, deleted: false, task: completedTask });
+    return JSON.stringify({ success: true, task: completedTask });
   } catch (error) {
     return JSON.stringify({
       success: false,
