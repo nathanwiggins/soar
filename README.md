@@ -63,7 +63,7 @@ This project management system is implemented using **Google Apps Script** as th
 | `Status` | String | Task state (`Not Started`, `In Progress`, `Completed`, `Delayed`, etc.). | No |
 | `Created_Date` | Date, auto-fill | Date the task was created. | No |
 | `Description` | String | Detailed task description. | Yes |
-| `Priority` | Enum (`Highest`, `High`, `Medium`, `Low`, `Lowest`) | Task urgency level. | Yes |
+| `Priority` | Enum (`High`, `Medium`, `Low`) | Task urgency level. | Yes |
 
 #### Comments
 
@@ -88,4 +88,5 @@ This project management system is implemented using **Google Apps Script** as th
 - One **Project** can contain many **Tasks** (`Tasks.Project_ID -> Projects.Project_ID`).
 - One **User** can author many **Comments** (`Comments.Commenter_ID -> Users.User_ID`).
 - One **Task** or **Project** can have many **Comments** (`Comments.Topic_ID`).
-- One **Task** or **Project** can be assigned to one or more **Users** through **Assignments**.
+- One **Task** must always be assigned to at least one **User** through **Assignments**.
+- One **Project** can be assigned to one or more **Users** through **Assignments**.

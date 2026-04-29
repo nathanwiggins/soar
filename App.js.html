@@ -481,20 +481,18 @@
           });
       };
 
-      const priorityOptions = ['Highest', 'High', 'Medium', 'Low', 'Lowest'];
+      const priorityOptions = ['High', 'Medium', 'Low'];
       const legacyPriorityByScore = {
-        5: 'Highest',
+        5: 'High',
         4: 'High',
         3: 'Medium',
         2: 'Low',
-        1: 'Lowest'
+        1: 'Low'
       };
       const priorityRank = {
-        Highest: 5,
-        High: 4,
-        Medium: 3,
-        Low: 2,
-        Lowest: 1
+        High: 3,
+        Medium: 2,
+        Low: 1
       };
 
       const normalizePriority = (priorityValue) => {
@@ -779,8 +777,8 @@
       const priorityIconClass = (priorityValue) => {
         const normalizedPriority = normalizePriority(priorityValue);
         if (!normalizedPriority) return 'fa-bolt text-gray-400';
-        if (normalizedPriority === 'Highest') return 'fa-bolt text-[#DB0000]';
-        if (normalizedPriority === 'High' || normalizedPriority === 'Medium') return 'fa-bolt text-amber-500';
+        if (normalizedPriority === 'High') return 'fa-bolt text-[#DB0000]';
+        if (normalizedPriority === 'Medium') return 'fa-bolt text-amber-500';
         return 'fa-bolt text-emerald-500';
       };
 
@@ -1074,6 +1072,10 @@
         const trimmedTitle = taskDetailsForm.value.taskTitle.trim();
         if (!trimmedTitle) {
           alert('Task title cannot be empty.');
+          return;
+        }
+        if (!Array.isArray(taskDetailsForm.value.assigneeIds) || taskDetailsForm.value.assigneeIds.length === 0) {
+          alert('Please assign at least one person to this task.');
           return;
         }
 
@@ -1372,6 +1374,10 @@
           alert('No project selected.');
           return;
         }
+        if (!Array.isArray(newTaskForm.value.assigneeIds) || newTaskForm.value.assigneeIds.length === 0) {
+          alert('Please assign at least one person to this task.');
+          return;
+        }
 
         creatingTask.value = true;
 
@@ -1431,6 +1437,9 @@
 
             if (result.project) {
               projects.value.push(result.project);
+              if (result.assignment) {
+                assignments.value.push(result.assignment);
+              }
             } else {
               fetchData();
             }
