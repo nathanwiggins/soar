@@ -913,13 +913,13 @@ function updateTaskStatus(taskId, newStatus) {
 function normalizePriorityValue(value) {
   if (value === null || value === undefined || value === '') return '';
 
-  const validPriorities = ['Highest', 'High', 'Medium', 'Low', 'Lowest'];
+  const validPriorities = ['High', 'Medium', 'Low'];
   const legacyPriorityMap = {
-    5: 'Highest',
+    5: 'High',
     4: 'High',
     3: 'Medium',
     2: 'Low',
-    1: 'Lowest'
+    1: 'Low'
   };
   const stringValue = value.toString().trim();
 
@@ -1005,6 +1005,12 @@ function getValidAssigneeIds(assigneeIds) {
   return uniqueAssigneeIds;
 }
 
+function ensureTaskHasAssignees(assigneeIds) {
+  if (!Array.isArray(assigneeIds) || assigneeIds.length === 0) {
+    throw new Error('At least one assignee is required for every task.');
+  }
+}
+
 function validateAssigneePermissions(assigneeIds, actorUserId, grandfatheredAssigneeIds) {
   const normalizedActorId = (actorUserId || '').toString().trim();
   if (!normalizedActorId) {
@@ -1068,6 +1074,15 @@ function createProject(projectInput) {
 
     sheet.appendRow(newRow);
 
+    const projectId = headerIndex.Project_ID !== undefined ? newRow[headerIndex.Project_ID] : '';
+    if (projectId) {
+      const assignmentsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Assignments');
+      if (!assignmentsSheet) {
+        throw new Error('Assignments sheet was not found.');
+      }
+      assignmentsSheet.appendRow([projectId, creatorId]);
+    }
+
     const createdProject = {};
     headers.forEach((header, index) => {
       const value = newRow[index];
@@ -1076,7 +1091,11 @@ function createProject(projectInput) {
         : (value instanceof Date ? value.toISOString() : value);
     });
 
-    return JSON.stringify({ success: true, project: createdProject });
+    const createdAssignment = projectId
+      ? { Assignment_ID: projectId, Assignee_ID: creatorId }
+      : null;
+
+    return JSON.stringify({ success: true, project: createdProject, assignment: createdAssignment });
   } catch (error) {
     return JSON.stringify({
       success: false,
@@ -1117,6 +1136,7 @@ function createTask(projectId, taskInput) {
     const priority = normalizePriorityValue(taskInput ? taskInput.priority : '');
     const description = taskInput && taskInput.description ? taskInput.description.toString().trim() : '';
     const assigneeIds = getValidAssigneeIds(taskInput ? taskInput.assigneeIds : []);
+    ensureTaskHasAssignees(assigneeIds);
     const normalizedProjectId = ensureProjectExists(projectId);
     const creatorId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
 
@@ -1249,6 +1269,7 @@ function updateTask(taskId, taskInput) {
     const priority = normalizePriorityValue(taskInput ? taskInput.priority : '');
     const description = taskInput && taskInput.description ? taskInput.description.toString().trim() : '';
     const assigneeIds = getValidAssigneeIds(taskInput ? taskInput.assigneeIds : []);
+    ensureTaskHasAssignees(assigneeIds);
     const status = normalizeTaskStatus(taskInput ? taskInput.status : '');
     const projectId = ensureProjectExists(taskInput ? taskInput.projectId : '');
     const editorId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
