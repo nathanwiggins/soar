@@ -1604,3 +1604,193 @@ function completeTask(taskId) {
     });
   }
 }
+
+function getAgendasSheet(createIfMissing) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName('Agendas');
+  if (!sheet && createIfMissing) {
+    sheet = ss.insertSheet('Agendas');
+    sheet.getRange(1, 1, 1, 10).setValues([['Agenda ID', 'Title', 'Date', 'Owner', 'Status', 'Participants', 'Notes', 'Last Updated', 'Viewers', 'Editors']]);
+  }
+  return sheet;
+}
+
+function toAgendaDto(row) {
+  if (!row) return null;
+  const getValue = (candidates) => {
+    const normalizedCandidates = candidates.map((entry) => normalizeHeaderName(entry));
+    const rowKey = Object.keys(row).find((key) => normalizedCandidates.includes(normalizeHeaderName(key)));
+    return rowKey ? row[rowKey] : '';
+  };
+  const viewers = getValue(['Viewers']) || '';
+  const editors = getValue(['Editors']) || '';
+  const owner = getValue(['Owner']) || '';
+  const dateValue = getValue(['Date']);
+  const lastUpdatedValue = getValue(['Last_Updated', 'Last Updated']);
+  return {
+    Agenda_ID: (getValue(['Agenda_ID', 'Agenda ID']) || '').toString().trim(),
+    Title: getValue(['Title']) || '',
+    Date: dateValue ? serializeDateOnlyForClient(dateValue) : '',
+    Owner: owner,
+    Status: getValue(['Status']) || 'Draft',
+    Participants: getValue(['Participants']) || '',
+    Notes: getValue(['Notes']) || '',
+    Last_Updated: lastUpdatedValue instanceof Date ? lastUpdatedValue.toISOString() : (lastUpdatedValue || ''),
+    Viewers: viewers,
+    Editors: editors,
+    Can_View: true,
+    Can_Edit: true
+  };
+}
+
+function getCurrentUserDisplayName() {
+  const currentEmail = normalizeEmail(getCurrentUser());
+  const users = getTableData('Users');
+  const user = users.find((entry) => normalizeEmail(entry.Email) === currentEmail);
+  return (user && user.Name ? user.Name.toString().trim() : '') || getCurrentUser();
+}
+
+function extractHandles(text) {
+  const value = text ? text.toString() : '';
+  const matches = value.matchAll(/@([a-zA-Z0-9._-]+)/g);
+  const handles = new Set();
+  for (const match of matches) {
+    if (match && match[1]) handles.add(match[1].toLowerCase());
+  }
+  return Array.from(handles);
+}
+
+function getCurrentUserAccessTokens() {
+  const currentEmail = normalizeEmail(getCurrentUser());
+  const currentUserId = getCurrentUserIdByEmail(currentEmail);
+  const tokens = new Set([currentEmail, currentUserId ? currentUserId.toString().trim() : '']);
+  if (currentEmail) tokens.add(currentEmail.split('@')[0]);
+  return Array.from(tokens).filter(Boolean);
+}
+
+function hasAgendaAccess(value, currentTokens) {
+  const directTokens = (value || '').toString().split(',').map((entry) => entry.trim().toLowerCase()).filter(Boolean);
+  const merged = new Set(directTokens);
+  return currentTokens.some((token) => merged.has(token.toLowerCase()));
+}
+
+function shareAgendaWithHandles(agendaTitle, participantsValue, ownerName) {
+  const handles = extractHandles(participantsValue);
+  if (handles.length === 0) return [];
+  const users = getTableData('Users');
+  const recipients = users.filter((user) => {
+    const email = normalizeEmail(user.Email);
+    const local = email.split('@')[0];
+    const fallback = (user.Name || '').toString().trim().toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9._-]/g, '');
+    return handles.includes(local) || (fallback && handles.includes(fallback));
+  });
+  recipients.forEach((user) => {
+    if (!user.Email) return;
+    safeSendEmail(
+      user.Email,
+      `Agenda shared with you: ${agendaTitle}`,
+      `${ownerName} shared an agenda with you.\n\nAgenda: ${agendaTitle}\nParticipants: ${participantsValue}\n`
+    );
+  });
+  return recipients.map((user) => (user.User_ID || '').toString().trim()).filter(Boolean);
+}
+
+function getAgendaList() {
+  const agendas = getTableData('Agendas')
+    .map(toAgendaDto)
+    .filter((agenda) => agenda && agenda.Agenda_ID);
+  return JSON.stringify(agendas);
+}
+function getAgendaById(id) {
+  const targetId = (id || '').toString().trim();
+  const agendas = JSON.parse(getAgendaList());
+  return JSON.stringify(agendas.find((agenda) => agenda.Agenda_ID === targetId) || null);
+}
+function createAgenda(payload) {
+  const sheet = getAgendasSheet(true);
+  const id = `AGD-${Date.now()}`;
+  const title = payload && payload.title ? payload.title.toString().trim() : 'New Agenda';
+  const meetingDate = payload && payload.date ? parseDateInput(payload.date) : new Date();
+  const participants = payload && payload.participants ? payload.participants.toString().trim() : '';
+  const ownerId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser())) || getCurrentUserDisplayName();
+  const sharedUserIds = shareAgendaWithHandles(title || 'New Agenda', participants, getCurrentUserDisplayName());
+  const viewers = [ownerId, ...sharedUserIds].filter(Boolean).join(', ');
+  const editors = [ownerId].filter(Boolean).join(', ');
+  sheet.appendRow([id, title || 'New Agenda', meetingDate || new Date(), ownerId, 'Draft', participants, '', new Date(), viewers, editors]);
+  return { success: true, agendaId: id };
+}
+function saveAgenda(agenda) {
+  const sheet = getAgendasSheet(true);
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const h = getHeaderIndex(headers);
+  const rowIndex = data.findIndex((row, i) => i > 0 && (row[h['Agenda ID']] || '').toString() === (agenda.Agenda_ID || agenda['Agenda ID'] || '').toString());
+  if (rowIndex < 0) return { success: false, error: 'Agenda not found.' };
+  sheet.getRange(rowIndex + 1, h.Title + 1).setValue(agenda.Title || '');
+  sheet.getRange(rowIndex + 1, h.Date + 1).setValue(parseDateInput(agenda.Date) || '');
+  sheet.getRange(rowIndex + 1, h.Owner + 1).setValue(agenda.Owner || getCurrentUser());
+  sheet.getRange(rowIndex + 1, h.Status + 1).setValue(agenda.Status || 'Draft');
+  sheet.getRange(rowIndex + 1, h.Participants + 1).setValue(agenda.Participants || '');
+  sheet.getRange(rowIndex + 1, h.Notes + 1).setValue([agenda.Notes, agenda.Agenda_Items, agenda.Action_Items, agenda.Decisions, agenda.Follow_Up_Notes].filter(Boolean).join('\n\n'));
+  sheet.getRange(rowIndex + 1, h['Last Updated'] + 1).setValue(new Date());
+  return { success: true };
+}
+function deleteAgenda(id) {
+  const sheet = getAgendasSheet(false); if (!sheet) return { success: true };
+  const data = sheet.getDataRange().getValues(); const h = getHeaderIndex(data[0] || []);
+  for (let i = data.length - 1; i >= 1; i -= 1) if ((data[i][h['Agenda ID']] || '').toString() === (id || '').toString()) { sheet.deleteRow(i + 1); break; }
+  return { success: true };
+}
+function archiveAgenda(id) {
+  const sheet = getAgendasSheet(false); if (!sheet) return { success: false };
+  const data = sheet.getDataRange().getValues(); const h = getHeaderIndex(data[0] || []);
+  const rowIndex = data.findIndex((row, i) => i > 0 && (row[h['Agenda ID']] || '').toString() === (id || '').toString());
+  if (rowIndex < 0) return { success: false, error: 'Agenda not found.' };
+  sheet.getRange(rowIndex + 1, h.Status + 1).setValue('Archived');
+  sheet.getRange(rowIndex + 1, h['Last Updated'] + 1).setValue(new Date());
+  return { success: true };
+}
+function duplicateAgenda(id) {
+  const agenda = getAgendaById(id);
+  if (!agenda) return { success: false, error: 'Agenda not found.' };
+  const sheet = getAgendasSheet(true);
+  const newId = `AGD-${Date.now()}-COPY`;
+  sheet.appendRow([newId, `${agenda.Title || 'Agenda'} (Copy)`, parseDateInput(agenda.Date) || '', agenda.Owner || getCurrentUser(), 'Draft', agenda.Participants || '', agenda.Notes || '', new Date()]);
+  return { success: true, agendaId: newId };
+}
+
+function listAgendasForUi() {
+  const sheet = getAgendasSheet(false);
+  if (!sheet) return JSON.stringify([]);
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return JSON.stringify([]);
+  const headers = data[0];
+  const h = getNormalizedHeaderIndex(headers);
+  const agendaIdIndex = h['agenda id'] !== undefined ? h['agenda id'] : (h['agenda_id'] !== undefined ? h['agenda_id'] : 0);
+  const titleIndex = h.title !== undefined ? h.title : 1;
+  const dateIndex = h.date !== undefined ? h.date : 2;
+  const ownerIndex = h.owner !== undefined ? h.owner : 3;
+  const statusIndex = h.status !== undefined ? h.status : 4;
+  const participantsIndex = h.participants !== undefined ? h.participants : 5;
+  const notesIndex = h.notes !== undefined ? h.notes : 6;
+  const updatedIndex = h['last updated'] !== undefined ? h['last updated'] : (h['last_updated'] !== undefined ? h['last_updated'] : 7);
+
+  const rows = data.slice(1).map((row, idx) => ({
+    Agenda_ID: (row[agendaIdIndex] || `AGD-ROW-${idx + 2}`).toString().trim(),
+    Title: row[titleIndex] || '',
+    Date: row[dateIndex] ? serializeDateOnlyForClient(row[dateIndex]) : '',
+    Owner: row[ownerIndex] || '',
+    Status: row[statusIndex] || 'Draft',
+    Participants: row[participantsIndex] || '',
+    Notes: row[notesIndex] || '',
+    Last_Updated: row[updatedIndex] instanceof Date ? row[updatedIndex].toISOString() : (row[updatedIndex] || '')
+  }));
+
+  return JSON.stringify(rows);
+}
+
+function getAgendaForUi(agendaId) {
+  const rows = JSON.parse(listAgendasForUi());
+  const id = (agendaId || '').toString().trim();
+  return JSON.stringify(rows.find((agenda) => agenda.Agenda_ID === id) || null);
+}

@@ -19,6 +19,16 @@
       max-width: 150px;
       height: auto;
     }
+    .agenda-grid { display:grid; grid-template-columns:minmax(300px,360px) minmax(0,1fr); gap:1.25rem; }
+    .agenda-card { border-radius:1rem; box-shadow:0 8px 24px rgba(0,0,0,.06); padding:1rem; }
+    .agenda-toolbar,.agenda-action-row,.agenda-meta-grid { display:flex; gap:.6rem; flex-wrap:wrap; align-items:center; }
+    .agenda-search-icon { position:absolute; left:.75rem; top:.65rem; opacity:.5; font-size:.8rem; }
+    .agenda-sub-btn { border:1px solid #e5e7eb; border-radius:.6rem; padding:.48rem .72rem; font-size:.82rem; transition:.2s; }
+    .agenda-sub-btn:hover { background:#f9fafb; }
+    .agenda-title-input,.agenda-input,.agenda-textarea { width:100%; border:1px solid #d1d5db; border-radius:.75rem; padding:.65rem .8rem; font-size:.9rem; }
+    .agenda-title-input { font-size:1.1rem; font-weight:600; }
+    .agenda-textarea { min-height:84px; resize:vertical; }
+    @media (max-width:1024px){ .agenda-grid{ grid-template-columns:1fr; } }
   </style>
 </head>
 <body class="h-screen flex overflow-hidden">
@@ -235,6 +245,13 @@
         </a>
         <a
           href="#"
+          @click.prevent="setActiveTab('agendas')"
+          :class="currentTab === 'agendas' ? 'bg-[#DB0000]/10 text-[#DB0000] font-medium' : (isDarkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-gray-50')"
+          class="flex items-center px-4 py-3 rounded-lg transition-colors">
+          <i class="fa-solid fa-clipboard-list w-6"></i> Agendas
+        </a>
+        <a
+          href="#"
           @click.prevent="setActiveTab('past-assignments')"
           :class="currentTab === 'past-assignments' ? 'bg-[#DB0000]/10 text-[#DB0000] font-medium' : (isDarkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-gray-50')"
           class="flex items-center px-4 py-3 rounded-lg transition-colors">
@@ -289,7 +306,7 @@
     <main class="flex-1 flex flex-col h-full overflow-hidden">
       <header :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'" class="h-16 border-b flex items-center justify-between px-8">
         <h2 :class="isDarkMode ? 'text-gray-100' : 'text-black'" class="text-xl font-semibold">
-          {{ currentTab === 'supervisor-view' ? 'Supervisor Tools' : (currentTab === 'calendar' ? 'Calendar' : (currentTab === 'past-assignments' ? 'Past Assignments' : 'Project Board')) }}
+          {{ currentTab === 'supervisor-view' ? 'Supervisor Tools' : (currentTab === 'calendar' ? 'Calendar' : (currentTab === 'agendas' ? 'Agendas' : (currentTab === 'past-assignments' ? 'Past Assignments' : 'Project Board'))) }}
         </h2>
         <div class="flex items-center gap-3">
           <template v-if="currentTab === 'project-board'">
@@ -449,6 +466,41 @@
                 {{ permanentlyDeletingTaskIds.includes(task.Task_ID) ? 'Deleting...' : 'Delete Permanently' }}
               </button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-else-if="currentTab === 'agendas'" :class="isDarkMode ? 'bg-gray-950' : 'bg-gray-50/50'" class="flex-1 overflow-auto p-6 transition-colors duration-200">
+        <div class="agenda-grid">
+          <div :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'" class="agenda-card border">
+            <div class="agenda-toolbar mb-4">
+              <div class="relative flex-1"><i class="fa-solid fa-magnifying-glass agenda-search-icon"></i><input v-model="agendaSearchQuery" type="text" placeholder="Search agendas..." class="w-full border rounded-lg pl-10 pr-3 py-2 text-sm"></div>
+              <button type="button" class="btn-action-red px-3 py-2 rounded-lg text-sm" @click.prevent.stop="openAddAgenda"><i class="fa-solid fa-plus mr-1"></i> New Agenda</button>
+            </div>
+            <div class="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
+              <button v-for="agenda in filteredAgendaList" :key="agenda.Agenda_ID" @click="openAgenda(agenda.Agenda_ID)" :class="selectedAgenda?.Agenda_ID === agenda.Agenda_ID ? 'border-[#DB0000] ring-2 ring-[#DB0000]/20' : 'border-gray-200'" class="w-full text-left border rounded-xl p-3 transition-all">
+                <div class="flex items-start justify-between gap-2"><p class="text-sm font-semibold truncate">{{ agenda.Title || 'Untitled agenda' }}</p><span class="text-xs px-2 py-1 rounded-full bg-[#DB0000]/10 text-[#DB0000]">{{ agenda.Status || 'Draft' }}</span></div>
+                <p class="text-xs mt-2 text-gray-500">{{ formatDate(agenda.Date) }} • {{ agenda.Owner || 'Unassigned owner' }}</p>
+              </button>
+            </div>
+            <div class="agenda-action-row mt-4">
+              <button class="agenda-sub-btn" @click="duplicateAgenda"><i class="fa-solid fa-copy mr-1"></i> Duplicate</button>
+              <button class="agenda-sub-btn" @click="selectedAgenda && archiveAgenda(selectedAgenda.Agenda_ID)"><i class="fa-solid fa-box-archive mr-1"></i> Archive</button>
+              <button class="agenda-sub-btn text-red-600" @click="selectedAgenda && deleteAgenda(selectedAgenda.Agenda_ID)"><i class="fa-solid fa-trash mr-1"></i> Delete</button>
+            </div>
+          </div>
+          <div :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'" class="agenda-card border">
+            <div v-if="selectedAgenda" class="space-y-4">
+              <input v-model="selectedAgenda.Title" type="text" class="agenda-title-input" placeholder="Meeting title">
+              <div class="agenda-meta-grid"><input v-model="selectedAgenda.Date" type="date" class="agenda-input"><input v-model="selectedAgenda.Participants" type="text" class="agenda-input" placeholder="Participants"></div>
+              <textarea v-model="selectedAgenda.Notes" class="agenda-textarea" placeholder="Notes"></textarea>
+              <textarea v-model="selectedAgenda.Agenda_Items" class="agenda-textarea" placeholder="Agenda items"></textarea>
+              <textarea v-model="selectedAgenda.Action_Items" class="agenda-textarea" placeholder="Action items"></textarea>
+              <textarea v-model="selectedAgenda.Decisions" class="agenda-textarea" placeholder="Decisions"></textarea>
+              <textarea v-model="selectedAgenda.Follow_Up_Notes" class="agenda-textarea" placeholder="Follow-up notes"></textarea>
+              <div class="agenda-action-row"><button class="btn-action-red px-3 py-2 rounded-lg text-sm" @click="saveAgenda">Save</button><button class="agenda-sub-btn" @click="shareAgenda">Share</button><button class="agenda-sub-btn" @click="exportAgendaPdf">Export PDF</button><button class="agenda-sub-btn" @click="markAgendaComplete">Mark Complete</button></div>
+            </div>
+            <div v-else class="h-full flex items-center justify-center text-sm text-gray-500">Select an agenda from the list or create a new one.</div>
           </div>
         </div>
       </div>
@@ -633,6 +685,35 @@
             :disabled="creatingAccount">
             {{ creatingAccount ? 'Creating...' : 'Create Account' }}
           </button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="showAddAgendaModal" class="fixed inset-0 bg-gray-900/50 flex items-center justify-center z-50 px-4" @click.self="closeAddAgenda">
+      <div :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-100'" class="w-full max-w-xl rounded-2xl shadow-2xl border">
+        <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="px-6 py-4 border-b flex items-center justify-between">
+          <div>
+            <h3 :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'" class="text-lg font-semibold">New Agenda</h3>
+            <p :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-sm">Name it and add people to share with.</p>
+          </div>
+          <button @click="closeAddAgenda"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+        <div class="p-6 space-y-4">
+          <div><label class="block text-sm font-medium mb-2">Agenda Name</label><input v-model="newAgendaForm.title" type="text" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Weekly Leadership Sync"></div>
+          <div><label class="block text-sm font-medium mb-2">Meeting Date</label><input v-model="newAgendaForm.date" type="date" class="w-full border rounded-lg px-3 py-2 text-sm"></div>
+          <div class="relative">
+            <label class="block text-sm font-medium mb-2">Share With</label>
+            <input v-model="newAgendaForm.participants" @input="updateAgendaShareSuggestions" type="text" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Type @ to mention usernames">
+            <div v-if="showAgendaShareSuggestions" :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'" class="absolute z-20 mt-2 w-full border rounded-lg shadow-lg max-h-44 overflow-y-auto p-2">
+              <button type="button" v-for="entry in filteredAgendaShareSuggestions" :key="`agenda-share-${entry.handle}`" @click="applyAgendaShareSuggestion(entry.handle)" :class="isDarkMode ? 'hover:bg-gray-700 text-gray-100' : 'hover:bg-gray-100 text-gray-700'" class="w-full text-left px-2 py-2 rounded-md text-sm">
+                <span class="font-semibold mr-2">@{{ entry.handle }}</span><span class="opacity-80">{{ entry.name || entry.email }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="px-6 py-4 border-t flex justify-end gap-2">
+          <button class="px-4 py-2 rounded-lg text-sm border" @click="closeAddAgenda">Cancel</button>
+          <button class="btn-action-red px-4 py-2 rounded-lg text-sm" @click="createAgenda">Create & Share</button>
         </div>
       </div>
     </div>

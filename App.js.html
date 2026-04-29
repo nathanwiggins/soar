@@ -54,13 +54,18 @@
       const currentTab = ref('project-board');
       const showSupervisorUserDropdown = ref(false);
       const selectedSupervisorUserIds = ref([]);
+      const agendaList = ref([]);
+      const selectedAgenda = ref(null);
+      const agendaSearchQuery = ref('');
 
       // Add-task modal state
       const showAddTaskModal = ref(false);
       const showAddProjectModal = ref(false);
+      const showAddAgendaModal = ref(false);
       const selectedProject = ref(null);
       const creatingTask = ref(false);
       const creatingProject = ref(false);
+      const creatingAgenda = ref(false);
       const showAssigneeDropdown = ref(false);
       const newTaskForm = ref({
         taskTitle: '',
@@ -75,6 +80,13 @@
         description: '',
         status: 'Not Started'
       });
+      const newAgendaForm = ref({
+        title: '',
+        date: '',
+        participants: ''
+      });
+      const showAgendaShareSuggestions = ref(false);
+      const agendaShareQuery = ref('');
 
       // Task details/edit modal state
       const showTaskDetailsModal = ref(false);
@@ -179,6 +191,13 @@
       const filteredMentionSuggestions = computed(() => {
         if (!showMentionSuggestions.value) return [];
         const query = mentionQuery.value.toLowerCase();
+        return mentionableUsers.value
+          .filter((entry) => !query || entry.handle.toLowerCase().startsWith(query))
+          .slice(0, 6);
+      });
+      const filteredAgendaShareSuggestions = computed(() => {
+        if (!showAgendaShareSuggestions.value) return [];
+        const query = agendaShareQuery.value.toLowerCase();
         return mentionableUsers.value
           .filter((entry) => !query || entry.handle.toLowerCase().startsWith(query))
           .slice(0, 6);
@@ -593,7 +612,140 @@
         if (tabId !== 'supervisor-view') {
           showSupervisorUserDropdown.value = false;
         }
+        if (tabId === 'agendas') {
+          loadAgendaList();
+        }
       };
+      const filteredAgendaList = computed(() => {
+        const query = (agendaSearchQuery.value || '').toLowerCase().trim();
+        if (!query) return agendaList.value;
+        return agendaList.value.filter((agenda) => [agenda.Title, agenda.Owner, agenda.Status].join(' ').toLowerCase().includes(query));
+      });
+      const normalizeAgenda = (agenda) => ({ ...agenda, Agenda_ID: agenda.Agenda_ID || agenda['Agenda ID'] || '' });
+      const loadAgendaList = () => {
+        google.script.run
+          .withSuccessHandler((res) => {
+            let parsed = res;
+            if (typeof res === 'string') {
+              try {
+                parsed = JSON.parse(res);
+              } catch (error) {
+                console.warn('Agenda list response was not JSON, using empty list.', error);
+                parsed = [];
+              }
+            }
+            const list = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.agendas) ? parsed.agendas : []);
+            agendaList.value = list.map(normalizeAgenda);
+            if (!selectedAgenda.value && agendaList.value.length) {
+              selectedAgenda.value = { ...agendaList.value[0] };
+            }
+          })
+          .withFailureHandler((error) => {
+            console.error('Failed to load agendas:', error);
+            agendaList.value = [];
+          })
+          .listAgendasForUi();
+      };
+      const openAgenda = (id) => {
+        google.script.run
+          .withSuccessHandler((res) => {
+            const parsed = typeof res === 'string' ? JSON.parse(res) : res;
+            selectedAgenda.value = parsed ? normalizeAgenda(parsed) : null;
+          })
+          .withFailureHandler((error) => {
+            console.error('Failed to open agenda:', error);
+            selectedAgenda.value = null;
+          })
+          .getAgendaForUi(id);
+      };
+      const openAddAgenda = () => {
+        newAgendaForm.value = { title: '', date: '', participants: '' };
+        showAgendaShareSuggestions.value = false;
+        agendaShareQuery.value = '';
+        showAddAgendaModal.value = true;
+      };
+      const closeAddAgenda = () => {
+        if (creatingAgenda.value) return;
+        showAgendaShareSuggestions.value = false;
+        agendaShareQuery.value = '';
+        showAddAgendaModal.value = false;
+      };
+      const updateAgendaShareSuggestions = () => {
+        const text = (newAgendaForm.value.participants || '').toString();
+        const match = text.match(/@([a-z0-9._-]*)$/i);
+        if (!match) {
+          showAgendaShareSuggestions.value = false;
+          agendaShareQuery.value = '';
+          return;
+        }
+        agendaShareQuery.value = (match[1] || '').toLowerCase();
+        showAgendaShareSuggestions.value = true;
+      };
+      const applyAgendaShareSuggestion = (handle) => {
+        if (!handle) return;
+        const text = (newAgendaForm.value.participants || '').toString();
+        newAgendaForm.value.participants = text.replace(/@([a-z0-9._-]*)$/i, `@${handle} `);
+        showAgendaShareSuggestions.value = false;
+        agendaShareQuery.value = '';
+      };
+
+      const createAgenda = () => {
+        const trimmedTitle = (newAgendaForm.value.title || '').trim();
+        if (!trimmedTitle) {
+          alert('Please enter an agenda name.');
+          return;
+        }
+        const fallbackAgendaId = `AGD-LOCAL-${Date.now()}`;
+        const fallbackAgenda = {
+          Agenda_ID: fallbackAgendaId,
+          Title: trimmedTitle,
+          Date: newAgendaForm.value.date || formatDateForInput(new Date()),
+          Owner: currentUser.value?.Name || currentUser.value?.Email || '',
+          Status: 'Draft',
+          Participants: newAgendaForm.value.participants || '',
+          Notes: '',
+          Agenda_Items: '',
+          Action_Items: '',
+          Decisions: '',
+          Follow_Up_Notes: ''
+        };
+
+        if (!(typeof google !== 'undefined' && google.script && google.script.run)) {
+          agendaList.value.unshift(fallbackAgenda);
+          selectedAgenda.value = { ...fallbackAgenda };
+          return;
+        }
+
+        google.script.run
+          .withSuccessHandler((res) => {
+            if (res && res.success && res.agendaId) {
+              loadAgendaList();
+              openAgenda(res.agendaId);
+              return;
+            }
+            agendaList.value.unshift(fallbackAgenda);
+            selectedAgenda.value = { ...fallbackAgenda };
+          })
+          .withFailureHandler((error) => {
+            console.error('Failed to create agenda:', error);
+            agendaList.value.unshift(fallbackAgenda);
+            selectedAgenda.value = { ...fallbackAgenda };
+            alert('Created a local draft agenda. Save to sync when backend is available.');
+          })
+          .createAgenda({
+            title: trimmedTitle,
+            date: newAgendaForm.value.date,
+            participants: newAgendaForm.value.participants
+          });
+        showAddAgendaModal.value = false;
+      };
+      const saveAgenda = () => google.script.run.withSuccessHandler(() => { loadAgendaList(); }).saveAgenda(selectedAgenda.value);
+      const deleteAgenda = (id) => google.script.run.withSuccessHandler(() => { selectedAgenda.value = null; loadAgendaList(); }).deleteAgenda(id);
+      const archiveAgenda = (id) => google.script.run.withSuccessHandler(() => { loadAgendaList(); }).archiveAgenda(id);
+      const duplicateAgenda = () => { if (!selectedAgenda.value) return; google.script.run.withSuccessHandler(() => loadAgendaList()).duplicateAgenda(selectedAgenda.value.Agenda_ID); };
+      const shareAgenda = () => alert('Share action ready for backend integration.');
+      const exportAgendaPdf = () => alert('Export PDF action ready for backend integration.');
+      const markAgendaComplete = () => { if (!selectedAgenda.value) return; selectedAgenda.value.Status = 'Complete'; saveAgenda(); };
 
       const toggleSupervisorUserSelection = (userId) => {
         const selectedUserIds = selectedSupervisorUserIds.value;
@@ -1596,12 +1748,17 @@
         loadSettings();
         fetchData();
         makeLogoTransparent();
+        window.__forceCreateAgenda = createAgenda;
       });
 
       return {
         loading,
         isDarkMode,
         currentTab,
+        agendaList,
+        selectedAgenda,
+        agendaSearchQuery,
+        filteredAgendaList,
         isUserMenuOpen,
         showCreateAccountModal,
         createAccountForm,
@@ -1642,14 +1799,19 @@
         fontScaleLabel,
         showAddTaskModal,
         showAddProjectModal,
+        showAddAgendaModal,
         selectedProject,
         creatingTask,
         creatingProject,
+        creatingAgenda,
         showAssigneeDropdown,
         assigneeSummary,
         assignableUsers,
         newTaskForm,
         newProjectForm,
+        newAgendaForm,
+        showAgendaShareSuggestions,
+        filteredAgendaShareSuggestions,
         showTaskDetailsModal,
         taskDetailsForm,
         showTaskDetailsAssigneeDropdown,
@@ -1695,6 +1857,10 @@
         closeCommentModal,
         openProjectInfo,
         openAddProject,
+        openAddAgenda,
+        closeAddAgenda,
+        updateAgendaShareSuggestions,
+        applyAgendaShareSuggestion,
         closeAddProject,
         closeTaskInfo,
         closeProjectInfo,
@@ -1723,6 +1889,16 @@
         formatDateTime,
         toggleWorkVisibility,
         setActiveTab,
+        loadAgendaList,
+        openAgenda,
+        createAgenda,
+        saveAgenda,
+        deleteAgenda,
+        archiveAgenda,
+        duplicateAgenda,
+        shareAgenda,
+        exportAgendaPdf,
+        markAgendaComplete,
         toggleSupervisorUserSelection,
         isSupervisorUserSelected,
         updateMentionSuggestions,
