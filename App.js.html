@@ -680,7 +680,7 @@
             const project = getProjectById(task.Project_ID);
             return {
               dateKey,
-              projectTitle: project?.Project_Title || 'Untitled Project',
+              taskTitle: task?.Task_Title || project?.Project_Title || 'Untitled Task',
               task // <-- Now passing the full task object
             };
           })
