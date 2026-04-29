@@ -582,7 +582,15 @@
         showAllWorkItems.value = !showAllWorkItems.value;
       };
 
+      const canAccessSupervisorTools = computed(() => directReportUsers.value.length > 0);
+
       const setActiveTab = (tabId) => {
+        if (tabId === 'supervisor-view' && !canAccessSupervisorTools.value) {
+          currentTab.value = 'project-board';
+          showSupervisorUserDropdown.value = false;
+          return;
+        }
+
         currentTab.value = tabId;
         if (tabId !== 'supervisor-view') {
           showSupervisorUserDropdown.value = false;
@@ -778,8 +786,10 @@
 
       const getPriorityLabel = (priorityValue) => {
         const normalizedPriority = normalizePriority(priorityValue);
-        return normalizedPriority ? `${normalizedPriority} priority` : 'No priority';
+        return normalizedPriority ? `${normalizedPriority} priority` : '';
       };
+
+      const hasPriority = (priorityValue) => !!normalizePriority(priorityValue);
 
       const getPriorityTitle = (priorityValue) => {
         const normalizedPriority = normalizePriority(priorityValue);
@@ -1595,6 +1605,7 @@
         pastAssignments,
         visibleProjects,
         directReportUsers,
+        canAccessSupervisorTools,
         supervisorVisibleProjects,
         supervisorVisibleTasks,
         showSupervisorUserDropdown,
@@ -1666,6 +1677,7 @@
         getDueDateTooltip,
         priorityIconClass,
         getPriorityLabel,
+        hasPriority,
         getPriorityTitle,
         normalizePriority,
         priorityOptions,

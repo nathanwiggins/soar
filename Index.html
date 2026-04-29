@@ -219,11 +219,12 @@
           <i class="fa-solid fa-layer-group w-6"></i> Project Board
         </a>
         <a
+          v-if="canAccessSupervisorTools"
           href="#"
           @click.prevent="setActiveTab('supervisor-view')"
           :class="currentTab === 'supervisor-view' ? 'bg-[#DB0000]/10 text-[#DB0000] font-medium' : (isDarkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-gray-50')"
           class="flex items-center px-4 py-3 rounded-lg transition-colors">
-          <i class="fa-solid fa-users w-6"></i> Supervisor View
+          <i class="fa-solid fa-users w-6"></i> Supervisor Tools
         </a>
         <a
           href="#"
@@ -288,7 +289,7 @@
     <main class="flex-1 flex flex-col h-full overflow-hidden">
       <header :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'" class="h-16 border-b flex items-center justify-between px-8">
         <h2 :class="isDarkMode ? 'text-gray-100' : 'text-black'" class="text-xl font-semibold">
-          {{ currentTab === 'supervisor-view' ? 'Supervisor View' : (currentTab === 'calendar' ? 'Calendar' : (currentTab === 'past-assignments' ? 'Past Assignments' : 'Project Board')) }}
+          {{ currentTab === 'supervisor-view' ? 'Supervisor Tools' : (currentTab === 'calendar' ? 'Calendar' : (currentTab === 'past-assignments' ? 'Past Assignments' : 'Project Board')) }}
         </h2>
         <div class="flex items-center gap-3">
           <template v-if="currentTab === 'project-board'">
@@ -520,6 +521,7 @@
                   </div>
                   <div class="flex items-center gap-3">
                     <span
+                      v-if="hasPriority(task.Priority)"
                       :class="[
                         isDarkMode ? 'text-gray-300' : 'text-gray-500',
                         shouldStrikeTask(task) ? 'line-through opacity-70' : ''
@@ -546,7 +548,7 @@
               </div>
               
               <button
-                v-if="currentTab !== 'supervisor-view'"
+                v-if="currentTab === 'project-board' || currentTab === 'supervisor-view'"
                 @click="openAddTask(project)" 
                 :class="isDarkMode ? 'border-gray-700 text-gray-500 hover:border-[#C41425] hover:text-[#DB0000]' : 'border-gray-200 text-gray-400 hover:border-[#C41425] hover:text-[#DB0000]'" 
                 class="w-full py-2 border-2 border-dashed rounded-xl transition-colors text-sm font-medium">
@@ -560,7 +562,7 @@
             :class="isDarkMode ? 'bg-gray-900 border-gray-700 text-gray-300' : 'bg-white border-gray-200 text-gray-600'"
             class="w-full max-w-xl rounded-xl border p-6 shadow-sm">
             <template v-if="currentTab === 'supervisor-view'">
-              <p class="font-semibold mb-1">No supervisor assignments to show.</p>
+              <p class="font-semibold mb-1">View projects for individuals you supervise.</p>
               <p class="text-sm">
                 Select one or more direct reports to view what they are assigned to.
               </p>

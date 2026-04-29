@@ -1068,6 +1068,15 @@ function createProject(projectInput) {
 
     sheet.appendRow(newRow);
 
+    const projectId = headerIndex.Project_ID !== undefined ? newRow[headerIndex.Project_ID] : '';
+    if (projectId) {
+      const assignmentsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Assignments');
+      if (!assignmentsSheet) {
+        throw new Error('Assignments sheet was not found.');
+      }
+      assignmentsSheet.appendRow([projectId, creatorId]);
+    }
+
     const createdProject = {};
     headers.forEach((header, index) => {
       const value = newRow[index];
