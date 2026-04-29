@@ -213,6 +213,13 @@
       <nav class="flex-1 px-4 py-6 space-y-2">
         <a
           href="#"
+          @click.prevent="setActiveTab('agendas')"
+          :class="currentTab === 'agendas' ? 'bg-[#DB0000]/10 text-[#DB0000] font-medium' : (isDarkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-gray-50')"
+          class="flex items-center px-4 py-3 rounded-lg transition-colors">
+          <i class="fa-solid fa-file-lines w-6"></i> Shared Agendas
+        </a>
+        <a
+          href="#"
           @click.prevent="setActiveTab('project-board')"
           :class="currentTab === 'project-board' ? 'bg-[#DB0000]/10 text-[#DB0000] font-medium' : (isDarkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-gray-50')"
           class="flex items-center px-4 py-3 rounded-lg transition-colors">
@@ -289,7 +296,7 @@
     <main class="flex-1 flex flex-col h-full overflow-hidden">
       <header :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'" class="h-16 border-b flex items-center justify-between px-8">
         <h2 :class="isDarkMode ? 'text-gray-100' : 'text-black'" class="text-xl font-semibold">
-          {{ currentTab === 'supervisor-view' ? 'Supervisor Tools' : (currentTab === 'calendar' ? 'Calendar' : (currentTab === 'past-assignments' ? 'Past Assignments' : 'Project Board')) }}
+          {{ currentTab === 'supervisor-view' ? 'Supervisor Tools' : (currentTab === 'calendar' ? 'Calendar' : (currentTab === 'past-assignments' ? 'Past Assignments' : (currentTab === 'agendas' ? 'Shared Agendas' : 'Project Board'))) }}
         </h2>
         <div class="flex items-center gap-3">
           <template v-if="currentTab === 'project-board'">
@@ -357,6 +364,11 @@
                 <i class="fa-solid fa-chevron-right"></i>
               </button>
             </div>
+          </template>
+          <template v-else-if="currentTab === 'agendas'">
+            <button class="bg-[#DB0000] hover:bg-[#C41425] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm" @click="openAddAgenda">
+              <i class="fa-solid fa-plus mr-1"></i> New Agenda
+            </button>
           </template>
         </div>
       </header>
@@ -452,6 +464,26 @@
           </div>
         </div>
       </div>
+
+      <section
+        v-else-if="currentTab === 'agendas'"
+        :class="isDarkMode ? 'bg-gray-950' : 'bg-gray-50/50'"
+        class="flex-1 overflow-y-auto p-6 space-y-4 transition-colors duration-200">
+        <div v-if="visibleAgendas.length === 0" :class="isDarkMode ? 'bg-gray-900 border-gray-700 text-gray-300' : 'bg-white border-gray-200 text-gray-600'" class="rounded-xl border p-8 text-center">
+          No shared agendas yet.
+        </div>
+        <div v-for="agenda in visibleAgendas" :key="agenda.Agenda_ID" :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'" class="rounded-2xl border shadow-sm p-5">
+          <div class="flex items-center justify-between mb-3">
+            <input v-model="agenda.Title" :disabled="!canEditAgenda(agenda.Agenda_ID) || !isAgendaEditing(agenda.Agenda_ID)" :class="isDarkMode ? 'bg-gray-800 text-gray-100 border-gray-700' : 'bg-gray-50 text-gray-900 border-gray-200'" class="w-full max-w-xl border rounded-lg px-3 py-2 font-semibold text-lg">
+            <div class="flex gap-2 ml-3">
+              <button v-if="canEditAgenda(agenda.Agenda_ID)" @click="toggleAgendaEdit(agenda.Agenda_ID)" :class="isDarkMode ? 'bg-gray-800 border-gray-700 text-gray-100' : 'bg-white border-gray-300 text-gray-700'" class="px-3 py-2 rounded-lg border text-sm">{{ isAgendaEditing(agenda.Agenda_ID) ? 'Cancel' : 'Edit' }}</button>
+              <button v-if="canEditAgenda(agenda.Agenda_ID) && isAgendaEditing(agenda.Agenda_ID)" @click="saveAgenda(agenda)" class="px-3 py-2 rounded-lg text-sm btn-action-red">Save</button>
+              <button v-if="canEditAgenda(agenda.Agenda_ID)" @click="openShareAgenda(agenda)" :class="isDarkMode ? 'bg-gray-800 border-gray-700 text-gray-100' : 'bg-white border-gray-300 text-gray-700'" class="px-3 py-2 rounded-lg border text-sm">Share</button>
+            </div>
+          </div>
+          <textarea v-model="agenda.Content" :disabled="!canEditAgenda(agenda.Agenda_ID) || !isAgendaEditing(agenda.Agenda_ID)" :class="isDarkMode ? 'bg-gray-800 text-gray-100 border-gray-700' : 'bg-white text-gray-900 border-gray-200'" class="w-full min-h-52 border rounded-xl p-4 text-sm font-mono" placeholder="Use headings and bullet items to organize recurring topics..."></textarea>
+        </div>
+      </section>
 
       <div v-else :class="isDarkMode ? 'bg-gray-950' : 'bg-gray-50/50'" class="flex-1 overflow-x-auto kanban-scroll p-8 transition-colors duration-200">
         <div class="flex space-x-6 h-full items-start">
@@ -633,6 +665,52 @@
             :disabled="creatingAccount">
             {{ creatingAccount ? 'Creating...' : 'Create Account' }}
           </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="showAddAgendaModal"
+      class="fixed inset-0 bg-gray-900/50 flex items-center justify-center z-50 px-4"
+      @click.self="showAddAgendaModal = false">
+      <div :class="isDarkMode ? 'bg-gray-900 border-gray-700 text-gray-100' : 'bg-white border-gray-100 text-gray-800'" class="w-full max-w-2xl rounded-2xl shadow-2xl border p-6 space-y-4">
+        <h3 class="text-lg font-semibold">Create Shared Agenda</h3>
+        <input v-model="newAgendaForm.title" type="text" placeholder="Weekly Product Sync" :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300'" class="w-full border rounded-lg px-3 py-2">
+        <div class="grid grid-cols-2 gap-2">
+          <select v-model="createAgendaShareForm.userId" :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300'" class="w-full border rounded-lg px-3 py-2">
+            <option value="">Share on create (optional)</option>
+            <option v-for="user in users" :key="`create-share-${user.User_ID}`" :value="user.User_ID">{{ user.Name }} ({{ user.Email }})</option>
+          </select>
+          <select v-model="createAgendaShareForm.permission" :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300'" class="w-full border rounded-lg px-3 py-2">
+            <option value="view">Can view</option>
+            <option value="edit">Can edit</option>
+          </select>
+        </div>
+        <textarea v-model="newAgendaForm.content" :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300'" class="w-full min-h-64 border rounded-xl p-3 font-mono text-sm"></textarea>
+        <div class="flex justify-end gap-2">
+          <button @click="showAddAgendaModal = false" class="px-4 py-2 rounded-lg border">Cancel</button>
+          <button @click="createAgenda" class="btn-action-red px-4 py-2 rounded-lg">{{ creatingAgenda ? 'Creating...' : 'Create Agenda' }}</button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="showShareAgendaModal"
+      class="fixed inset-0 bg-gray-900/50 flex items-center justify-center z-50 px-4"
+      @click.self="showShareAgendaModal = false">
+      <div :class="isDarkMode ? 'bg-gray-900 border-gray-700 text-gray-100' : 'bg-white border-gray-100 text-gray-800'" class="w-full max-w-md rounded-2xl shadow-2xl border p-6 space-y-4">
+        <h3 class="text-lg font-semibold">Share Agenda</h3>
+        <select v-model="shareAgendaForm.userId" :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300'" class="w-full border rounded-lg px-3 py-2">
+          <option value="">Select a user</option>
+          <option v-for="user in users" :key="`share-${user.User_ID}`" :value="user.User_ID">{{ user.Name }} ({{ user.Email }})</option>
+        </select>
+        <select v-model="shareAgendaForm.permission" :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300'" class="w-full border rounded-lg px-3 py-2">
+          <option value="view">Can view</option>
+          <option value="edit">Can edit</option>
+        </select>
+        <div class="flex justify-end gap-2">
+          <button @click="showShareAgendaModal = false" class="px-4 py-2 rounded-lg border">Cancel</button>
+          <button @click="shareSelectedAgenda" class="btn-action-red px-4 py-2 rounded-lg">Share</button>
         </div>
       </div>
     </div>

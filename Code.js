@@ -431,11 +431,118 @@ function getInitialPayload() {
     projects: getTableData('Projects'),
     tasks: getTableData('Tasks').map((task) => appendTaskCompletionMetadataToTask(task, completionMetadataByTaskId)),
     assignments: getTableData('Assignments'),
-    comments: getTableData('Comments')
+    comments: getTableData('Comments'),
+    agendas: getTableData('Agendas'),
+    agendaPermissions: getTableData('AgendaPermissions')
   };
   
   // Stringifying prevents Apps Script's silent serialization failures
   return JSON.stringify(payload); 
+}
+
+function ensureAgendaSheet(name, headers) {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = spreadsheet.getSheetByName(name);
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(name);
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  }
+  return sheet;
+}
+
+function createAgenda(input) {
+  const title = input && input.title ? input.title.toString().trim() : '';
+  if (!title) return JSON.stringify({ success: false, error: 'Agenda title is required.' });
+
+  try {
+    const creatorId = getCurrentUserIdByEmail(getCurrentUser());
+    if (!creatorId) throw new Error('Could not determine current user.');
+
+    const agendaSheet = ensureAgendaSheet('Agendas', ['Agenda_ID', 'Title', 'Content', 'Created_By', 'Created_At', 'Updated_At']);
+    const permissionSheet = ensureAgendaSheet('AgendaPermissions', ['Agenda_ID', 'User_ID', 'Permission']);
+    const agendaId = generateNextId('Agendas', 'A');
+    const now = new Date();
+    agendaSheet.appendRow([agendaId, title, (input.content || '').toString(), creatorId, now, now]);
+    permissionSheet.appendRow([agendaId, creatorId, 'edit']);
+    const initialShares = Array.isArray(input && input.initialShares) ? input.initialShares : [];
+    const uniqueShares = new Map();
+    initialShares.forEach((share) => {
+      const sharedUserId = share && share.userId ? share.userId.toString().trim() : '';
+      const sharedPermission = share && share.permission ? share.permission.toString().trim().toLowerCase() : '';
+      if (!sharedUserId || !['view', 'edit'].includes(sharedPermission) || sharedUserId === creatorId.toString().trim()) return;
+      ensureUserExists(sharedUserId);
+      uniqueShares.set(sharedUserId, sharedPermission);
+    });
+    uniqueShares.forEach((sharedPermission, sharedUserId) => {
+      permissionSheet.appendRow([agendaId, sharedUserId, sharedPermission]);
+    });
+    return JSON.stringify({
+      success: true,
+      agenda: { Agenda_ID: agendaId, Title: title, Content: (input.content || '').toString(), Created_By: creatorId, Created_At: now.toISOString(), Updated_At: now.toISOString() },
+      permission: { Agenda_ID: agendaId, User_ID: creatorId, Permission: 'edit' },
+      sharedPermissions: Array.from(uniqueShares.entries()).map(([userId, permission]) => ({ Agenda_ID: agendaId, User_ID: userId, Permission: permission }))
+    });
+  } catch (error) {
+    return JSON.stringify({ success: false, error: error.message || 'Failed to create agenda.' });
+  }
+}
+
+function updateAgenda(agendaId, input) {
+  try {
+    const canEdit = canUserAccessAgenda(agendaId, 'edit');
+    if (!canEdit) throw new Error('You do not have edit permission.');
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Agendas');
+    if (!sheet) throw new Error('Agendas sheet was not found.');
+    const data = sheet.getDataRange().getValues();
+    const headerIndex = getHeaderIndex(data[0] || []);
+    const rowIndex = data.findIndex((row, idx) => idx > 0 && (row[headerIndex.Agenda_ID] || '').toString().trim() === (agendaId || '').toString().trim());
+    if (rowIndex < 0) throw new Error('Agenda was not found.');
+    if (headerIndex.Title !== undefined && input.title !== undefined) sheet.getRange(rowIndex + 1, headerIndex.Title + 1).setValue((input.title || '').toString().trim());
+    if (headerIndex.Content !== undefined && input.content !== undefined) sheet.getRange(rowIndex + 1, headerIndex.Content + 1).setValue((input.content || '').toString());
+    if (headerIndex.Updated_At !== undefined) sheet.getRange(rowIndex + 1, headerIndex.Updated_At + 1).setValue(new Date());
+    return JSON.stringify({ success: true });
+  } catch (error) {
+    return JSON.stringify({ success: false, error: error.message || 'Failed to update agenda.' });
+  }
+}
+
+function canUserAccessAgenda(agendaId, level) {
+  const userId = getCurrentUserIdByEmail(getCurrentUser());
+  if (!userId) return false;
+  const permissions = getTableData('AgendaPermissions');
+  const normalizedAgendaId = (agendaId || '').toString().trim();
+  const matching = permissions.filter((row) => (row.Agenda_ID || '').toString().trim() === normalizedAgendaId && (row.User_ID || '').toString().trim() === userId.toString().trim());
+  if (matching.length === 0) return false;
+  if (level === 'view') return true;
+  return matching.some((row) => (row.Permission || '').toString().trim() === 'edit');
+}
+
+function shareAgenda(agendaId, userId, permission) {
+  try {
+    if (!canUserAccessAgenda(agendaId, 'edit')) throw new Error('Only editors can share agendas.');
+    const normalizedPermission = (permission || '').toString().trim().toLowerCase();
+    if (!['view', 'edit'].includes(normalizedPermission)) throw new Error('Permission must be view or edit.');
+    ensureUserExists(userId);
+    const sheet = ensureAgendaSheet('AgendaPermissions', ['Agenda_ID', 'User_ID', 'Permission']);
+    const data = sheet.getDataRange().getValues();
+    const headerIndex = getHeaderIndex(data[0] || []);
+    const existingIndex = data.findIndex((row, idx) => idx > 0 && (row[headerIndex.Agenda_ID] || '').toString().trim() === (agendaId || '').toString().trim() && (row[headerIndex.User_ID] || '').toString().trim() === (userId || '').toString().trim());
+    if (existingIndex > -1) {
+      sheet.getRange(existingIndex + 1, headerIndex.Permission + 1).setValue(normalizedPermission);
+    } else {
+      sheet.appendRow([(agendaId || '').toString().trim(), (userId || '').toString().trim(), normalizedPermission]);
+    }
+    return JSON.stringify({ success: true });
+  } catch (error) {
+    return JSON.stringify({ success: false, error: error.message || 'Failed to share agenda.' });
+  }
+}
+
+function ensureUserExists(userId) {
+  const normalizedId = (userId || '').toString().trim();
+  if (!normalizedId) throw new Error('User is required.');
+  const found = getTableData('Users').some((user) => (user.User_ID || '').toString().trim() === normalizedId);
+  if (!found) throw new Error('Selected user does not exist.');
 }
 
 function getUserById(userId) {

@@ -38,6 +38,16 @@
       const tasks = ref([]);
       const assignments = ref([]);
       const comments = ref([]);
+      const agendas = ref([]);
+      const agendaPermissions = ref([]);
+      const showAddAgendaModal = ref(false);
+      const creatingAgenda = ref(false);
+      const selectedAgenda = ref(null);
+      const newAgendaForm = ref({ title: '', content: '' });
+      const showShareAgendaModal = ref(false);
+      const shareAgendaForm = ref({ userId: '', permission: 'view' });
+      const createAgendaShareForm = ref({ userId: '', permission: 'view' });
+      const isEditingAgendaById = ref({});
       const commentDraft = ref('');
       const creatingComment = ref(false);
       const resolvingCommentIds = ref([]);
@@ -426,6 +436,8 @@
             tasks.value = payload.tasks;
             assignments.value = payload.assignments;
             comments.value = payload.comments || [];
+            agendas.value = payload.agendas || [];
+            agendaPermissions.value = payload.agendaPermissions || [];
             loading.value = false;
 
             if (payload.requiresAccountSetup) {
@@ -581,6 +593,16 @@
       };
 
       const canAccessSupervisorTools = computed(() => directReportUsers.value.length > 0);
+      const visibleAgendas = computed(() => {
+        const userId = currentUserId.value;
+        if (!userId) return [];
+        const allowedAgendaIds = new Set(
+          agendaPermissions.value
+            .filter((row) => idsMatch(row.User_ID, userId))
+            .map((row) => normalizeId(row.Agenda_ID))
+        );
+        return agendas.value.filter((agenda) => allowedAgendaIds.has(normalizeId(agenda.Agenda_ID)));
+      });
 
       const setActiveTab = (tabId) => {
         if (tabId === 'supervisor-view' && !canAccessSupervisorTools.value) {
@@ -603,6 +625,57 @@
         } else {
           selectedUserIds.push(userId);
         }
+      };
+      const canEditAgenda = (agendaId) => {
+        const userId = currentUserId.value;
+        return agendaPermissions.value.some((row) => idsMatch(row.Agenda_ID, agendaId) && idsMatch(row.User_ID, userId) && (row.Permission || '').toString().trim() === 'edit');
+      };
+      const openAddAgenda = () => {
+        newAgendaForm.value = { title: '', content: '# Agenda\n- Topic 1\n- Topic 2' };
+        createAgendaShareForm.value = { userId: '', permission: 'view' };
+        showAddAgendaModal.value = true;
+      };
+      const createAgenda = () => {
+        if (!newAgendaForm.value.title.trim()) return alert('Agenda title is required.');
+        creatingAgenda.value = true;
+        google.script.run.withSuccessHandler((response) => {
+          creatingAgenda.value = false;
+          const result = JSON.parse(response);
+          if (!result.success) return alert(result.error || 'Failed to create agenda.');
+          agendas.value.unshift(result.agenda);
+          if (result.permission) agendaPermissions.value.push(result.permission);
+          if (Array.isArray(result.sharedPermissions) && result.sharedPermissions.length > 0) {
+            agendaPermissions.value.push(...result.sharedPermissions);
+          }
+          showAddAgendaModal.value = false;
+        }).withFailureHandler(() => { creatingAgenda.value = false; alert('Failed to create agenda.'); }).createAgenda({
+          ...newAgendaForm.value,
+          initialShares: createAgendaShareForm.value.userId
+            ? [{ userId: createAgendaShareForm.value.userId, permission: createAgendaShareForm.value.permission }]
+            : []
+        });
+      };
+      const saveAgenda = (agenda) => {
+        google.script.run.withSuccessHandler((response) => {
+          const result = JSON.parse(response);
+          if (!result.success) return alert(result.error || 'Failed to save agenda.');
+          fetchData();
+          isEditingAgendaById.value = { ...isEditingAgendaById.value, [agenda.Agenda_ID]: false };
+        }).withFailureHandler(() => alert('Failed to save agenda.')).updateAgenda(agenda.Agenda_ID, { title: agenda.Title, content: agenda.Content });
+      };
+      const toggleAgendaEdit = (agendaId) => {
+        isEditingAgendaById.value = { ...isEditingAgendaById.value, [agendaId]: !isEditingAgendaById.value[agendaId] };
+      };
+      const isAgendaEditing = (agendaId) => !!isEditingAgendaById.value[agendaId];
+      const openShareAgenda = (agenda) => { selectedAgenda.value = agenda; shareAgendaForm.value = { userId: '', permission: 'view' }; showShareAgendaModal.value = true; };
+      const shareSelectedAgenda = () => {
+        if (!selectedAgenda.value || !shareAgendaForm.value.userId) return alert('Select a user first.');
+        google.script.run.withSuccessHandler((response) => {
+          const result = JSON.parse(response);
+          if (!result.success) return alert(result.error || 'Failed to share agenda.');
+          fetchData();
+          showShareAgendaModal.value = false;
+        }).withFailureHandler(() => alert('Failed to share agenda.')).shareAgenda(selectedAgenda.value.Agenda_ID, shareAgendaForm.value.userId, shareAgendaForm.value.permission);
       };
 
       const isSupervisorUserSelected = (userId) => {
@@ -1622,6 +1695,15 @@
         supervisorUserSummary,
         showAllWorkItems,
         comments,
+        agendas,
+        visibleAgendas,
+        showAddAgendaModal,
+        creatingAgenda,
+        newAgendaForm,
+        showShareAgendaModal,
+        shareAgendaForm,
+        createAgendaShareForm,
+        isAgendaEditing,
         taskComments,
         commentDraft,
         creatingComment,
@@ -1723,6 +1805,13 @@
         formatDateTime,
         toggleWorkVisibility,
         setActiveTab,
+        canEditAgenda,
+        openAddAgenda,
+        createAgenda,
+        saveAgenda,
+        toggleAgendaEdit,
+        openShareAgenda,
+        shareSelectedAgenda,
         toggleSupervisorUserSelection,
         isSupervisorUserSelected,
         updateMentionSuggestions,
