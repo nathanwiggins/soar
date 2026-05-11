@@ -308,8 +308,10 @@ function upsertTaskCompletionMetadata(taskId, completedBy, completedAt) {
   const normalizedCompletedBy = completedBy ? completedBy.toString().trim() : '';
   const completedAtValue = completedAt || new Date();
   if (rowIndex > -1) {
-    sheet.getRange(rowIndex + 1, completedByIndex + 1).setValue(normalizedCompletedBy);
-    sheet.getRange(rowIndex + 1, completedAtIndex + 1).setValue(completedAtValue);
+    const updatedRow = data[rowIndex].slice();
+    updatedRow[completedByIndex] = normalizedCompletedBy;
+    updatedRow[completedAtIndex] = completedAtValue;
+    updateRowValues(sheet, rowIndex + 1, updatedRow);
     return;
   }
 
@@ -317,7 +319,7 @@ function upsertTaskCompletionMetadata(taskId, completedBy, completedAt) {
   newRow[taskIdIndex] = normalizedTaskId;
   newRow[completedByIndex] = normalizedCompletedBy;
   newRow[completedAtIndex] = completedAtValue;
-  sheet.appendRow(newRow);
+  appendRows(sheet, [newRow]);
 }
 
 function removeTaskCompletionMetadata(taskId) {
@@ -332,11 +334,13 @@ function removeTaskCompletionMetadata(taskId) {
   const taskIdIndex = headerIndex.Task_ID;
   if (taskIdIndex === undefined) return;
 
+  const rowsToDelete = [];
   for (let i = data.length - 1; i >= 1; i--) {
     if ((data[i][taskIdIndex] || '').toString().trim() === normalizedTaskId) {
-      sheet.deleteRow(i + 1);
+      rowsToDelete.push(i + 1);
     }
   }
+  deleteRowsBySheetIndexes(sheet, rowsToDelete);
 }
 
 function appendTaskCompletionMetadataToTask(task, metadataByTaskId) {
@@ -357,21 +361,73 @@ function appendTaskCompletionMetadataToTask(task, metadataByTaskId) {
   return task;
 }
 
-/**
- * Core DB Function: Reads a sheet and returns an array of JSON objects.
- */
-function getTableData(sheetName) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  if (!sheet) return [];
-  
-  const data = sheet.getDataRange().getValues();
-  if (data.length <= 1) return []; // Empty or headers only
-  
-  const headers = data[0];
-  const rows = data.slice(1);
-  
-  return rows.map(row => {
-    let obj = {};
+const REQUEST_CACHE = {};
+const USER_LIST_CACHE_KEY = 'soar_users_table_v1';
+const USER_LIST_CACHE_SECONDS = 300;
+const ID_COUNTER_PROPERTY_PREFIX = 'soar_next_id:';
+const DATA_VERSION_PROPERTY_KEY = 'soar_data_version:last_updated';
+
+function clearRequestCache(sheetName) {
+  if (sheetName) {
+    delete REQUEST_CACHE[sheetName];
+    delete REQUEST_CACHE[`${sheetName}:raw`];
+    return;
+  }
+  Object.keys(REQUEST_CACHE).forEach((key) => delete REQUEST_CACHE[key]);
+}
+
+function bumpDataVersion() {
+  const timestamp = new Date().toISOString();
+  PropertiesService.getScriptProperties().setProperty(DATA_VERSION_PROPERTY_KEY, timestamp);
+  return timestamp;
+}
+
+function getStoredDataVersion() {
+  const properties = PropertiesService.getScriptProperties();
+  const storedVersion = properties.getProperty(DATA_VERSION_PROPERTY_KEY);
+  if (storedVersion) return storedVersion;
+  return bumpDataVersion();
+}
+
+function getSpreadsheetLastUpdatedTimestamp() {
+  try {
+    const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
+    return DriveApp.getFileById(spreadsheetId).getLastUpdated().toISOString();
+  } catch (error) {
+    Logger.log(`Falling back to script data version: ${error && error.message ? error.message : error}`);
+    return getStoredDataVersion();
+  }
+}
+
+function buildGlobalVersionHash() {
+  const spreadsheetUpdatedAt = getSpreadsheetLastUpdatedTimestamp();
+  const appUpdatedAt = getStoredDataVersion();
+  return Utilities.base64EncodeWebSafe(`${spreadsheetUpdatedAt}|${appUpdatedAt}`);
+}
+
+function getGlobalVersionHash() {
+  const spreadsheetUpdatedAt = getSpreadsheetLastUpdatedTimestamp();
+  const appUpdatedAt = getStoredDataVersion();
+  return JSON.stringify({
+    success: true,
+    versionHash: Utilities.base64EncodeWebSafe(`${spreadsheetUpdatedAt}|${appUpdatedAt}`),
+    lastUpdated: appUpdatedAt,
+    spreadsheetUpdatedAt: spreadsheetUpdatedAt,
+    currentUserEmail: normalizeEmail(getCurrentUser())
+  });
+}
+
+function invalidateTableCache(sheetName) {
+  clearRequestCache(sheetName);
+  if (sheetName === 'Users') {
+    CacheService.getScriptCache().remove(USER_LIST_CACHE_KEY);
+  }
+  bumpDataVersion();
+}
+
+function rowsToObjects(headers, rows) {
+  return rows.map((row) => {
+    const obj = {};
     headers.forEach((header, index) => {
       obj[header] = row[index];
     });
@@ -379,35 +435,129 @@ function getTableData(sheetName) {
   });
 }
 
+function normalizeValueForClient(value) {
+  return value instanceof Date ? value.toISOString() : value;
+}
+
+function getCachedSheetValues(sheetName) {
+  const cacheKey = `${sheetName}:raw`;
+  if (REQUEST_CACHE[cacheKey]) return REQUEST_CACHE[cacheKey];
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  if (!sheet) {
+    REQUEST_CACHE[cacheKey] = { sheet: null, data: [] };
+    return REQUEST_CACHE[cacheKey];
+  }
+
+  const data = sheet.getDataRange().getValues();
+  REQUEST_CACHE[cacheKey] = { sheet, data };
+  return REQUEST_CACHE[cacheKey];
+}
+
 /**
- * Generates the zero-padded ID defined in the README.
+ * Core DB Function: Reads a sheet and returns an array of JSON objects.
+ * Uses a per-execution request cache to avoid duplicate Spreadsheet reads.
+ */
+function getTableData(sheetName) {
+  if (REQUEST_CACHE[sheetName]) return REQUEST_CACHE[sheetName];
+
+  if (sheetName === 'Users') {
+    const cachedUsers = CacheService.getScriptCache().get(USER_LIST_CACHE_KEY);
+    if (cachedUsers) {
+      try {
+        REQUEST_CACHE[sheetName] = JSON.parse(cachedUsers);
+        return REQUEST_CACHE[sheetName];
+      } catch (error) {
+        CacheService.getScriptCache().remove(USER_LIST_CACHE_KEY);
+      }
+    }
+  }
+
+  const sheetValues = getCachedSheetValues(sheetName);
+  const data = sheetValues.data;
+  if (data.length <= 1) {
+    REQUEST_CACHE[sheetName] = [];
+    return REQUEST_CACHE[sheetName];
+  }
+
+  const tableData = rowsToObjects(data[0], data.slice(1));
+  REQUEST_CACHE[sheetName] = tableData;
+
+  if (sheetName === 'Users') {
+    try {
+      CacheService.getScriptCache().put(USER_LIST_CACHE_KEY, JSON.stringify(tableData), USER_LIST_CACHE_SECONDS);
+    } catch (error) {
+      Logger.log(`Skipping user cache write: ${error && error.message ? error.message : error}`);
+    }
+  }
+
+  return tableData;
+}
+
+function getIdCounterPropertyKey(sheetName, prefix) {
+  return `${ID_COUNTER_PROPERTY_PREFIX}${sheetName}:${prefix}`;
+}
+
+function seedIdCounterFromSheet(sheetName, prefix) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  if (!sheet || sheet.getLastRow() <= 1) return 0;
+
+  const firstColumnValues = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  return firstColumnValues.reduce((max, row) => {
+    const id = (row[0] || '').toString();
+    if (!id.startsWith(`${prefix}-`)) return max;
+    const numericPart = parseInt(id.split('-')[1], 10);
+    return Number.isNaN(numericPart) ? max : Math.max(max, numericPart);
+  }, 0);
+}
+
+/**
+ * Generates the zero-padded ID defined in the README using PropertiesService counters.
  */
 function generateNextId(sheetName, prefix) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  const data = sheet.getDataRange().getValues();
-  
-  if (data.length <= 1) {
-    return `${prefix}-00000001`; // First ID
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+    const properties = PropertiesService.getScriptProperties();
+    const propertyKey = getIdCounterPropertyKey(sheetName, prefix);
+    const currentValue = properties.getProperty(propertyKey);
+    const currentNumber = currentValue ? parseInt(currentValue, 10) : seedIdCounterFromSheet(sheetName, prefix);
+    const nextNumber = (Number.isNaN(currentNumber) ? 0 : currentNumber) + 1;
+    properties.setProperty(propertyKey, nextNumber.toString());
+    return `${prefix}-${nextNumber.toString().padStart(8, '0')}`;
+  } finally {
+    lock.releaseLock();
   }
-  
-  const existingIds = data
-    .slice(1)
-    .map(row => (row[0] || '').toString())
-    .filter(id => id.startsWith(`${prefix}-`));
+}
 
-  if (existingIds.length === 0) {
-    return `${prefix}-00000001`;
+function appendRows(sheet, rows) {
+  if (!sheet || !rows || rows.length === 0) return;
+  sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows);
+}
+
+function deleteRowsBySheetIndexes(sheet, sheetRowIndexes) {
+  if (!sheet || !sheetRowIndexes || sheetRowIndexes.length === 0) return;
+  const sortedIndexes = [...new Set(sheetRowIndexes)].sort((a, b) => b - a);
+  let groupStart = sortedIndexes[0];
+  let groupCount = 1;
+
+  for (let i = 1; i <= sortedIndexes.length; i++) {
+    const current = sortedIndexes[i];
+    if (current === groupStart - groupCount) {
+      groupCount += 1;
+      continue;
+    }
+
+    sheet.deleteRows(groupStart - groupCount + 1, groupCount);
+    groupStart = current;
+    groupCount = 1;
   }
+}
 
-  const maxNumber = existingIds.reduce((max, id) => {
-    const numericPart = parseInt(id.split('-')[1], 10);
-    if (Number.isNaN(numericPart)) return max;
-    return Math.max(max, numericPart);
-  }, 0);
-
-  const nextNumber = maxNumber + 1;
-  
-  return `${prefix}-${nextNumber.toString().padStart(8, '0')}`;
+function updateRowValues(sheet, sheetRowIndex, values) {
+  if (!sheet || !sheetRowIndex || !values) return;
+  sheet.getRange(sheetRowIndex, 1, 1, values.length).setValues([values]);
 }
 
 function addUser(userInput) {
@@ -472,7 +622,8 @@ function addUser(userInput) {
     if (headerIndex.Manager_ID !== undefined) newRow[headerIndex.Manager_ID] = managerId;
     if (headerIndex.Profile_Pic_Url !== undefined) newRow[headerIndex.Profile_Pic_Url] = profilePicUrl;
 
-    sheet.appendRow(newRow);
+    appendRows(sheet, [newRow]);
+    invalidateTableCache('Users');
 
     const createdUser = {};
     headers.forEach((header, index) => {
@@ -503,7 +654,9 @@ function getInitialPayload() {
     const headers = data[0] || [];
     const headerIndex = getHeaderIndex(headers);
 
-    syncCurrentUserProfilePhoto(usersSheet, data, headerIndex, currentUserEmail, currentUserProfilePhotoUrl);
+    if (syncCurrentUserProfilePhoto(usersSheet, data, headerIndex, currentUserEmail, currentUserProfilePhotoUrl)) {
+      invalidateTableCache('Users');
+    }
     users = getTableData('Users');
   }
 
@@ -517,12 +670,39 @@ function getInitialPayload() {
     projects: getTableData('Projects'),
     tasks: getTableData('Tasks').map((task) => appendTaskCompletionMetadataToTask(task, completionMetadataByTaskId)),
     assignments: getTableData('Assignments'),
-    comments: getTableData('Comments'),
-    currentUserSettings: getUserSettingsByEmail(currentUserEmail)
+    currentUserSettings: getUserSettingsByEmail(currentUserEmail),
+    versionHash: buildGlobalVersionHash(),
+    lastUpdated: getStoredDataVersion()
   };
-  
+
   // Stringifying prevents Apps Script's silent serialization failures
-  return JSON.stringify(payload); 
+  return JSON.stringify(payload);
+}
+
+function getCommentsByTopic(topicId) {
+  const normalizedTopicId = topicId ? topicId.toString().trim() : '';
+  if (!normalizedTopicId) {
+    return JSON.stringify({ success: false, error: 'Topic_ID is required.', comments: [] });
+  }
+
+  try {
+    const comments = getTableData('Comments')
+      .filter((comment) => (comment.Topic_ID || '').toString().trim() === normalizedTopicId)
+      .map((comment) => {
+        const normalized = {};
+        Object.keys(comment).forEach((key) => {
+          normalized[key] = normalizeValueForClient(comment[key]);
+        });
+        return normalized;
+      });
+    return JSON.stringify({ success: true, topicId: normalizedTopicId, comments });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: error && error.message ? error.message : 'Failed to load comments.',
+      comments: []
+    });
+  }
 }
 
 function getUserById(userId) {
@@ -751,7 +931,8 @@ function addComment(topicId, commentInput) {
     if (headerIndex.Timestamp !== undefined) newRow[headerIndex.Timestamp] = now;
     if (headerIndex.Content !== undefined) newRow[headerIndex.Content] = content;
 
-    commentsSheet.appendRow(newRow);
+    appendRows(commentsSheet, [newRow]);
+    invalidateTableCache('Comments');
 
     const createdComment = {};
     headers.forEach((header, index) => {
@@ -803,7 +984,8 @@ function deleteComment(commentId) {
       throw new Error('Comment not found.');
     }
 
-    commentsSheet.deleteRow(rowIndex + 1);
+    deleteRowsBySheetIndexes(commentsSheet, [rowIndex + 1]);
+    invalidateTableCache('Comments');
     return JSON.stringify({ success: true, commentId: normalizedCommentId });
   } catch (error) {
     return JSON.stringify({
@@ -850,7 +1032,8 @@ function resolveComment(commentId) {
     const topicId = topicIdColumnIndex > -1 ? row[topicIdColumnIndex] : '';
     const content = contentColumnIndex > -1 ? row[contentColumnIndex] : '';
 
-    commentsSheet.deleteRow(rowIndex + 1);
+    deleteRowsBySheetIndexes(commentsSheet, [rowIndex + 1]);
+    invalidateTableCache('Comments');
 
     const commenterEmail = commenter ? normalizeEmail(commenter.Email) : '';
     if (commenterEmail && isNotificationEnabledForUser(commenter, 'commentsAndMentions')) {
@@ -1048,14 +1231,18 @@ function deleteTaskAndAssignments(taskId) {
     throw new Error('Task not found.');
   }
 
-  tasksSheet.deleteRow(taskRowIndex + 1);
+  deleteRowsBySheetIndexes(tasksSheet, [taskRowIndex + 1]);
+  invalidateTableCache('Tasks');
 
   const assignmentsData = assignmentsSheet.getDataRange().getValues();
+  const assignmentRowsToDelete = [];
   for (let i = assignmentsData.length - 1; i >= 1; i--) {
     if (assignmentsData[i][0] === normalizedTaskId) {
-      assignmentsSheet.deleteRow(i + 1);
+      assignmentRowsToDelete.push(i + 1);
     }
   }
+  deleteRowsBySheetIndexes(assignmentsSheet, assignmentRowsToDelete);
+  invalidateTableCache('Assignments');
 
   removeTaskCompletionMetadata(normalizedTaskId);
 
@@ -1079,24 +1266,30 @@ function purgeCompletedTasksPastDue() {
   if (taskIdColumnIndex === -1 || statusColumnIndex === -1 || dueDateColumnIndex === -1) return [];
 
   const deletedTaskIds = [];
+  const taskRowsToDelete = [];
   for (let i = taskData.length - 1; i >= 1; i--) {
     const status = (taskData[i][statusColumnIndex] || '').toString().trim();
     const dueDateValue = taskData[i][dueDateColumnIndex];
     if (status === 'Completed' && hasDueDatePassed(dueDateValue)) {
       deletedTaskIds.push(taskData[i][taskIdColumnIndex]);
-      tasksSheet.deleteRow(i + 1);
+      taskRowsToDelete.push(i + 1);
     }
   }
+  deleteRowsBySheetIndexes(tasksSheet, taskRowsToDelete);
+  invalidateTableCache('Tasks');
 
   if (deletedTaskIds.length === 0) return [];
 
   const assignmentIdSet = new Set(deletedTaskIds.map((id) => id.toString().trim()));
   const assignmentsData = assignmentsSheet.getDataRange().getValues();
+  const assignmentRowsToDelete = [];
   for (let i = assignmentsData.length - 1; i >= 1; i--) {
     if (assignmentIdSet.has((assignmentsData[i][0] || '').toString().trim())) {
-      assignmentsSheet.deleteRow(i + 1);
+      assignmentRowsToDelete.push(i + 1);
     }
   }
+  deleteRowsBySheetIndexes(assignmentsSheet, assignmentRowsToDelete);
+  invalidateTableCache('Assignments');
 
   deletedTaskIds.forEach((taskId) => removeTaskCompletionMetadata(taskId));
 
@@ -1139,16 +1332,17 @@ function updateCurrentUserProfile(profileInput) {
       throw new Error('Current user record was not found.');
     }
 
-    usersSheet.getRange(currentUserRowIndex + 1, headerIndex.name + 1).setValue(normalizedName);
-    
+    const updatedRow = data[currentUserRowIndex].slice();
+    updatedRow[headerIndex.name] = normalizedName;
+
     if (headerIndex.profile_pic_url !== undefined) {
       const latestProfilePicUrl = getCurrentUserProfilePhotoUrl();
       if (latestProfilePicUrl) {
-        usersSheet.getRange(currentUserRowIndex + 1, headerIndex.profile_pic_url + 1).setValue(latestProfilePicUrl);
+        updatedRow[headerIndex.profile_pic_url] = latestProfilePicUrl;
       }
     }
-
-    const updatedRow = usersSheet.getRange(currentUserRowIndex + 1, 1, 1, headers.length).getValues()[0];
+    updateRowValues(usersSheet, currentUserRowIndex + 1, updatedRow);
+    invalidateTableCache('Users');
     const updatedUser = {};
     headers.forEach((header, index) => {
       const value = updatedRow[index];
@@ -1170,11 +1364,14 @@ function updateCurrentUserProfile(profileInput) {
 function updateTaskStatus(taskId, newStatus) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Tasks');
   const data = sheet.getDataRange().getValues();
-  
+
   for (let i = 1; i < data.length; i++) {
     if (data[i][0] === taskId) {
       // Assuming 'Status' is the 5th column (index 4) based on Data Dictionary
-      sheet.getRange(i + 1, 5).setValue(newStatus);
+      const updatedRow = data[i].slice();
+      updatedRow[4] = newStatus;
+      updateRowValues(sheet, i + 1, updatedRow);
+      invalidateTableCache('Tasks');
       return { success: true, taskId: taskId, newStatus: newStatus };
     }
   }
@@ -1343,7 +1540,8 @@ function createProject(projectInput) {
     if (headerIndex.Due_Date !== undefined) newRow[headerIndex.Due_Date] = hasValidDueDate ? parsedDueDate : '';
     if (headerIndex.Creator_ID !== undefined) newRow[headerIndex.Creator_ID] = creatorId;
 
-    sheet.appendRow(newRow);
+    appendRows(sheet, [newRow]);
+    invalidateTableCache('Projects');
 
     const projectId = headerIndex.Project_ID !== undefined ? newRow[headerIndex.Project_ID] : '';
     if (projectId) {
@@ -1351,7 +1549,8 @@ function createProject(projectInput) {
       if (!assignmentsSheet) {
         throw new Error('Assignments sheet was not found.');
       }
-      assignmentsSheet.appendRow([projectId, creatorId]);
+      appendRows(assignmentsSheet, [[projectId, creatorId]]);
+      invalidateTableCache('Assignments');
     }
 
     const createdProject = {};
@@ -1427,7 +1626,8 @@ function createTask(projectId, taskInput) {
     if (headerIndex.Priority !== undefined) newRow[headerIndex.Priority] = priority;
     if (headerIndex.Creator_ID !== undefined) newRow[headerIndex.Creator_ID] = creatorId;
 
-    sheet.appendRow(newRow);
+    appendRows(sheet, [newRow]);
+    invalidateTableCache('Tasks');
 
     let createdAssignments = [];
     if (assigneeIds.length > 0 && headerIndex.Task_ID !== undefined) {
@@ -1442,7 +1642,8 @@ function createTask(projectId, taskInput) {
       }));
 
       const assignmentRows = createdAssignments.map(assignment => [assignment.Assignment_ID, assignment.Assignee_ID]);
-      assignmentsSheet.getRange(assignmentsSheet.getLastRow() + 1, 1, assignmentRows.length, 2).setValues(assignmentRows);
+      appendRows(assignmentsSheet, assignmentRows);
+      invalidateTableCache('Assignments');
     }
 
     const createdTask = {};
@@ -1549,28 +1750,32 @@ function updateTask(taskId, taskInput) {
     const isMarkingCompleted = status === 'Completed' && previousStatus !== 'Completed';
     const isReopeningCompleted = status !== 'Completed' && previousStatus === 'Completed';
 
-    if (headerIndex.Project_ID !== undefined) sheet.getRange(taskRowIndex + 1, headerIndex.Project_ID + 1).setValue(projectId);
-    if (headerIndex.Task_Title !== undefined) sheet.getRange(taskRowIndex + 1, headerIndex.Task_Title + 1).setValue(taskTitle);
-    if (headerIndex.Due_Date !== undefined) sheet.getRange(taskRowIndex + 1, headerIndex.Due_Date + 1).setValue(hasValidDueDate ? parsedDueDate : '');
-    if (headerIndex.Status !== undefined) sheet.getRange(taskRowIndex + 1, headerIndex.Status + 1).setValue(status);
-    if (headerIndex.Description !== undefined) sheet.getRange(taskRowIndex + 1, headerIndex.Description + 1).setValue(description);
-    if (headerIndex.Priority !== undefined) sheet.getRange(taskRowIndex + 1, headerIndex.Priority + 1).setValue(priority);
+    const updatedTaskRow = data[taskRowIndex].slice();
+    if (headerIndex.Project_ID !== undefined) updatedTaskRow[headerIndex.Project_ID] = projectId;
+    if (headerIndex.Task_Title !== undefined) updatedTaskRow[headerIndex.Task_Title] = taskTitle;
+    if (headerIndex.Due_Date !== undefined) updatedTaskRow[headerIndex.Due_Date] = hasValidDueDate ? parsedDueDate : '';
+    if (headerIndex.Status !== undefined) updatedTaskRow[headerIndex.Status] = status;
+    if (headerIndex.Description !== undefined) updatedTaskRow[headerIndex.Description] = description;
+    if (headerIndex.Priority !== undefined) updatedTaskRow[headerIndex.Priority] = priority;
+    const completedAt = new Date();
     if (headerIndex.Completed_By !== undefined) {
       if (isMarkingCompleted) {
-        sheet.getRange(taskRowIndex + 1, headerIndex.Completed_By + 1).setValue(currentUserId || '');
+        updatedTaskRow[headerIndex.Completed_By] = currentUserId || '';
       } else if (isReopeningCompleted) {
-        sheet.getRange(taskRowIndex + 1, headerIndex.Completed_By + 1).setValue('');
+        updatedTaskRow[headerIndex.Completed_By] = '';
       }
     }
     if (headerIndex.Completed_At !== undefined) {
       if (isMarkingCompleted) {
-        sheet.getRange(taskRowIndex + 1, headerIndex.Completed_At + 1).setValue(new Date());
+        updatedTaskRow[headerIndex.Completed_At] = completedAt;
       } else if (isReopeningCompleted) {
-        sheet.getRange(taskRowIndex + 1, headerIndex.Completed_At + 1).setValue('');
+        updatedTaskRow[headerIndex.Completed_At] = '';
       }
     }
+    updateRowValues(sheet, taskRowIndex + 1, updatedTaskRow);
+    invalidateTableCache('Tasks');
     if (isMarkingCompleted) {
-      upsertTaskCompletionMetadata(normalizedTaskId, currentUserId, new Date());
+      upsertTaskCompletionMetadata(normalizedTaskId, currentUserId, completedAt);
     } else if (isReopeningCompleted) {
       removeTaskCompletionMetadata(normalizedTaskId);
     }
@@ -1586,11 +1791,14 @@ function updateTask(taskId, taskInput) {
       .map((row) => (row[1] || '').toString().trim())
       .filter(Boolean);
     validateAssigneePermissions(assigneeIds, editorId, previousAssigneeIds);
+    const assignmentRowsToDelete = [];
     for (let i = assignmentsData.length - 1; i >= 1; i--) {
       if (assignmentsData[i][0] === normalizedTaskId) {
-        assignmentsSheet.deleteRow(i + 1);
+        assignmentRowsToDelete.push(i + 1);
       }
     }
+    deleteRowsBySheetIndexes(assignmentsSheet, assignmentRowsToDelete);
+    invalidateTableCache('Assignments');
 
     let updatedAssignments = [];
     if (assigneeIds.length > 0) {
@@ -1600,11 +1808,11 @@ function updateTask(taskId, taskInput) {
       }));
 
       const assignmentRows = updatedAssignments.map((assignment) => [assignment.Assignment_ID, assignment.Assignee_ID]);
-      assignmentsSheet.getRange(assignmentsSheet.getLastRow() + 1, 1, assignmentRows.length, 2).setValues(assignmentRows);
+      appendRows(assignmentsSheet, assignmentRows);
+      invalidateTableCache('Assignments');
     }
 
-    const refreshedData = sheet.getDataRange().getValues();
-    const refreshedRow = refreshedData.find((row, index) => index > 0 && row[taskIdColumnIndex] === normalizedTaskId);
+    const refreshedRow = updatedTaskRow;
 
     const updatedTask = {};
     headers.forEach((header, index) => {
@@ -1677,21 +1885,13 @@ function updateProject(projectId, projectInput) {
     const parsedDueDate = parseDateInput(projectInput ? projectInput.dueDate : '');
     const hasValidDueDate = parsedDueDate && parsedDueDate.toString() !== 'Invalid Date';
 
-    if (headerIndex.Project_Title !== undefined) {
-      projectsSheet.getRange(projectRowIndex + 1, headerIndex.Project_Title + 1).setValue(projectTitle);
-    }
-    if (headerIndex.Description !== undefined) {
-      projectsSheet.getRange(projectRowIndex + 1, headerIndex.Description + 1).setValue(description);
-    }
-    if (headerIndex.Status !== undefined) {
-      projectsSheet.getRange(projectRowIndex + 1, headerIndex.Status + 1).setValue(status);
-    }
-    if (headerIndex.Due_Date !== undefined) {
-      projectsSheet.getRange(projectRowIndex + 1, headerIndex.Due_Date + 1).setValue(hasValidDueDate ? parsedDueDate : '');
-    }
-
-    const refreshedData = projectsSheet.getDataRange().getValues();
-    const refreshedRow = refreshedData.find((row, index) => index > 0 && row[projectIdColumnIndex] === normalizedProjectId);
+    const refreshedRow = data[projectRowIndex].slice();
+    if (headerIndex.Project_Title !== undefined) refreshedRow[headerIndex.Project_Title] = projectTitle;
+    if (headerIndex.Description !== undefined) refreshedRow[headerIndex.Description] = description;
+    if (headerIndex.Status !== undefined) refreshedRow[headerIndex.Status] = status;
+    if (headerIndex.Due_Date !== undefined) refreshedRow[headerIndex.Due_Date] = hasValidDueDate ? parsedDueDate : '';
+    updateRowValues(projectsSheet, projectRowIndex + 1, refreshedRow);
+    invalidateTableCache('Projects');
 
     const updatedProject = {};
     headers.forEach((header, index) => {
@@ -1762,25 +1962,32 @@ function deleteProject(projectId) {
     }
 
     const deletedTaskIds = [];
+    const taskRowsToDelete = [];
     for (let i = tasksData.length - 1; i >= 1; i--) {
       if (tasksData[i][taskProjectIdColumnIndex] === normalizedProjectId) {
         deletedTaskIds.push(tasksData[i][taskIdColumnIndex]);
-        tasksSheet.deleteRow(i + 1);
+        taskRowsToDelete.push(i + 1);
       }
     }
+    deleteRowsBySheetIndexes(tasksSheet, taskRowsToDelete);
+    invalidateTableCache('Tasks');
 
     if (deletedTaskIds.length > 0) {
       const deletedTaskIdSet = new Set(deletedTaskIds);
       const assignmentsData = assignmentsSheet.getDataRange().getValues();
+      const assignmentRowsToDelete = [];
       for (let i = assignmentsData.length - 1; i >= 1; i--) {
         if (deletedTaskIdSet.has(assignmentsData[i][0])) {
-          assignmentsSheet.deleteRow(i + 1);
+          assignmentRowsToDelete.push(i + 1);
         }
       }
+      deleteRowsBySheetIndexes(assignmentsSheet, assignmentRowsToDelete);
+      invalidateTableCache('Assignments');
       deletedTaskIds.forEach((taskId) => removeTaskCompletionMetadata(taskId));
     }
 
-    projectsSheet.deleteRow(projectRowIndex + 1);
+    deleteRowsBySheetIndexes(projectsSheet, [projectRowIndex + 1]);
+    invalidateTableCache('Projects');
 
     return JSON.stringify({
       success: true,
@@ -1844,16 +2051,15 @@ function completeTask(taskId) {
     const taskRowIndex = taskData.findIndex((row, index) => index > 0 && row[taskIdColumnIndex] === normalizedTaskId);
     if (taskRowIndex < 0) throw new Error('Task not found.');
 
-    tasksSheet.getRange(taskRowIndex + 1, statusColumnIndex + 1).setValue('Completed');
     const currentUserId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
-    if (completedByColumnIndex > -1) {
-      tasksSheet.getRange(taskRowIndex + 1, completedByColumnIndex + 1).setValue(currentUserId || '');
-    }
-    if (completedAtColumnIndex > -1) {
-      tasksSheet.getRange(taskRowIndex + 1, completedAtColumnIndex + 1).setValue(new Date());
-    }
-    upsertTaskCompletionMetadata(normalizedTaskId, currentUserId, new Date());
-    const refreshedRow = tasksSheet.getRange(taskRowIndex + 1, 1, 1, headers.length).getValues()[0];
+    const completedAt = new Date();
+    const refreshedRow = taskData[taskRowIndex].slice();
+    refreshedRow[statusColumnIndex] = 'Completed';
+    if (completedByColumnIndex > -1) refreshedRow[completedByColumnIndex] = currentUserId || '';
+    if (completedAtColumnIndex > -1) refreshedRow[completedAtColumnIndex] = completedAt;
+    updateRowValues(tasksSheet, taskRowIndex + 1, refreshedRow);
+    invalidateTableCache('Tasks');
+    upsertTaskCompletionMetadata(normalizedTaskId, currentUserId, completedAt);
     const completedTask = {};
     headers.forEach((header, index) => {
       const value = refreshedRow[index];
