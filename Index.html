@@ -114,7 +114,8 @@
           <button
             :class="isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'"
             class="transition-colors"
-            @click="closeSettingsModal">
+            @click="closeSettingsModal"
+            :disabled="savingSettings">
             <i class="fa-solid fa-xmark text-lg"></i>
           </button>
         </div>
@@ -193,13 +194,15 @@
           <button
             :class="isDarkMode ? 'border-gray-600 text-gray-200 hover:bg-gray-800' : 'border-gray-300 text-gray-700 hover:bg-gray-50'"
             class="px-4 py-2 rounded-lg text-sm font-medium border"
-            @click="closeSettingsModal">
+            @click="closeSettingsModal"
+            :disabled="savingSettings">
             Cancel
           </button>
           <button
             class="btn-action-red px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            @click="persistSettings(); closeSettingsModal();">
-            Save Settings
+            @click="persistSettings"
+            :disabled="savingSettings">
+            {{ savingSettings ? 'Saving...' : 'Save Settings' }}
           </button>
         </div>
       </div>
