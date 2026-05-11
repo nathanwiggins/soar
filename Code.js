@@ -1362,20 +1362,93 @@ function updateCurrentUserProfile(profileInput) {
  * API Endpoint: Updates a task status.
  */
 function updateTaskStatus(taskId, newStatus) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Tasks');
-  const data = sheet.getDataRange().getValues();
-
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][0] === taskId) {
-      // Assuming 'Status' is the 5th column (index 4) based on Data Dictionary
-      const updatedRow = data[i].slice();
-      updatedRow[4] = newStatus;
-      updateRowValues(sheet, i + 1, updatedRow);
-      invalidateTableCache('Tasks');
-      return { success: true, taskId: taskId, newStatus: newStatus };
-    }
+  const normalizedTaskId = taskId ? taskId.toString().trim() : '';
+  if (!normalizedTaskId) {
+    return JSON.stringify({ success: false, error: 'Task ID is required.' });
   }
-  return { success: false, error: "Task not found" };
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Tasks');
+  if (!sheet) {
+    return JSON.stringify({ success: false, error: 'Tasks sheet was not found.' });
+  }
+
+  try {
+    const status = normalizeTaskStatus(newStatus);
+    const data = sheet.getDataRange().getValues();
+    if (data.length <= 1) {
+      throw new Error('Tasks sheet has no data rows.');
+    }
+
+    const headers = data[0];
+    const headerIndex = getHeaderIndex(headers);
+    const taskIdColumnIndex = headerIndex.Task_ID;
+    const statusColumnIndex = headerIndex.Status;
+
+    if (taskIdColumnIndex === undefined || statusColumnIndex === undefined) {
+      throw new Error('Tasks sheet is missing Task_ID or Status column.');
+    }
+
+    const taskRowIndex = data.findIndex((row, index) => index > 0 && (row[taskIdColumnIndex] || '').toString().trim() === normalizedTaskId);
+    if (taskRowIndex < 0) {
+      throw new Error('Task not found.');
+    }
+
+    const previousStatus = (data[taskRowIndex][statusColumnIndex] || '').toString().trim();
+    const isMarkingCompleted = status === 'Completed' && previousStatus !== 'Completed';
+    const isReopeningCompleted = status !== 'Completed' && previousStatus === 'Completed';
+    const completedAt = new Date();
+    const currentUserId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
+    const updatedRow = data[taskRowIndex].slice();
+
+    updatedRow[statusColumnIndex] = status;
+    if (headerIndex.Completed_By !== undefined) {
+      if (isMarkingCompleted) {
+        updatedRow[headerIndex.Completed_By] = currentUserId || '';
+      } else if (isReopeningCompleted) {
+        updatedRow[headerIndex.Completed_By] = '';
+      }
+    }
+    if (headerIndex.Completed_At !== undefined) {
+      if (isMarkingCompleted) {
+        updatedRow[headerIndex.Completed_At] = completedAt;
+      } else if (isReopeningCompleted) {
+        updatedRow[headerIndex.Completed_At] = '';
+      }
+    }
+
+    updateRowValues(sheet, taskRowIndex + 1, updatedRow);
+    invalidateTableCache('Tasks');
+
+    if (isMarkingCompleted) {
+      upsertTaskCompletionMetadata(normalizedTaskId, currentUserId, completedAt);
+    } else if (isReopeningCompleted) {
+      removeTaskCompletionMetadata(normalizedTaskId);
+    }
+
+    const updatedTask = {};
+    headers.forEach((header, index) => {
+      const value = updatedRow[index];
+      updatedTask[header] = header === 'Due_Date'
+        ? serializeDateOnlyForClient(value)
+        : (value instanceof Date ? value.toISOString() : value);
+    });
+    appendTaskCompletionMetadataToTask(updatedTask);
+
+    if (isMarkingCompleted) {
+      const assigneeIds = getTableData('Assignments')
+        .filter((assignment) => (assignment.Assignment_ID || '').toString().trim() === normalizedTaskId)
+        .map((assignment) => (assignment.Assignee_ID || '').toString().trim())
+        .filter(Boolean);
+      sendManagerTaskCompletedNotifications(updatedTask, assigneeIds, currentUserId);
+    }
+
+    return JSON.stringify({ success: true, task: updatedTask });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: error && error.message ? error.message : 'Failed to update task status.'
+    });
+  }
 }
 
 function normalizePriorityValue(value) {
