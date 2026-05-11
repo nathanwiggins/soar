@@ -80,6 +80,8 @@
         return value;
       };
 
+      const taskStatusOptions = ['Not Started', 'In Progress', 'Completed', 'Delayed'];
+
       // Add-task modal state
       const showAddTaskModal = ref(false);
       const showAddProjectModal = ref(false);
@@ -109,6 +111,7 @@
       const savingTask = ref(false);
       const deletingTask = ref(false);
       const completingTask = ref(false);
+      const updatingTaskStatusIds = ref([]);
       const permanentlyDeletingTaskIds = ref([]);
       const showProjectDetailsModal = ref(false);
       const projectDetailsForm = ref(null);
@@ -842,6 +845,10 @@
         return colors[status] || 'bg-gray-100 text-gray-600';
       };
 
+      const statusDropdownColor = (status) => `${statusColor(status)} border-transparent`;
+
+      const isUpdatingTaskStatus = (taskId) => updatingTaskStatusIds.value.some((id) => idsMatch(id, taskId));
+
       const getInitials = (name) => {
         if (!name) return '';
         return name
@@ -1360,6 +1367,64 @@
       };
 
       const isTaskDetailsAssigneeSelected = (userId) => (taskDetailsForm.value?.assigneeIds || []).includes(userId);
+
+      const updateTaskStatusFromCard = (task, newStatus) => {
+        const taskId = normalizeId(task?.Task_ID);
+        if (!taskId || !newStatus || task?.Status === newStatus || isUpdatingTaskStatus(taskId)) return;
+
+        const taskIndex = tasks.value.findIndex((existingTask) => idsMatch(existingTask.Task_ID, taskId));
+        const previousTask = taskIndex >= 0 ? { ...tasks.value[taskIndex] } : null;
+        const optimisticTask = {
+          ...(previousTask || task || {}),
+          Task_ID: taskId,
+          Status: newStatus,
+          Completed_By: newStatus === 'Completed' ? (currentUser.value?.User_ID || '') : '',
+          Completed_At: newStatus === 'Completed' ? new Date().toISOString() : '',
+          _syncing: true
+        };
+
+        updatingTaskStatusIds.value.push(taskId);
+        if (taskIndex >= 0) tasks.value.splice(taskIndex, 1, optimisticTask);
+        if (taskDetailsForm.value && idsMatch(taskDetailsForm.value.taskId, taskId)) {
+          taskDetailsForm.value = buildTaskDetailsForm(optimisticTask);
+        }
+
+        google.script.run
+          .withSuccessHandler((response) => {
+            updatingTaskStatusIds.value = updatingTaskStatusIds.value.filter((id) => !idsMatch(id, taskId));
+            const result = parseRunResponse(response);
+            if (!result || !result.success) {
+              if (previousTask && taskIndex >= 0) tasks.value.splice(taskIndex, 1, previousTask);
+              if (taskDetailsForm.value && idsMatch(taskDetailsForm.value.taskId, taskId)) {
+                taskDetailsForm.value = previousTask ? buildTaskDetailsForm(previousTask) : taskDetailsForm.value;
+              }
+              alert(result?.error || 'Failed to update task status.');
+              return;
+            }
+
+            if (result.task) {
+              const updatedIndex = tasks.value.findIndex((existingTask) => idsMatch(existingTask.Task_ID, result.task.Task_ID));
+              if (updatedIndex >= 0) {
+                tasks.value.splice(updatedIndex, 1, result.task);
+              } else {
+                tasks.value.push(result.task);
+              }
+              if (taskDetailsForm.value && idsMatch(taskDetailsForm.value.taskId, result.task.Task_ID)) {
+                taskDetailsForm.value = buildTaskDetailsForm(result.task);
+              }
+            }
+          })
+          .withFailureHandler((error) => {
+            updatingTaskStatusIds.value = updatingTaskStatusIds.value.filter((id) => !idsMatch(id, taskId));
+            if (previousTask && taskIndex >= 0) tasks.value.splice(taskIndex, 1, previousTask);
+            if (taskDetailsForm.value && idsMatch(taskDetailsForm.value.taskId, taskId)) {
+              taskDetailsForm.value = previousTask ? buildTaskDetailsForm(previousTask) : taskDetailsForm.value;
+            }
+            console.error('Failed to update task status:', error);
+            alert('Error updating task status.');
+          })
+          .updateTaskStatus(taskId, newStatus);
+      };
 
       const saveTaskEdits = () => {
         if (!taskDetailsForm.value) return;
@@ -2055,6 +2120,7 @@
         savingTask,
         deletingTask,
         completingTask,
+        updatingTaskStatusIds,
         permanentlyDeletingTaskIds,
         showProjectDetailsModal,
         projectDetailsForm,
@@ -2069,6 +2135,9 @@
         getProjectById,
         idsMatch,
         statusColor,
+        statusDropdownColor,
+        taskStatusOptions,
+        isUpdatingTaskStatus,
         getInitials,
         formatDate,
         calendarMonthLabel,
@@ -2102,6 +2171,7 @@
         toggleTaskDetailsAssignee,
         isTaskDetailsAssigneeSelected,
         saveTaskEdits,
+        updateTaskStatusFromCard,
         deleteTask,
         completeTask,
         deleteTaskPermanently,
