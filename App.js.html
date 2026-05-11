@@ -39,6 +39,9 @@
       const tasks = ref([]);
       const assignments = ref([]);
       const comments = ref([]);
+      const dataVersionHash = ref('');
+      const loadedCommentTopicIds = ref([]);
+      const loadingCommentTopicIds = ref([]);
       const commentDraft = ref('');
       const creatingComment = ref(false);
       const resolvingCommentIds = ref([]);
@@ -55,6 +58,27 @@
       const currentTab = ref('project-board');
       const showSupervisorUserDropdown = ref(false);
       const selectedSupervisorUserIds = ref([]);
+      const INITIAL_PAYLOAD_CACHE_KEY = 'soar_initial_payload_v2';
+      const LOGO_CACHE_KEY = 'soar_processed_logo_v1';
+      const memoCache = new Map();
+
+      const getItemSignature = (item, idKey, fields) => [
+        item?.[idKey] || '',
+        ...fields.map((field) => item?.[field] || '')
+      ].join('~');
+
+      const getCollectionSignature = (items, idKey, fields = []) => {
+        if (!Array.isArray(items)) return '0';
+        return `${items.length}:${items.map((item) => getItemSignature(item, idKey, fields)).join('|')}`;
+      };
+
+      const memoizeBySignature = (cacheKey, signature, factory) => {
+        const cached = memoCache.get(cacheKey);
+        if (cached && cached.signature === signature) return cached.value;
+        const value = factory();
+        memoCache.set(cacheKey, { signature, value });
+        return value;
+      };
 
       // Add-task modal state
       const showAddTaskModal = ref(false);
@@ -196,26 +220,73 @@
         return currentUser.value?.User_ID ? currentUser.value.User_ID.toString().trim() : '';
       });
 
+      const userStats = computed(() => {
+        const signature = [
+          getCollectionSignature(users.value, 'User_ID', ['Email', 'Name', 'Manager_ID', 'Profile_Pic_Url']),
+          getCollectionSignature(assignments.value, 'Assignment_ID', ['Assignee_ID'])
+        ].join('::');
+
+        return memoizeBySignature('userStats', signature, () => {
+          const usersById = new Map();
+          const directReportsByManagerId = new Map();
+          users.value.forEach((user) => {
+            const userId = normalizeId(user?.User_ID);
+            const managerId = normalizeId(user?.Manager_ID);
+            if (userId) usersById.set(userId, user);
+            if (managerId && userId) {
+              if (!directReportsByManagerId.has(managerId)) directReportsByManagerId.set(managerId, []);
+              directReportsByManagerId.get(managerId).push(user);
+            }
+          });
+
+          const assignmentsByUserId = new Map();
+          const assigneesByTaskId = new Map();
+          assignments.value.forEach((assignment) => {
+            const assignmentId = normalizeId(assignment?.Assignment_ID);
+            const assigneeId = normalizeId(assignment?.Assignee_ID);
+            if (!assignmentId || !assigneeId) return;
+
+            if (!assignmentsByUserId.has(assigneeId)) assignmentsByUserId.set(assigneeId, new Set());
+            assignmentsByUserId.get(assigneeId).add(assignmentId);
+
+            if (!assigneesByTaskId.has(assignmentId)) assigneesByTaskId.set(assignmentId, []);
+            const user = usersById.get(assigneeId);
+            if (user) assigneesByTaskId.get(assignmentId).push(user);
+          });
+
+          directReportsByManagerId.forEach((reportUsers) => {
+            reportUsers.sort((a, b) => (a?.Name || '').localeCompare(b?.Name || ''));
+          });
+
+          return { usersById, directReportsByManagerId, assignmentsByUserId, assigneesByTaskId };
+        });
+      });
+
       const assignedEntityIdsForCurrentUser = computed(() => {
         const userId = currentUserId.value;
         if (!userId) return new Set();
-
-        const ids = assignments.value
-          .filter((assignment) => idsMatch(assignment?.Assignee_ID, userId))
-          .map((assignment) => normalizeId(assignment?.Assignment_ID))
-          .filter(Boolean);
-
-        return new Set(ids);
+        return userStats.value.assignmentsByUserId.get(userId) || new Set();
       });
 
-      const visibleTasks = computed(() => {
-        if (showAllWorkItems.value) return tasks.value;
-        const assignedIds = assignedEntityIdsForCurrentUser.value;
-        return tasks.value.filter((task) => {
-          if (task?.Status === 'Completed') return false;
-          return assignedIds.has(normalizeId(task?.Task_ID));
+      const filteredTasks = computed(() => {
+        const signature = [
+          getCollectionSignature(tasks.value, 'Task_ID', ['Project_ID', 'Status', 'Due_Date', 'Priority', 'Task_Title']),
+          getCollectionSignature(assignments.value, 'Assignment_ID', ['Assignee_ID']),
+          currentUserId.value,
+          showAllWorkItems.value ? 'all' : 'assigned'
+        ].join('::');
+
+        return memoizeBySignature('filteredTasks', signature, () => {
+          if (showAllWorkItems.value) return tasks.value;
+          const assignedIds = assignedEntityIdsForCurrentUser.value;
+          return tasks.value.filter((task) => {
+            if (task?.Status === 'Completed') return false;
+            return assignedIds.has(normalizeId(task?.Task_ID));
+          });
         });
       });
+
+      const visibleTasks = filteredTasks;
 
       const pastAssignments = computed(() => {
         const assignedIds = assignedEntityIdsForCurrentUser.value;
@@ -247,39 +318,30 @@
       const directReportUsers = computed(() => {
         const managerId = currentUserId.value;
         if (!managerId) return [];
-        return users.value
-          .filter((user) => idsMatch(user?.Manager_ID, managerId))
-          .sort((a, b) => (a?.Name || '').localeCompare(b?.Name || ''));
+        return userStats.value.directReportsByManagerId.get(managerId) || [];
       });
 
       const assignableUsers = computed(() => {
         const normalizedCurrentUserId = normalizeId(currentUserId.value);
         if (!normalizedCurrentUserId) return [];
 
-        const reportsByManager = new Map();
-        users.value.forEach((user) => {
-          const managerId = normalizeId(user?.Manager_ID);
-          const userId = normalizeId(user?.User_ID);
-          if (!managerId || !userId) return;
-          if (!reportsByManager.has(managerId)) reportsByManager.set(managerId, []);
-          reportsByManager.get(managerId).push(userId);
-        });
-
         const assignableIdSet = new Set([normalizedCurrentUserId]);
         const queue = [normalizedCurrentUserId];
         while (queue.length > 0) {
           const managerId = queue.shift();
-          const directReports = reportsByManager.get(managerId) || [];
-          directReports.forEach((reportId) => {
-            if (!assignableIdSet.has(reportId)) {
+          const directReports = userStats.value.directReportsByManagerId.get(managerId) || [];
+          directReports.forEach((reportUser) => {
+            const reportId = normalizeId(reportUser?.User_ID);
+            if (reportId && !assignableIdSet.has(reportId)) {
               assignableIdSet.add(reportId);
               queue.push(reportId);
             }
           });
         }
 
-        return users.value
-          .filter((user) => assignableIdSet.has(normalizeId(user?.User_ID)))
+        return Array.from(assignableIdSet)
+          .map((userId) => userStats.value.usersById.get(userId))
+          .filter(Boolean)
           .sort((a, b) => (a?.Name || '').localeCompare(b?.Name || ''));
       });
 
@@ -296,11 +358,13 @@
       const assignedEntityIdsForSelectedSupervisorUsers = computed(() => {
         if (selectedSupervisorUserIds.value.length === 0) return new Set();
         const selectedUserIdSet = new Set(selectedSupervisorUserIds.value.map((id) => normalizeId(id)).filter(Boolean));
-        const ids = assignments.value
-          .filter((assignment) => selectedUserIdSet.has(normalizeId(assignment?.Assignee_ID)))
-          .map((assignment) => normalizeId(assignment?.Assignment_ID))
-          .filter(Boolean);
-        return new Set(ids);
+        const ids = new Set();
+        selectedUserIdSet.forEach((userId) => {
+          const assignmentIds = userStats.value.assignmentsByUserId.get(userId);
+          if (!assignmentIds) return;
+          assignmentIds.forEach((assignmentId) => ids.add(assignmentId));
+        });
+        return ids;
       });
 
       const supervisorVisibleTasks = computed(() => {
@@ -325,6 +389,42 @@
         });
       });
 
+      const projectSummaries = computed(() => {
+        const signature = [
+          getCollectionSignature(projects.value, 'Project_ID', ['Project_Title', 'Status', 'Due_Date']),
+          getCollectionSignature(visibleTasks.value, 'Task_ID', ['Project_ID', 'Status', 'Due_Date', 'Priority', 'Task_Title']),
+          getCollectionSignature(supervisorVisibleTasks.value, 'Task_ID', ['Project_ID', 'Status', 'Due_Date', 'Priority', 'Task_Title'])
+        ].join('::');
+
+        return memoizeBySignature('projectSummaries', signature, () => {
+          const summaries = new Map();
+          projects.value.forEach((project) => {
+            const projectId = normalizeId(project?.Project_ID);
+            if (!projectId) return;
+            summaries.set(projectId, { project, tasks: [], supervisorTasks: [] });
+          });
+
+          visibleTasks.value.forEach((task) => {
+            const projectId = normalizeId(task?.Project_ID);
+            if (!summaries.has(projectId)) summaries.set(projectId, { project: null, tasks: [], supervisorTasks: [] });
+            summaries.get(projectId).tasks.push(task);
+          });
+
+          supervisorVisibleTasks.value.forEach((task) => {
+            const projectId = normalizeId(task?.Project_ID);
+            if (!summaries.has(projectId)) summaries.set(projectId, { project: null, tasks: [], supervisorTasks: [] });
+            summaries.get(projectId).supervisorTasks.push(task);
+          });
+
+          summaries.forEach((summary) => {
+            summary.tasks.sort(compareTasksByPriority);
+            summary.supervisorTasks.sort(compareTasksByPriority);
+          });
+
+          return summaries;
+        });
+      });
+
       const fontScaleLabel = computed(() => {
         const scale = Number(settingsForm.value?.fontScale) || 100;
         if (scale <= 90) return 'Smaller';
@@ -333,116 +433,242 @@
       });
 
       // Methods
+      const readSessionStorage = (key) => {
+        try {
+          return sessionStorage.getItem(key);
+        } catch (error) {
+          console.warn(`Unable to read sessionStorage key ${key}:`, error);
+          return null;
+        }
+      };
+
+      const writeSessionStorage = (key, value) => {
+        try {
+          sessionStorage.setItem(key, value);
+        } catch (error) {
+          console.warn(`Unable to write sessionStorage key ${key}:`, error);
+        }
+      };
+
       const makeLogoTransparent = () => {
         const logo = document.querySelector('.soar-logo');
         if (!logo) return;
 
+        const cachedLogo = readSessionStorage(LOGO_CACHE_KEY);
+        if (cachedLogo) {
+          logo.src = cachedLogo;
+          return;
+        }
+
         const processLogo = () => {
-          const canvas = document.createElement('canvas');
-          canvas.width = logo.naturalWidth;
-          canvas.height = logo.naturalHeight;
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = logo.naturalWidth;
+            canvas.height = logo.naturalHeight;
+            if (!canvas.width || !canvas.height) return;
 
-          const ctx = canvas.getContext('2d');
-          if (!ctx) return;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
 
-          ctx.drawImage(logo, 0, 0);
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const pixels = imageData.data;
+            ctx.drawImage(logo, 0, 0);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const pixels = imageData.data;
 
-          const corners = [
-            [0, 0],
-            [canvas.width - 1, 0],
-            [0, canvas.height - 1],
-            [canvas.width - 1, canvas.height - 1]
-          ];
+            const corners = [
+              [0, 0],
+              [canvas.width - 1, 0],
+              [0, canvas.height - 1],
+              [canvas.width - 1, canvas.height - 1]
+            ];
 
-          let r = 0;
-          let g = 0;
-          let b = 0;
+            let r = 0;
+            let g = 0;
+            let b = 0;
 
-          corners.forEach(([x, y]) => {
-            const index = (y * canvas.width + x) * 4;
-            r += pixels[index];
-            g += pixels[index + 1];
-            b += pixels[index + 2];
-          });
+            corners.forEach(([x, y]) => {
+              const index = (y * canvas.width + x) * 4;
+              r += pixels[index];
+              g += pixels[index + 1];
+              b += pixels[index + 2];
+            });
 
-          const bgR = r / corners.length;
-          const bgG = g / corners.length;
-          const bgB = b / corners.length;
-          const tolerance = 70;
+            const bgR = r / corners.length;
+            const bgG = g / corners.length;
+            const bgB = b / corners.length;
+            const tolerance = 70;
 
-          const isBgLike = (rVal, gVal, bVal) => {
-            const dr = rVal - bgR;
-            const dg = gVal - bgG;
-            const db = bVal - bgB;
-            const distance = Math.sqrt(dr * dr + dg * dg + db * db);
-            const nearWhite = rVal > 225 && gVal > 225 && bVal > 225;
-            return distance <= tolerance || nearWhite;
-          };
+            const isBgLike = (rVal, gVal, bVal) => {
+              const dr = rVal - bgR;
+              const dg = gVal - bgG;
+              const db = bVal - bgB;
+              const distance = Math.sqrt(dr * dr + dg * dg + db * db);
+              const nearWhite = rVal > 225 && gVal > 225 && bVal > 225;
+              return distance <= tolerance || nearWhite;
+            };
 
-          for (let i = 0; i < pixels.length; i += 4) {
-            const rVal = pixels[i];
-            const gVal = pixels[i + 1];
-            const bVal = pixels[i + 2];
-            if (isBgLike(rVal, gVal, bVal)) {
-              pixels[i + 3] = 0;
+            for (let i = 0; i < pixels.length; i += 4) {
+              const rVal = pixels[i];
+              const gVal = pixels[i + 1];
+              const bVal = pixels[i + 2];
+              if (isBgLike(rVal, gVal, bVal)) {
+                pixels[i + 3] = 0;
+              }
             }
-          }
 
-          for (let i = 0; i < pixels.length; i += 4) {
-            const alpha = pixels[i + 3];
-            if (alpha === 0) continue;
+            for (let i = 0; i < pixels.length; i += 4) {
+              const alpha = pixels[i + 3];
+              if (alpha === 0) continue;
 
-            const rVal = pixels[i];
-            const gVal = pixels[i + 1];
-            const bVal = pixels[i + 2];
+              const rVal = pixels[i];
+              const gVal = pixels[i + 1];
+              const bVal = pixels[i + 2];
 
-            if (rVal < 80 && gVal < 80 && bVal < 80) {
-              pixels[i] = 219;
-              pixels[i + 1] = 0;
-              pixels[i + 2] = 0;
+              if (rVal < 80 && gVal < 80 && bVal < 80) {
+                pixels[i] = 219;
+                pixels[i + 1] = 0;
+                pixels[i + 2] = 0;
+              }
             }
-          }
 
-          ctx.putImageData(imageData, 0, 0);
-          logo.src = canvas.toDataURL('image/png');
+            ctx.putImageData(imageData, 0, 0);
+            const processedLogo = canvas.toDataURL('image/png');
+            logo.src = processedLogo;
+            writeSessionStorage(LOGO_CACHE_KEY, processedLogo);
+          } catch (error) {
+            console.warn('Unable to process logo transparency:', error);
+          }
         };
 
-        if (logo.complete) {
-          processLogo();
-        } else {
-          logo.addEventListener('load', processLogo, { once: true });
+        const processWhenReady = () => {
+          if (logo.complete) {
+            processLogo();
+          } else {
+            logo.addEventListener('load', processLogo, { once: true });
+          }
+        };
+
+        const scheduleIdle = window.requestIdleCallback || ((callback) => window.setTimeout(callback, 1));
+        scheduleIdle(processWhenReady, { timeout: 2000 });
+      };
+
+      const readInitialPayloadCache = () => {
+        try {
+          const rawCache = localStorage.getItem(INITIAL_PAYLOAD_CACHE_KEY);
+          if (!rawCache) return null;
+          const parsedCache = JSON.parse(rawCache);
+          if (!parsedCache || !parsedCache.versionHash || !parsedCache.payload) {
+            localStorage.removeItem(INITIAL_PAYLOAD_CACHE_KEY);
+            return null;
+          }
+          return parsedCache;
+        } catch (error) {
+          console.warn('Initial payload cache is corrupted; falling back to a full fetch.', error);
+          try {
+            localStorage.removeItem(INITIAL_PAYLOAD_CACHE_KEY);
+          } catch (removeError) {
+            console.warn('Unable to remove corrupted initial payload cache:', removeError);
+          }
+          return null;
         }
       };
 
-      const fetchData = () => {
+      const writeInitialPayloadCache = (payload) => {
+        if (!payload?.versionHash) return;
+        try {
+          localStorage.setItem(INITIAL_PAYLOAD_CACHE_KEY, JSON.stringify({
+            versionHash: payload.versionHash,
+            lastUpdated: payload.lastUpdated || '',
+            cachedAt: new Date().toISOString(),
+            payload: {
+              currentUserEmail: payload.currentUserEmail,
+              currentUserExists: payload.currentUserExists,
+              requiresAccountSetup: payload.requiresAccountSetup,
+              users: payload.users || [],
+              projects: payload.projects || [],
+              tasks: payload.tasks || [],
+              assignments: payload.assignments || [],
+              currentUserSettings: payload.currentUserSettings || {},
+              versionHash: payload.versionHash,
+              lastUpdated: payload.lastUpdated || ''
+            }
+          }));
+        } catch (error) {
+          console.warn('Unable to persist initial payload cache:', error);
+        }
+      };
+
+      const applyInitialPayload = (payload) => {
+        if (!payload) throw new Error('Initial payload was empty.');
+
+        currentUserEmail.value = normalizeEmail(payload.currentUserEmail);
+        users.value = Array.isArray(payload.users) ? payload.users : [];
+        projects.value = Array.isArray(payload.projects) ? payload.projects : [];
+        tasks.value = Array.isArray(payload.tasks) ? payload.tasks : [];
+        assignments.value = Array.isArray(payload.assignments) ? payload.assignments : [];
+        comments.value = [];
+        loadedCommentTopicIds.value = [];
+        loadingCommentTopicIds.value = [];
+        dataVersionHash.value = payload.versionHash || '';
+        applyNotificationSettings(payload.currentUserSettings?.notifications);
+        loading.value = false;
+
+        if (payload.requiresAccountSetup) {
+          const fallbackName = currentUserEmail.value.split('@')[0] || '';
+          createAccountForm.value.name = fallbackName;
+          showCreateAccountModal.value = true;
+        } else {
+          showCreateAccountModal.value = false;
+        }
+      };
+
+      const fetchInitialPayloadFromServer = () => {
         google.script.run
           .withSuccessHandler((response) => {
-            const payload = JSON.parse(response);
-
-            currentUserEmail.value = normalizeEmail(payload.currentUserEmail);
-            users.value = payload.users;
-            projects.value = payload.projects;
-            tasks.value = payload.tasks;
-            assignments.value = payload.assignments;
-            comments.value = payload.comments || [];
-            applyNotificationSettings(payload.currentUserSettings?.notifications);
-            loading.value = false;
-
-            if (payload.requiresAccountSetup) {
-              const fallbackName = currentUserEmail.value.split('@')[0] || '';
-              createAccountForm.value.name = fallbackName;
-              showCreateAccountModal.value = true;
-            } else {
-              showCreateAccountModal.value = false;
-            }
+            const payload = parseRunResponse(response);
+            writeInitialPayloadCache(payload);
+            applyInitialPayload(payload);
           })
           .withFailureHandler((error) => {
             console.error('Failed to load data:', error);
             alert('Error loading application data.');
           })
           .getInitialPayload();
+      };
+
+      const fetchData = () => {
+        loading.value = true;
+        google.script.run
+          .withSuccessHandler((response) => {
+            const versionInfo = parseRunResponse(response);
+            const cachedPayload = readInitialPayloadCache();
+
+            const cachedUserEmail = normalizeEmail(cachedPayload?.payload?.currentUserEmail);
+            const versionUserEmail = normalizeEmail(versionInfo?.currentUserEmail);
+            if (
+              versionInfo?.success &&
+              cachedPayload?.versionHash === versionInfo.versionHash &&
+              cachedUserEmail === versionUserEmail
+            ) {
+              try {
+                applyInitialPayload(cachedPayload.payload);
+                return;
+              } catch (error) {
+                console.warn('Cached payload could not be hydrated; performing full fetch.', error);
+                try {
+                  localStorage.removeItem(INITIAL_PAYLOAD_CACHE_KEY);
+                } catch (removeError) {
+                  console.warn('Unable to remove invalid initial payload cache:', removeError);
+                }
+              }
+            }
+
+            fetchInitialPayloadFromServer();
+          })
+          .withFailureHandler((error) => {
+            console.warn('Failed to check global data version; performing full fetch.', error);
+            fetchInitialPayloadFromServer();
+          })
+          .getGlobalVersionHash();
       };
 
       const createAccount = () => {
@@ -530,29 +756,24 @@
         return leftDueDate - rightDueDate;
       };
 
-      const getTasksForProject = (projectId) =>
-        visibleTasks.value
-          .filter((task) => idsMatch(task.Project_ID, projectId))
-          .slice()
-          .sort(compareTasksByPriority);
+      const getTasksForProject = (projectId) => {
+        const summary = projectSummaries.value.get(normalizeId(projectId));
+        return summary ? summary.tasks : [];
+      };
 
-      const getSupervisorTasksForProject = (projectId) =>
-        supervisorVisibleTasks.value
-          .filter((task) => idsMatch(task.Project_ID, projectId))
-          .slice()
-          .sort(compareTasksByPriority);
+      const getSupervisorTasksForProject = (projectId) => {
+        const summary = projectSummaries.value.get(normalizeId(projectId));
+        return summary ? summary.supervisorTasks : [];
+      };
 
       const normalizeEmail = (email) => (email || '').toString().trim().toLowerCase();
       const normalizeId = (value) => (value === null || value === undefined ? '' : value.toString().trim());
       const idsMatch = (left, right) => normalizeId(left) !== '' && normalizeId(left) === normalizeId(right);
 
-      const getAssigneesForTask = (taskId) => {
-        const taskAssignments = assignments.value.filter((a) => idsMatch(a.Assignment_ID, taskId));
-        return taskAssignments.map((a) => users.value.find((u) => idsMatch(u.User_ID, a.Assignee_ID))).filter(Boolean);
-      };
+      const getAssigneesForTask = (taskId) => userStats.value.assigneesByTaskId.get(normalizeId(taskId)) || [];
 
       const getProjectById = (projectId) => projects.value.find((p) => idsMatch(p.Project_ID, projectId)) || null;
-      const getUserById = (userId) => users.value.find((u) => idsMatch(u.User_ID, userId)) || null;
+      const getUserById = (userId) => userStats.value.usersById.get(normalizeId(userId)) || null;
 
       function parseAsLocalDate(dateValue) {
         if (!dateValue) return new Date('');
@@ -649,7 +870,7 @@
       };
 
       const calendarMonthOffset = ref(0);
-      
+
       const today = computed(() => {
         const now = new Date();
         return new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -840,6 +1061,7 @@
         mentionStartIndex.value = -1;
         mentionCursorIndex.value = -1;
         showCommentModal.value = true;
+        loadCommentsForTopic(activeCommentTaskId.value);
         nextTick(() => {
           if (quickCommentTextarea.value) {
             quickCommentTextarea.value.focus();
@@ -848,7 +1070,6 @@
       };
 
       const closeCommentModal = () => {
-        if (creatingComment.value) return;
         showCommentModal.value = false;
         commentModalTask.value = null;
         activeCommentTaskId.value = '';
@@ -927,6 +1148,46 @@
         });
       };
 
+
+      const makeClientId = (prefix) => `${prefix}-local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      const parseRunResponse = (response) => (typeof response === 'string' ? JSON.parse(response) : response);
+
+      const markCommentTopicLoaded = (topicId) => {
+        const normalizedTopicId = normalizeId(topicId);
+        if (normalizedTopicId && !loadedCommentTopicIds.value.some((id) => idsMatch(id, normalizedTopicId))) {
+          loadedCommentTopicIds.value.push(normalizedTopicId);
+        }
+      };
+
+      const isCommentTopicLoaded = (topicId) => loadedCommentTopicIds.value.some((id) => idsMatch(id, topicId));
+
+      const loadCommentsForTopic = (topicId) => {
+        const normalizedTopicId = normalizeId(topicId);
+        if (!normalizedTopicId || isCommentTopicLoaded(normalizedTopicId)) return;
+        if (loadingCommentTopicIds.value.some((id) => idsMatch(id, normalizedTopicId))) return;
+
+        loadingCommentTopicIds.value.push(normalizedTopicId);
+        google.script.run
+          .withSuccessHandler((response) => {
+            loadingCommentTopicIds.value = loadingCommentTopicIds.value.filter((id) => !idsMatch(id, normalizedTopicId));
+            const result = parseRunResponse(response);
+            if (!result || !result.success) {
+              console.error(result?.error || 'Failed to load comments.');
+              return;
+            }
+
+            comments.value = comments.value.filter((comment) => !idsMatch(comment.Topic_ID, normalizedTopicId));
+            comments.value.push(...(result.comments || []));
+            markCommentTopicLoaded(normalizedTopicId);
+          })
+          .withFailureHandler((error) => {
+            loadingCommentTopicIds.value = loadingCommentTopicIds.value.filter((id) => !idsMatch(id, normalizedTopicId));
+            console.error('Failed to load comments:', error);
+          })
+          .getCommentsByTopic(normalizedTopicId);
+      };
+
       const addComment = () => {
         if (!activeCommentTaskId.value) return;
         const trimmedContent = commentDraft.value.trim();
@@ -935,25 +1196,49 @@
           return;
         }
 
+        const topicId = activeCommentTaskId.value;
+        const tempCommentId = makeClientId('C');
+        const optimisticComment = {
+          Comment_ID: tempCommentId,
+          Topic_ID: topicId,
+          Commenter_ID: currentUser.value?.User_ID || '',
+          Timestamp: new Date().toISOString(),
+          Content: trimmedContent,
+          _syncing: true
+        };
+
         creatingComment.value = true;
+        comments.value.push(optimisticComment);
+        commentDraft.value = '';
+        showMentionSuggestions.value = false;
+        markCommentTopicLoaded(topicId);
+
         google.script.run
           .withSuccessHandler((response) => {
             creatingComment.value = false;
-            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            const result = parseRunResponse(response);
             if (!result || !result.success || !result.comment) {
+              comments.value = comments.value.filter((comment) => !idsMatch(comment.Comment_ID, tempCommentId));
+              commentDraft.value = trimmedContent;
               alert(result?.error || 'Failed to add comment.');
               return;
             }
-            comments.value.push(result.comment);
-            commentDraft.value = '';
-            showMentionSuggestions.value = false;
+
+            const commentIndex = comments.value.findIndex((comment) => idsMatch(comment.Comment_ID, tempCommentId));
+            if (commentIndex >= 0) {
+              comments.value.splice(commentIndex, 1, result.comment);
+            } else {
+              comments.value.push(result.comment);
+            }
           })
           .withFailureHandler((error) => {
             creatingComment.value = false;
+            comments.value = comments.value.filter((comment) => !idsMatch(comment.Comment_ID, tempCommentId));
+            commentDraft.value = trimmedContent;
             console.error('Failed to add comment:', error);
             alert('Error adding comment.');
           })
-          .addComment(activeCommentTaskId.value, {
+          .addComment(topicId, {
             content: trimmedContent
           });
       };
@@ -995,20 +1280,24 @@
 
       const resolveComment = (commentId) => {
         if (!commentId || resolvingCommentIds.value.includes(commentId)) return;
+        const removedComment = comments.value.find((comment) => idsMatch(comment.Comment_ID, commentId));
+        const removedIndex = comments.value.findIndex((comment) => idsMatch(comment.Comment_ID, commentId));
+
         resolvingCommentIds.value.push(commentId);
+        comments.value = comments.value.filter((comment) => !idsMatch(comment.Comment_ID, commentId));
 
         google.script.run
           .withSuccessHandler((response) => {
             resolvingCommentIds.value = resolvingCommentIds.value.filter((id) => id !== commentId);
-            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            const result = parseRunResponse(response);
             if (!result || !result.success) {
+              if (removedComment && removedIndex >= 0) comments.value.splice(removedIndex, 0, removedComment);
               alert(result?.error || 'Failed to resolve comment.');
-              return;
             }
-            comments.value = comments.value.filter((comment) => !idsMatch(comment.Comment_ID, commentId));
           })
           .withFailureHandler((error) => {
             resolvingCommentIds.value = resolvingCommentIds.value.filter((id) => id !== commentId);
+            if (removedComment && removedIndex >= 0) comments.value.splice(removedIndex, 0, removedComment);
             console.error('Failed to resolve comment:', error);
             alert('Error resolving comment.');
           })
@@ -1020,19 +1309,23 @@
         const confirmed = confirm('Delete this comment?');
         if (!confirmed) return;
 
+        const removedComment = comments.value.find((comment) => idsMatch(comment.Comment_ID, commentId));
+        const removedIndex = comments.value.findIndex((comment) => idsMatch(comment.Comment_ID, commentId));
         deletingCommentIds.value.push(commentId);
+        comments.value = comments.value.filter((comment) => !idsMatch(comment.Comment_ID, commentId));
+
         google.script.run
           .withSuccessHandler((response) => {
             deletingCommentIds.value = deletingCommentIds.value.filter((id) => id !== commentId);
-            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            const result = parseRunResponse(response);
             if (!result || !result.success) {
+              if (removedComment && removedIndex >= 0) comments.value.splice(removedIndex, 0, removedComment);
               alert(result?.error || 'Failed to delete comment.');
-              return;
             }
-            comments.value = comments.value.filter((comment) => !idsMatch(comment.Comment_ID, commentId));
           })
           .withFailureHandler((error) => {
             deletingCommentIds.value = deletingCommentIds.value.filter((id) => id !== commentId);
+            if (removedComment && removedIndex >= 0) comments.value.splice(removedIndex, 0, removedComment);
             console.error('Failed to delete comment:', error);
             alert('Error deleting comment.');
           })
@@ -1081,25 +1374,51 @@
           return;
         }
 
+        const taskId = taskDetailsForm.value.taskId;
+        const taskIndex = tasks.value.findIndex((t) => idsMatch(t.Task_ID, taskId));
+        const previousTask = taskIndex >= 0 ? { ...tasks.value[taskIndex] } : null;
+        const previousAssignments = assignments.value.slice();
+        const optimisticTask = {
+          ...(previousTask || {}),
+          Task_ID: taskId,
+          Project_ID: taskDetailsForm.value.projectId,
+          Task_Title: trimmedTitle,
+          Due_Date: taskDetailsForm.value.dueDate,
+          Status: taskDetailsForm.value.status,
+          Description: taskDetailsForm.value.description,
+          Priority: taskDetailsForm.value.priority,
+          _syncing: true
+        };
+        const optimisticAssignments = taskDetailsForm.value.assigneeIds.map((assigneeId) => ({
+          Assignment_ID: taskId,
+          Assignee_ID: assigneeId,
+          _syncing: true
+        }));
+
         savingTask.value = true;
+        if (taskIndex >= 0) tasks.value.splice(taskIndex, 1, optimisticTask);
+        assignments.value = assignments.value.filter((a) => !idsMatch(a.Assignment_ID, taskId));
+        assignments.value.push(...optimisticAssignments);
 
         google.script.run
           .withSuccessHandler((response) => {
             savingTask.value = false;
 
-            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            const result = parseRunResponse(response);
             if (!result || !result.success) {
+              if (previousTask && taskIndex >= 0) tasks.value.splice(taskIndex, 1, previousTask);
+              assignments.value = previousAssignments;
               alert(result?.error || 'Failed to update task.');
               return;
             }
 
             const updatedTask = result.task;
-            const taskIndex = tasks.value.findIndex((t) => t.Task_ID === updatedTask.Task_ID);
-            if (taskIndex >= 0) {
-              tasks.value.splice(taskIndex, 1, updatedTask);
+            const updatedTaskIndex = tasks.value.findIndex((t) => idsMatch(t.Task_ID, updatedTask.Task_ID));
+            if (updatedTaskIndex >= 0) {
+              tasks.value.splice(updatedTaskIndex, 1, updatedTask);
             }
 
-            assignments.value = assignments.value.filter((a) => a.Assignment_ID !== updatedTask.Task_ID);
+            assignments.value = assignments.value.filter((a) => !idsMatch(a.Assignment_ID, updatedTask.Task_ID));
             if (Array.isArray(result.assignments) && result.assignments.length > 0) {
               assignments.value.push(...result.assignments);
             }
@@ -1110,10 +1429,12 @@
           })
           .withFailureHandler((error) => {
             savingTask.value = false;
+            if (previousTask && taskIndex >= 0) tasks.value.splice(taskIndex, 1, previousTask);
+            assignments.value = previousAssignments;
             console.error('Failed to update task:', error);
             alert('Error updating task.');
           })
-          .updateTask(taskDetailsForm.value.taskId, {
+          .updateTask(taskId, {
             taskTitle: trimmedTitle,
             dueDate: taskDetailsForm.value.dueDate,
             status: taskDetailsForm.value.status,
@@ -1130,51 +1451,69 @@
         const confirmed = confirm('Are you sure you want to delete this task? This action cannot be undone.');
         if (!confirmed) return;
 
+        const taskId = taskDetailsForm.value.taskId;
+        const previousTasks = tasks.value.slice();
+        const previousAssignments = assignments.value.slice();
         deletingTask.value = true;
+        tasks.value = tasks.value.filter((task) => !idsMatch(task.Task_ID, taskId));
+        assignments.value = assignments.value.filter((assignment) => !idsMatch(assignment.Assignment_ID, taskId));
+        closeTaskInfo();
 
         google.script.run
           .withSuccessHandler((response) => {
             deletingTask.value = false;
-
-            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            const result = parseRunResponse(response);
             if (!result || !result.success) {
+              tasks.value = previousTasks;
+              assignments.value = previousAssignments;
               alert(result?.error || 'Failed to delete task.');
-              return;
             }
-
-            const deletedTaskId = result.taskId;
-            tasks.value = tasks.value.filter((task) => !idsMatch(task.Task_ID, deletedTaskId));
-            assignments.value = assignments.value.filter((assignment) => !idsMatch(assignment.Assignment_ID, deletedTaskId));
-
-            closeTaskInfo();
           })
           .withFailureHandler((error) => {
             deletingTask.value = false;
+            tasks.value = previousTasks;
+            assignments.value = previousAssignments;
             console.error('Failed to delete task:', error);
             alert('Error deleting task.');
           })
-          .deleteTask(taskDetailsForm.value.taskId);
+          .deleteTask(taskId);
       };
 
       const completeTask = () => {
         if (!taskDetailsForm.value?.taskId || savingTask.value || deletingTask.value || completingTask.value) return;
 
+        const taskId = taskDetailsForm.value.taskId;
+        const taskIndex = tasks.value.findIndex((task) => idsMatch(task.Task_ID, taskId));
+        const previousTask = taskIndex >= 0 ? { ...tasks.value[taskIndex] } : null;
+        const optimisticTask = {
+          ...(previousTask || {}),
+          Task_ID: taskId,
+          Status: 'Completed',
+          Completed_By: currentUser.value?.User_ID || '',
+          Completed_At: new Date().toISOString(),
+          _syncing: true
+        };
+
         completingTask.value = true;
+        if (taskIndex >= 0) tasks.value.splice(taskIndex, 1, optimisticTask);
+        taskDetailsForm.value = buildTaskDetailsForm(optimisticTask);
 
         google.script.run
           .withSuccessHandler((response) => {
             completingTask.value = false;
 
-            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            const result = parseRunResponse(response);
             if (!result || !result.success) {
+              if (previousTask && taskIndex >= 0) tasks.value.splice(taskIndex, 1, previousTask);
+              taskDetailsForm.value = previousTask ? buildTaskDetailsForm(previousTask) : taskDetailsForm.value;
               alert(result?.error || 'Failed to complete task.');
               return;
             }
 
             if (result.task) {
-              const taskIndex = tasks.value.findIndex((task) => idsMatch(task.Task_ID, result.task.Task_ID));
-              if (taskIndex >= 0) {
-                tasks.value.splice(taskIndex, 1, result.task);
+              const updatedIndex = tasks.value.findIndex((task) => idsMatch(task.Task_ID, result.task.Task_ID));
+              if (updatedIndex >= 0) {
+                tasks.value.splice(updatedIndex, 1, result.task);
               } else {
                 tasks.value.push(result.task);
               }
@@ -1183,10 +1522,12 @@
           })
           .withFailureHandler((error) => {
             completingTask.value = false;
+            if (previousTask && taskIndex >= 0) tasks.value.splice(taskIndex, 1, previousTask);
+            taskDetailsForm.value = previousTask ? buildTaskDetailsForm(previousTask) : taskDetailsForm.value;
             console.error('Failed to complete task:', error);
             alert('Error completing task.');
           })
-          .completeTask(taskDetailsForm.value.taskId);
+          .completeTask(taskId);
       };
 
       const deleteTaskPermanently = (task) => {
@@ -1216,7 +1557,7 @@
           })
           .deleteTask(taskId);
       };
-      
+
       const deleteProject = () => {
         if (!projectDetailsForm.value?.projectId || deletingProject.value || savingProject.value) return;
 
@@ -1648,6 +1989,9 @@
         users,
         projects,
         tasks,
+        filteredTasks,
+        projectSummaries,
+        userStats,
         pastAssignments,
         visibleProjects,
         directReportUsers,
@@ -1659,6 +2003,9 @@
         supervisorUserSummary,
         showAllWorkItems,
         comments,
+        dataVersionHash,
+        loadedCommentTopicIds,
+        loadingCommentTopicIds,
         taskComments,
         commentDraft,
         creatingComment,
@@ -1709,6 +2056,7 @@
         getSupervisorTasksForProject,
         getAssigneesForTask,
         getProjectById,
+        idsMatch,
         statusColor,
         getInitials,
         formatDate,
