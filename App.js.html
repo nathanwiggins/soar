@@ -16,6 +16,7 @@
       const isUserMenuOpen = ref(false);
       const showProfileModal = ref(false);
       const showSettingsModal = ref(false);
+      const savingSettings = ref(false);
       const isEditingProfile = ref(false);
       const savingProfile = ref(false);
       const profileForm = ref({
@@ -426,6 +427,7 @@
             tasks.value = payload.tasks;
             assignments.value = payload.assignments;
             comments.value = payload.comments || [];
+            applyNotificationSettings(payload.currentUserSettings?.notifications);
             loading.value = false;
 
             if (payload.requiresAccountSetup) {
@@ -1489,25 +1491,59 @@
         settingsForm.value.notifications[key] = Boolean(enabled);
       };
 
+      const applyNotificationSettings = (notifications) => {
+        if (!notifications || typeof notifications !== 'object') return;
+
+        const knownNotificationKeys = Object.keys(settingsForm.value.notifications);
+        knownNotificationKeys.forEach((key) => {
+          if (typeof notifications[key] === 'boolean') {
+            settingsForm.value.notifications[key] = notifications[key];
+          }
+        });
+      };
+
       const persistSettings = () => {
-        localStorage.setItem('soar_user_settings_v1', JSON.stringify(settingsForm.value));
+        if (savingSettings.value) return;
+
+        const settingsToSave = JSON.parse(JSON.stringify(settingsForm.value));
+        localStorage.setItem('soar_user_settings_v1', JSON.stringify(settingsToSave));
+        savingSettings.value = true;
+
+        google.script.run
+          .withSuccessHandler((response) => {
+            const payload = JSON.parse(response);
+            savingSettings.value = false;
+
+            if (!payload.success) {
+              alert(payload.error || 'Failed to save settings.');
+              return;
+            }
+
+            applyNotificationSettings(payload.settings?.notifications);
+            localStorage.setItem('soar_user_settings_v1', JSON.stringify(settingsForm.value));
+            closeSettingsModal();
+          })
+          .withFailureHandler((error) => {
+            savingSettings.value = false;
+            console.error('Failed to save settings:', error);
+            alert('Error saving settings.');
+          })
+          .persistCurrentUserSettings(settingsToSave);
       };
 
       const loadSettings = () => {
         const raw = localStorage.getItem('soar_user_settings_v1');
         if (!raw) return;
 
-        const parsed = JSON.parse(raw);
-        if (!parsed || typeof parsed !== 'object') return;
+        try {
+          const parsed = JSON.parse(raw);
+          if (!parsed || typeof parsed !== 'object') return;
 
-        applyFontScale(parsed.fontScale);
-
-        const knownNotificationKeys = Object.keys(settingsForm.value.notifications);
-        knownNotificationKeys.forEach((key) => {
-          if (typeof parsed?.notifications?.[key] === 'boolean') {
-            settingsForm.value.notifications[key] = parsed.notifications[key];
-          }
-        });
+          applyFontScale(parsed.fontScale);
+          applyNotificationSettings(parsed.notifications);
+        } catch (error) {
+          console.warn('Ignoring invalid saved settings:', error);
+        }
       };
 
       const buildProfileForm = () => ({
@@ -1528,6 +1564,7 @@
       };
 
       const closeSettingsModal = () => {
+        if (savingSettings.value) return;
         showSettingsModal.value = false;
       };
 
@@ -1635,6 +1672,7 @@
         deletingCommentIds,
         showProfileModal,
         showSettingsModal,
+        savingSettings,
         isEditingProfile,
         savingProfile,
         profileForm,

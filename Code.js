@@ -136,6 +136,92 @@ function safeSendEmail(recipient, subject, body) {
   }
 }
 
+
+const USER_SETTINGS_PROPERTY_PREFIX = 'soar_user_settings:';
+const DEFAULT_NOTIFICATION_SETTINGS = {
+  taskAssignments: true,
+  commentsAndMentions: true,
+  dueDateReminders: true,
+  weeklyDigest: false
+};
+
+function getDefaultNotificationSettings() {
+  return Object.assign({}, DEFAULT_NOTIFICATION_SETTINGS);
+}
+
+function normalizeNotificationSettings(settingsInput) {
+  const normalized = getDefaultNotificationSettings();
+  const source = settingsInput && typeof settingsInput === 'object' ? settingsInput : {};
+  Object.keys(normalized).forEach((key) => {
+    if (typeof source[key] === 'boolean') {
+      normalized[key] = source[key];
+    }
+  });
+  return normalized;
+}
+
+function getUserSettingsPropertyKey(email) {
+  const normalizedEmail = normalizeEmail(email);
+  return normalizedEmail ? `${USER_SETTINGS_PROPERTY_PREFIX}${normalizedEmail}` : '';
+}
+
+function getUserSettingsByEmail(email) {
+  const propertyKey = getUserSettingsPropertyKey(email);
+  if (!propertyKey) {
+    return { notifications: getDefaultNotificationSettings() };
+  }
+
+  const rawSettings = PropertiesService.getScriptProperties().getProperty(propertyKey);
+  if (!rawSettings) {
+    return { notifications: getDefaultNotificationSettings() };
+  }
+
+  try {
+    const parsedSettings = JSON.parse(rawSettings);
+    return {
+      notifications: normalizeNotificationSettings(parsedSettings && parsedSettings.notifications)
+    };
+  } catch (error) {
+    Logger.log(`Failed to parse notification settings for ${normalizeEmail(email)}: ${error && error.message ? error.message : error}`);
+    return { notifications: getDefaultNotificationSettings() };
+  }
+}
+
+function isNotificationEnabledForEmail(email, notificationKey) {
+  const defaults = getDefaultNotificationSettings();
+  if (!Object.prototype.hasOwnProperty.call(defaults, notificationKey)) return true;
+
+  const settings = getUserSettingsByEmail(email);
+  return settings.notifications[notificationKey] !== false;
+}
+
+function isNotificationEnabledForUser(user, notificationKey) {
+  return isNotificationEnabledForEmail(user && user.Email, notificationKey);
+}
+
+function persistCurrentUserSettings(settingsInput) {
+  const currentUserEmail = normalizeEmail(getCurrentUser());
+  if (!currentUserEmail) {
+    return JSON.stringify({ success: false, error: 'Could not determine current user email.' });
+  }
+
+  const existingSettings = getUserSettingsByEmail(currentUserEmail);
+  const requestedSettings = settingsInput && typeof settingsInput === 'object' ? settingsInput : {};
+  const settingsToSave = {
+    notifications: normalizeNotificationSettings(
+      Object.prototype.hasOwnProperty.call(requestedSettings, 'notifications')
+        ? requestedSettings.notifications
+        : existingSettings.notifications
+    )
+  };
+
+  PropertiesService
+    .getScriptProperties()
+    .setProperty(getUserSettingsPropertyKey(currentUserEmail), JSON.stringify(settingsToSave));
+
+  return JSON.stringify({ success: true, settings: settingsToSave });
+}
+
 function parseDateInput(dateInput) {
   if (!dateInput) return '';
 
@@ -431,7 +517,8 @@ function getInitialPayload() {
     projects: getTableData('Projects'),
     tasks: getTableData('Tasks').map((task) => appendTaskCompletionMetadataToTask(task, completionMetadataByTaskId)),
     assignments: getTableData('Assignments'),
-    comments: getTableData('Comments')
+    comments: getTableData('Comments'),
+    currentUserSettings: getUserSettingsByEmail(currentUserEmail)
   };
   
   // Stringifying prevents Apps Script's silent serialization failures
@@ -444,6 +531,42 @@ function getUserById(userId) {
 
   const users = getTableData('Users');
   return users.find((user) => (user.User_ID || '').toString().trim() === normalizedUserId) || null;
+}
+
+function getProjectById(projectId) {
+  const normalizedProjectId = projectId ? projectId.toString().trim() : '';
+  if (!normalizedProjectId) return null;
+
+  const projects = getTableData('Projects');
+  return projects.find((project) => (project.Project_ID || '').toString().trim() === normalizedProjectId) || null;
+}
+
+function getTaskById(taskId) {
+  const normalizedTaskId = taskId ? taskId.toString().trim() : '';
+  if (!normalizedTaskId) return null;
+
+  const tasks = getTableData('Tasks');
+  return tasks.find((task) => (task.Task_ID || '').toString().trim() === normalizedTaskId) || null;
+}
+
+function getTaskNotificationDetails(task, projectsById) {
+  const taskTitle = (task && task.Task_Title ? task.Task_Title : '').toString().trim() || 'Untitled task';
+  const projectId = (task && task.Project_ID ? task.Project_ID : '').toString().trim();
+  const project = projectsById
+    ? projectsById[projectId]
+    : getProjectById(projectId);
+  const projectTitle = (project && project.Project_Title ? project.Project_Title : '').toString().trim() || 'Unassigned project';
+
+  return {
+    taskTitle,
+    projectTitle
+  };
+}
+
+function formatTaskNotificationBody(details) {
+  const taskTitle = details && details.taskTitle ? details.taskTitle : 'Untitled task';
+  const projectTitle = details && details.projectTitle ? details.projectTitle : 'Unassigned project';
+  return `Task: ${taskTitle}\nProject: ${projectTitle}`;
 }
 
 function ensureTaskExists(taskId) {
@@ -493,41 +616,52 @@ function extractMentionedUsers(content, users) {
 function sendMentionNotifications(comment, topicId, commenter, mentionedUsers) {
   if (!mentionedUsers || mentionedUsers.length === 0) return;
 
-  const topicLabel = topicId || 'task';
+  const task = getTaskById(topicId);
+  const details = getTaskNotificationDetails(task);
   const commenterName = commenter && commenter.Name ? commenter.Name : 'A teammate';
-  const commenterEmail = commenter && commenter.Email ? commenter.Email : 'Unknown email';
-  const subject = `You were mentioned in a comment on ${topicLabel}`;
-  const body = `${commenterName} (${commenterEmail}) mentioned you in a comment on ${topicLabel}.\n\nComment:\n${comment}\n`;
+  const subject = `You were mentioned on ${details.taskTitle}`;
+  const body = `${commenterName} mentioned you in a comment.
+
+${formatTaskNotificationBody(details)}
+
+Comment:
+${comment}
+`;
 
   const sentEmails = new Set();
   mentionedUsers.forEach((user) => {
     const email = normalizeEmail(user.Email);
     if (!email || sentEmails.has(email)) return;
+    if (!isNotificationEnabledForUser(user, 'commentsAndMentions')) return;
     sentEmails.add(email);
     safeSendEmail(email, subject, body);
   });
 }
 
-function sendTaskAssignmentNotifications(task, assigneeIds) {
+function sendTaskAssignmentNotifications(task, assigneeIds, assignedByUserId) {
   if (!task || !Array.isArray(assigneeIds) || assigneeIds.length === 0) return;
 
-  const usersById = getTableData('Users').reduce((acc, user) => {
-    const userId = (user.User_ID || '').toString().trim();
-    if (userId) acc[userId] = user;
-    return acc;
-  }, {});
-
-  const taskId = (task.Task_ID || '').toString().trim();
-  const taskTitle = (task.Task_Title || '').toString().trim() || taskId || 'a task';
-  const projectId = (task.Project_ID || '').toString().trim();
-  const subject = `You were assigned to task ${taskId || taskTitle}`;
-  const body = `You were assigned to task "${taskTitle}"${projectId ? ` in project ${projectId}` : ''}.\n\nTask ID: ${taskId || 'N/A'}\n`;
+  const usersById = getUsersById();
+  const assignedBy = usersById[(assignedByUserId || '').toString().trim()];
+  const assignedByName = assignedBy && assignedBy.Name ? assignedBy.Name : 'A teammate';
+  const details = getTaskNotificationDetails(task);
+  const subject = `New task assignment: ${details.taskTitle}`;
 
   const sentEmails = new Set();
   assigneeIds.forEach((assigneeId) => {
     const user = usersById[(assigneeId || '').toString().trim()];
     const email = normalizeEmail(user && user.Email);
     if (!email || sentEmails.has(email)) return;
+    if (!isNotificationEnabledForUser(user, 'taskAssignments')) return;
+
+    const recipientName = user && user.Name ? user.Name : 'there';
+    const body = `Hi ${recipientName},
+
+${assignedByName} assigned you to a task.
+
+${formatTaskNotificationBody(details)}
+`;
+
     sentEmails.add(email);
     safeSendEmail(email, subject, body);
   });
@@ -551,12 +685,14 @@ function sendManagerTaskCompletedNotifications(task, assigneeIds, completedByUse
   });
   if (managerIds.size === 0) return;
 
-  const taskId = (task.Task_ID || '').toString().trim();
-  const taskTitle = (task.Task_Title || '').toString().trim() || taskId || 'a task';
+  const details = getTaskNotificationDetails(task);
   const completedBy = usersById[(completedByUserId || '').toString().trim()];
   const completedByName = completedBy && completedBy.Name ? completedBy.Name : 'A user';
-  const subject = `Worker task completed: ${taskId || taskTitle}`;
-  const body = `${completedByName} marked task "${taskTitle}" as completed.\n\nTask ID: ${taskId || 'N/A'}\n`;
+  const subject = `Task completed: ${details.taskTitle}`;
+  const body = `${completedByName} marked a task as completed.
+
+${formatTaskNotificationBody(details)}
+`;
 
   const sentEmails = new Set();
   managerIds.forEach((managerId) => {
@@ -717,13 +853,20 @@ function resolveComment(commentId) {
     commentsSheet.deleteRow(rowIndex + 1);
 
     const commenterEmail = commenter ? normalizeEmail(commenter.Email) : '';
-    if (commenterEmail) {
+    if (commenterEmail && isNotificationEnabledForUser(commenter, 'commentsAndMentions')) {
       const resolverEmail = normalizeEmail(getCurrentUser());
       const resolverUserId = getCurrentUserIdByEmail(resolverEmail);
       const resolver = getUserById(resolverUserId);
       const resolverName = resolver && resolver.Name ? resolver.Name : 'A teammate';
-      const subject = `Your comment ${normalizedCommentId} was resolved`;
-      const body = `${resolverName} resolved your comment on ${topicId || 'a task'}.\n\nResolved comment:\n${content}\n`;
+      const details = getTaskNotificationDetails(getTaskById(topicId));
+      const subject = `Your comment was resolved on ${details.taskTitle}`;
+      const body = `${resolverName} resolved your comment.
+
+${formatTaskNotificationBody(details)}
+
+Resolved comment:
+${content}
+`;
       safeSendEmail(commenterEmail, subject, body);
     }
 
@@ -746,6 +889,134 @@ function hasDueDatePassed(dueDateValue) {
   const normalizedDueDate = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
 
   return normalizedDueDate.getTime() < startOfToday.getTime();
+}
+
+
+function getDaysUntilDate(dateValue) {
+  if (!dateValue) return null;
+  const dueDate = parseDateInput(dateValue);
+  if (!dueDate || dueDate.toString() === 'Invalid Date') return null;
+
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const normalizedDueDate = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
+  return Math.round((normalizedDueDate.getTime() - startOfToday.getTime()) / (24 * 60 * 60 * 1000));
+}
+
+function getAssignmentsByAssignmentId() {
+  return getTableData('Assignments').reduce((acc, assignment) => {
+    const assignmentId = (assignment.Assignment_ID || '').toString().trim();
+    const assigneeId = (assignment.Assignee_ID || '').toString().trim();
+    if (!assignmentId || !assigneeId) return acc;
+    if (!acc[assignmentId]) acc[assignmentId] = [];
+    acc[assignmentId].push(assigneeId);
+    return acc;
+  }, {});
+}
+
+function getUsersById() {
+  return getTableData('Users').reduce((acc, user) => {
+    const userId = (user.User_ID || '').toString().trim();
+    if (userId) acc[userId] = user;
+    return acc;
+  }, {});
+}
+
+function sendDueDateReminderNotifications() {
+  const tasks = getTableData('Tasks');
+  const assignmentsByTaskId = getAssignmentsByAssignmentId();
+  const usersById = getUsersById();
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const todayKey = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  let sentCount = 0;
+
+  tasks.forEach((task) => {
+    const status = (task.Status || '').toString().trim();
+    if (status === 'Completed') return;
+
+    const daysUntilDue = getDaysUntilDate(task.Due_Date);
+    if (daysUntilDue === null || daysUntilDue < 0 || daysUntilDue > 1) return;
+
+    const taskId = (task.Task_ID || '').toString().trim();
+    const details = getTaskNotificationDetails(task);
+    const dueLabel = daysUntilDue === 0 ? 'today' : 'tomorrow';
+    const subject = `Task due ${dueLabel}: ${details.taskTitle}`;
+    const body = `A task is due ${dueLabel}.
+
+${formatTaskNotificationBody(details)}
+`;
+    const sentEmails = new Set();
+
+    (assignmentsByTaskId[taskId] || []).forEach((assigneeId) => {
+      const user = usersById[assigneeId];
+      const email = normalizeEmail(user && user.Email);
+      if (!email || sentEmails.has(email)) return;
+      if (!isNotificationEnabledForUser(user, 'dueDateReminders')) return;
+
+      const reminderKey = `soar_due_date_reminder:${todayKey}:${taskId}:${email}`;
+      if (scriptProperties.getProperty(reminderKey)) return;
+
+      sentEmails.add(email);
+      if (safeSendEmail(email, subject, body)) {
+        scriptProperties.setProperty(reminderKey, new Date().toISOString());
+        sentCount += 1;
+      }
+    });
+  });
+
+  return sentCount;
+}
+
+function sendWeeklyDigestNotifications() {
+  const tasks = getTableData('Tasks');
+  const assignmentsByTaskId = getAssignmentsByAssignmentId();
+  const usersById = getUsersById();
+  const tasksByUserId = {};
+
+  tasks.forEach((task) => {
+    const status = (task.Status || '').toString().trim();
+    if (status === 'Completed') return;
+
+    const taskId = (task.Task_ID || '').toString().trim();
+    (assignmentsByTaskId[taskId] || []).forEach((assigneeId) => {
+      if (!tasksByUserId[assigneeId]) tasksByUserId[assigneeId] = [];
+      tasksByUserId[assigneeId].push(task);
+    });
+  });
+
+  const digestDateKey = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  const scriptProperties = PropertiesService.getScriptProperties();
+  let sentCount = 0;
+
+  Object.keys(tasksByUserId).forEach((userId) => {
+    const user = usersById[userId];
+    const email = normalizeEmail(user && user.Email);
+    if (!email || !isNotificationEnabledForUser(user, 'weeklyDigest')) return;
+
+    const digestKey = `soar_weekly_digest:${digestDateKey}:${email}`;
+    if (scriptProperties.getProperty(digestKey)) return;
+
+    const taskLines = tasksByUserId[userId]
+      .sort((left, right) => {
+        const leftDays = getDaysUntilDate(left.Due_Date);
+        const rightDays = getDaysUntilDate(right.Due_Date);
+        return (leftDays === null ? 9999 : leftDays) - (rightDays === null ? 9999 : rightDays);
+      })
+      .map((task) => {
+        const details = getTaskNotificationDetails(task);
+        const dueDate = task.Due_Date ? serializeDateOnlyForClient(parseDateInput(task.Due_Date)) : 'No due date';
+        return `- ${details.taskTitle} (${details.projectTitle}), due: ${dueDate}`;
+      });
+
+    const subject = 'Your weekly Soar task digest';
+    const body = 'Here are your open Soar tasks for this week:\n\n' + taskLines.join('\n') + '\n';
+    if (safeSendEmail(email, subject, body)) {
+      scriptProperties.setProperty(digestKey, new Date().toISOString());
+      sentCount += 1;
+    }
+  });
+
+  return sentCount;
 }
 
 function deleteTaskAndAssignments(taskId) {
@@ -1181,7 +1452,7 @@ function createTask(projectId, taskInput) {
         ? serializeDateOnlyForClient(value)
         : (value instanceof Date ? value.toISOString() : value);
     });
-    sendTaskAssignmentNotifications(createdTask, assigneeIds);
+    sendTaskAssignmentNotifications(createdTask, assigneeIds, creatorId);
 
     return JSON.stringify({ success: true, task: createdTask, assignments: createdAssignments });
   } catch (error) {
@@ -1345,7 +1616,7 @@ function updateTask(taskId, taskInput) {
     appendTaskCompletionMetadataToTask(updatedTask);
     const previousAssigneeSet = new Set(previousAssigneeIds);
     const newlyAssignedIds = assigneeIds.filter((assigneeId) => !previousAssigneeSet.has(assigneeId));
-    sendTaskAssignmentNotifications(updatedTask, newlyAssignedIds);
+    sendTaskAssignmentNotifications(updatedTask, newlyAssignedIds, currentUserId);
     if (isMarkingCompleted) {
       sendManagerTaskCompletedNotifications(updatedTask, assigneeIds, currentUserId);
     }
