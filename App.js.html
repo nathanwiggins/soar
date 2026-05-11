@@ -128,7 +128,7 @@
         const count = newTaskForm.value.assigneeIds.length;
         if (count === 0) return 'Select assignees';
         if (count === 1) {
-          const selectedUser = users.value.find((u) => u.User_ID === newTaskForm.value.assigneeIds[0]);
+          const selectedUser = users.value.find((u) => idsMatch(u.User_ID, newTaskForm.value.assigneeIds[0]));
           return selectedUser ? selectedUser.Name : '1 assignee selected';
         }
         return `${count} assignees selected`;
@@ -1643,13 +1643,24 @@
           });
       };
 
+      const getDefaultTaskAssigneeIds = () => {
+        const normalizedCurrentUserId = normalizeId(currentUserId.value);
+        if (!normalizedCurrentUserId) return [];
+
+        const currentUserIsAssignable = assignableUsers.value.some((user) =>
+          idsMatch(user?.User_ID, normalizedCurrentUserId)
+        );
+
+        return currentUserIsAssignable ? [normalizedCurrentUserId] : [];
+      };
+
       const resetTaskForm = () => {
         newTaskForm.value = {
           taskTitle: '',
           dueDate: '',
           description: '',
           priority: '',
-          assigneeIds: []
+          assigneeIds: getDefaultTaskAssigneeIds()
         };
       };
 
@@ -1696,7 +1707,7 @@
         const assignableIdSet = new Set(assignableUsers.value.map((user) => normalizeId(user?.User_ID)).filter(Boolean));
         if (!assignableIdSet.has(normalizeId(userId))) return;
         const selectedAssignees = newTaskForm.value.assigneeIds;
-        const index = selectedAssignees.indexOf(userId);
+        const index = selectedAssignees.findIndex((selectedUserId) => idsMatch(selectedUserId, userId));
         if (index >= 0) {
           selectedAssignees.splice(index, 1);
         } else {
@@ -1704,7 +1715,7 @@
         }
       };
 
-      const isAssigneeSelected = (userId) => newTaskForm.value.assigneeIds.includes(userId);
+      const isAssigneeSelected = (userId) => newTaskForm.value.assigneeIds.some((selectedUserId) => idsMatch(selectedUserId, userId));
 
       const createTask = () => {
         const trimmedTitle = newTaskForm.value.taskTitle.trim();
