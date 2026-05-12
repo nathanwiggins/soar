@@ -277,7 +277,7 @@
 
       const filteredTasks = computed(() => {
         const signature = [
-          getCollectionSignature(tasks.value, 'Task_ID', ['Project_ID', 'Status', 'Due_Date', 'Priority', 'Task_Title']),
+          getCollectionSignature(tasks.value, 'Task_ID', ['Project_ID', 'Status', 'Due_Date', 'Priority', 'Task_Title', '_syncing']),
           getCollectionSignature(assignments.value, 'Assignment_ID', ['Assignee_ID']),
           currentUserId.value,
           showAllWorkItems.value ? 'all' : 'assigned'
@@ -399,8 +399,8 @@
       const projectSummaries = computed(() => {
         const signature = [
           getCollectionSignature(projects.value, 'Project_ID', ['Project_Title', 'Status', 'Due_Date']),
-          getCollectionSignature(visibleTasks.value, 'Task_ID', ['Project_ID', 'Status', 'Due_Date', 'Priority', 'Task_Title']),
-          getCollectionSignature(supervisorVisibleTasks.value, 'Task_ID', ['Project_ID', 'Status', 'Due_Date', 'Priority', 'Task_Title'])
+          getCollectionSignature(visibleTasks.value, 'Task_ID', ['Project_ID', 'Status', 'Due_Date', 'Priority', 'Task_Title', '_syncing']),
+          getCollectionSignature(supervisorVisibleTasks.value, 'Task_ID', ['Project_ID', 'Status', 'Due_Date', 'Priority', 'Task_Title', '_syncing'])
         ].join('::');
 
         return memoizeBySignature('projectSummaries', signature, () => {
@@ -1230,7 +1230,21 @@
 
       const makeClientId = (prefix) => `${prefix}-local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-      const parseRunResponse = (response) => (typeof response === 'string' ? JSON.parse(response) : response);
+      const parseRunResponse = (response) => {
+        if (typeof response !== 'string') return response || null;
+        try {
+          return JSON.parse(response);
+        } catch (error) {
+          console.error('Unable to parse server response:', error, response);
+          return { success: false, error: 'The server returned an unreadable response.' };
+        }
+      };
+
+      const stripSyncFlag = (item) => {
+        if (!item || typeof item !== 'object') return item;
+        const { _syncing, ...rest } = item;
+        return rest;
+      };
 
       const markCommentTopicLoaded = (topicId) => {
         const normalizedTopicId = normalizeId(topicId);
@@ -1304,10 +1318,11 @@
             }
 
             const commentIndex = comments.value.findIndex((comment) => idsMatch(comment.Comment_ID, tempCommentId));
+            const syncedComment = stripSyncFlag(result.comment);
             if (commentIndex >= 0) {
-              comments.value.splice(commentIndex, 1, result.comment);
+              comments.value.splice(commentIndex, 1, syncedComment);
             } else {
-              comments.value.push(result.comment);
+              comments.value.push(syncedComment);
             }
           })
           .withFailureHandler((error) => {
@@ -1474,16 +1489,15 @@
               return;
             }
 
-            if (result.task) {
-              const updatedIndex = tasks.value.findIndex((existingTask) => idsMatch(existingTask.Task_ID, result.task.Task_ID));
-              if (updatedIndex >= 0) {
-                tasks.value.splice(updatedIndex, 1, result.task);
-              } else {
-                tasks.value.push(result.task);
-              }
-              if (taskDetailsForm.value && idsMatch(taskDetailsForm.value.taskId, result.task.Task_ID)) {
-                taskDetailsForm.value = buildTaskDetailsForm(result.task);
-              }
+            const syncedTask = stripSyncFlag(result.task || optimisticTask);
+            const updatedIndex = tasks.value.findIndex((existingTask) => idsMatch(existingTask.Task_ID, syncedTask.Task_ID));
+            if (updatedIndex >= 0) {
+              tasks.value.splice(updatedIndex, 1, syncedTask);
+            } else {
+              tasks.value.push(syncedTask);
+            }
+            if (taskDetailsForm.value && idsMatch(taskDetailsForm.value.taskId, syncedTask.Task_ID)) {
+              taskDetailsForm.value = buildTaskDetailsForm(syncedTask);
             }
           })
           .withFailureHandler((error) => {
@@ -1549,10 +1563,19 @@
               return;
             }
 
-            const updatedTask = result.task;
+            if (!result.task) {
+              if (previousTask && taskIndex >= 0) tasks.value.splice(taskIndex, 1, previousTask);
+              assignments.value = previousAssignments;
+              alert('The server updated the task but did not return the updated task data. Please refresh and try again.');
+              return;
+            }
+
+            const updatedTask = stripSyncFlag(result.task);
             const updatedTaskIndex = tasks.value.findIndex((t) => idsMatch(t.Task_ID, updatedTask.Task_ID));
             if (updatedTaskIndex >= 0) {
               tasks.value.splice(updatedTaskIndex, 1, updatedTask);
+            } else {
+              tasks.value.push(updatedTask);
             }
 
             assignments.value = assignments.value.filter((a) => !idsMatch(a.Assignment_ID, updatedTask.Task_ID));
@@ -1569,6 +1592,12 @@
             showTaskDetailsAssigneeDropdown.value = false;
           })
           .withFailureHandler((error) => {
+            savingTask.value = false;
+            if (previousTask && taskIndex >= 0) tasks.value.splice(taskIndex, 1, previousTask);
+            assignments.value = previousAssignments;
+            taskDetailsForm.value = previousTask ? buildTaskDetailsForm(previousTask) : taskDetailsForm.value;
+            console.error('Failed to update task:', error);
+            alert('Error updating task.');
           })
           .updateTask(taskId, {
             taskTitle: trimmedTitle,
@@ -1647,15 +1676,14 @@
               return;
             }
 
-            if (result.task) {
-              const updatedIndex = tasks.value.findIndex((task) => idsMatch(task.Task_ID, result.task.Task_ID));
-              if (updatedIndex >= 0) {
-                tasks.value.splice(updatedIndex, 1, result.task);
-              } else {
-                tasks.value.push(result.task);
-              }
-              taskDetailsForm.value = buildTaskDetailsForm(result.task);
+            const syncedTask = stripSyncFlag(result.task || optimisticTask);
+            const updatedIndex = tasks.value.findIndex((task) => idsMatch(task.Task_ID, syncedTask.Task_ID));
+            if (updatedIndex >= 0) {
+              tasks.value.splice(updatedIndex, 1, syncedTask);
+            } else {
+              tasks.value.push(syncedTask);
             }
+            taskDetailsForm.value = buildTaskDetailsForm(syncedTask);
           })
           .withFailureHandler((error) => {
             completingTask.value = false;
