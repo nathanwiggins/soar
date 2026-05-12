@@ -117,7 +117,7 @@
       const savingProject = ref(false);
 
       const currentUser = computed(() => {
-        return users.value.find((u) => normalizeEmail(u?.Email) === normalizeEmail(currentUserEmail.value)) || {
+        return userStats.value.usersByEmail.get(normalizeEmail(currentUserEmail.value)) || {
           Email: currentUserEmail.value,
           Name: 'Unknown User'
         };
@@ -127,7 +127,7 @@
         const count = newTaskForm.value.assigneeIds.length;
         if (count === 0) return 'Select assignees';
         if (count === 1) {
-          const selectedUser = users.value.find((u) => idsMatch(u.User_ID, newTaskForm.value.assigneeIds[0]));
+          const selectedUser = userStats.value.usersById.get(normalizeId(newTaskForm.value.assigneeIds[0]));
           return selectedUser ? selectedUser.Name : '1 assignee selected';
         }
         return `${count} assignees selected`;
@@ -137,7 +137,7 @@
         const selectedIds = taskDetailsForm.value?.assigneeIds || [];
         if (selectedIds.length === 0) return 'Select assignees';
         if (selectedIds.length === 1) {
-          const selectedUser = users.value.find((u) => u.User_ID === selectedIds[0]);
+          const selectedUser = userStats.value.usersById.get(normalizeId(selectedIds[0]));
           return selectedUser ? selectedUser.Name : '1 assignee selected';
         }
         return `${selectedIds.length} assignees selected`;
@@ -227,11 +227,14 @@
 
         return memoizeBySignature('userStats', signature, () => {
           const usersById = new Map();
+          const usersByEmail = new Map();
           const directReportsByManagerId = new Map();
           users.value.forEach((user) => {
             const userId = normalizeId(user?.User_ID);
+            const userEmail = normalizeEmail(user?.Email);
             const managerId = normalizeId(user?.Manager_ID);
             if (userId) usersById.set(userId, user);
+            if (userEmail) usersByEmail.set(userEmail, user);
             if (managerId && userId) {
               if (!directReportsByManagerId.has(managerId)) directReportsByManagerId.set(managerId, []);
               directReportsByManagerId.get(managerId).push(user);
@@ -257,7 +260,7 @@
             reportUsers.sort((a, b) => (a?.Name || '').localeCompare(b?.Name || ''));
           });
 
-          return { usersById, directReportsByManagerId, assignmentsByUserId, assigneesByTaskId };
+          return { usersById, usersByEmail, directReportsByManagerId, assignmentsByUserId, assigneesByTaskId };
         });
       });
 
@@ -348,7 +351,7 @@
         const count = selectedSupervisorUserIds.value.length;
         if (count === 0) return 'Select team members';
         if (count === 1) {
-          const selectedUser = users.value.find((u) => idsMatch(u.User_ID, selectedSupervisorUserIds.value[0]));
+          const selectedUser = userStats.value.usersById.get(normalizeId(selectedSupervisorUserIds.value[0]));
           return selectedUser?.Name || '1 team member selected';
         }
         return `${count} team members selected`;
