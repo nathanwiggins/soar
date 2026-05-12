@@ -31,6 +31,7 @@ function getInitialPayload() {
     users: users,
     projects: getTableData('Projects'),
     tasks: getTableData('Tasks'),
+    subtasks: getTableData('Subtasks'),
     assignments: getTableData('Assignments'),
     currentUserSettings: getUserSettingsByEmail(currentUserEmail),
     versionHash: buildGlobalVersionHash(),
