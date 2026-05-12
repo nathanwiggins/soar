@@ -188,44 +188,44 @@
 ┌────────────────────┴────────────────────────────────────┐
 │         Google Apps Script V8 Runtime                   │
 │        (Backend Logic Layer - 7 modules)                │
-│                                                          │
+│                                                         │
 │  ┌──────────────────────────────────────────────────┐   │
 │  │ Web App Layer (Code.js)                          │   │
-│  │ • doGet() serves HTML shell                     │   │
-│  │ • getInitialPayload() loads app state           │   │
+│  │ • doGet() serves HTML shell                      │   │
+│  │ • getInitialPayload() loads app state            │   │
 │  └──────────────────────────────────────────────────┘   │
-│                                                          │
+│                                                         │
 │  ┌──────────────────────────────────────────────────┐   │
 │  │ Business Logic Services                          │   │
-│  │ • Users.js → User CRUD + profiles               │   │
-│  │ • Projects.js → Project lifecycle               │   │
-│  │ • Tasks.js → Task operations + status flow      │   │
-│  │ • Comments.js → Comments + mention extraction   │   │
-│  │ • Notifications.js → 5 email notification types │   │
-│  │ • Settings.js → User preference persistence     │   │
+│  │ • Users.js → User CRUD + profiles                │   │
+│  │ • Projects.js → Project lifecycle                │   │
+│  │ • Tasks.js → Task operations + status flow       │   │
+│  │ • Comments.js → Comments + mention extraction    │   │
+│  │ • Notifications.js → 5 email notification types  │   │
+│  │ • Settings.js → User preference persistence      │   │
 │  └──────────────────────────────────────────────────┘   │
-│                                                          │
+│                                                         │
 │  ┌──────────────────────────────────────────────────┐   │
 │  │ Data Access Layer (DataStore.js)                 │   │
-│  │ • Row-level CRUD (append, update, delete)       │   │
-│  │ • ID generation with auto-increment locking     │   │
-│  │ • 3-level caching strategy                      │   │
-│  │ • Cache invalidation on mutations               │   │
+│  │ • Row-level CRUD (append, update, delete)        │   │
+│  │ • ID generation with auto-increment locking      │   │
+│  │ • 3-level caching strategy                       │   │
+│  │ • Cache invalidation on mutations                │   │
 │  └──────────────────────────────────────────────────┘   │
-│                                                          │
+│                                                         │
 │  ┌──────────────────────────────────────────────────┐   │
 │  │ Utilities Layer (Utilities.js)                   │   │
-│  │ • Email validation, date parsing                │   │
-│  │ • Header mapping, safe mail sending             │   │
+│  │ • Email validation, date parsing                 │   │
+│  │ • Header mapping, safe mail sending              │   │
 │  └──────────────────────────────────────────────────┘   │
 └────────────────────┬────────────────────────────────────┘
                      │ Google Sheets API
 ┌────────────────────┴────────────────────────────────────┐
 │        Google Sheets (Data Persistence Layer)           │
-│                                                          │
-│  Tabs: Users | Projects | Tasks | Comments | Assignments
+│                                                         │
+│  Tabs: Users | Projects | Tasks | Comments | Assignments|
 │  (One tab per entity, human-readable ID columns)        │
-└──────────────────────────────────────────────────────────┘
+└─────────────────────────────────────────────────────────┘
 ```
 
 ### Frontend Architecture (Vue 3)
