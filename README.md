@@ -67,6 +67,15 @@ This project management system is implemented using **Google Apps Script** as th
 | `Completed_By` | Int, `User_ID` alias | User ID of the person who completed the task. | Yes |
 | `Completed_At` | Date/Time, auto-fill | Date and time the task was marked completed. | Yes |
 
+#### Subtasks
+
+| Field | Type | Description | Can Be Null |
+|---|---|---|---|
+| `Subtask_ID` | Int, auto-increment, format: `S-00000000` | Unique identifier for a subtask. | No |
+| `Task_ID` | Int, `Task_ID` alias | Identifier of the parent task. | No |
+| `Subtask_Title` | String | Subtask title displayed to users. | No |
+| `Status` | String | Subtask state (`Complete`, `Incomplete`). | No |
+
 #### Comments
 
 | Field | Type | Description | Can Be Null |
@@ -92,3 +101,4 @@ This project management system is implemented using **Google Apps Script** as th
 - One **Task** or **Project** can have many **Comments** (`Comments.Topic_ID`).
 - One **Task** must always be assigned to at least one **User** through **Assignments**.
 - One **Project** can be assigned to one or more **Users** through **Assignments**.
+- One Task can contain many Subtasks (Subtasks.Task_ID -> Tasks.Task_ID).
