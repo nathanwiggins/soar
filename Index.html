@@ -585,7 +585,7 @@
             <template v-if="currentTab === 'supervisor-view'">
               <p class="font-semibold mb-1">View projects for individuals you supervise.</p>
               <p class="text-sm">
-                Select one or more direct reports to view what they are assigned to.
+                Select one or more direct reports to view their assignments.
               </p>
             </template>
             <template v-else>
@@ -715,7 +715,7 @@
           </div>
 
           <div class="relative">
-            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Assign To</label>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Assigned To</label>
             <button
               type="button"
               :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 focus:ring-[#DB0000]' : 'bg-gray-50 border-gray-300 text-gray-900 focus:ring-[#DB0000]'"
@@ -1063,7 +1063,7 @@
           </div>
 
           <div class="md:col-span-2">
-            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Task Description</label>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Description</label>
             <textarea
               v-model="taskDetailsForm.description"
               rows="4"
@@ -1150,7 +1150,7 @@
           </div>
 
           <div>
-            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">What project it's under</label>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Associated Project</label>
             <select
               v-model="taskDetailsForm.projectId"
               :disabled="!isEditingTask"
@@ -1215,7 +1215,7 @@
           </div>
 
           <div class="relative md:col-span-2">
-            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Who is assigned to it</label>
+            <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Assigned To</label>
             <button
               type="button"
               :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 disabled:bg-gray-800/70 disabled:text-gray-400' : 'bg-white border-gray-300 text-gray-800 disabled:bg-gray-100'"
