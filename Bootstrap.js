@@ -24,14 +24,13 @@ function getInitialPayload() {
   }
 
   const currentUserExists = users.some((user) => normalizeEmail(user.Email) === currentUserEmail);
-  const completionMetadataByTaskId = getTaskCompletionMetadataMap();
   const payload = {
     currentUserEmail: currentUserEmail,
     currentUserExists: currentUserExists,
     requiresAccountSetup: Boolean(currentUserEmail) && !currentUserExists,
     users: users,
     projects: getTableData('Projects'),
-    tasks: getTableData('Tasks').map((task) => appendTaskCompletionMetadataToTask(task, completionMetadataByTaskId)),
+    tasks: getTableData('Tasks'),
     assignments: getTableData('Assignments'),
     currentUserSettings: getUserSettingsByEmail(currentUserEmail),
     versionHash: buildGlobalVersionHash(),

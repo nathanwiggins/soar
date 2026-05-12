@@ -227,7 +227,6 @@ function deleteProject(projectId) {
       }
       deleteRowsBySheetIndexes(assignmentsSheet, assignmentRowsToDelete);
       invalidateTableCache('Assignments');
-      deletedTaskIds.forEach((taskId) => removeTaskCompletionMetadata(taskId));
     }
 
     deleteRowsBySheetIndexes(projectsSheet, [projectRowIndex + 1]);
