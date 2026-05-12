@@ -47,8 +47,6 @@ function deleteTaskAndAssignments(taskId) {
   deleteRowsBySheetIndexes(assignmentsSheet, assignmentRowsToDelete);
   invalidateTableCache('Assignments');
 
-  removeTaskCompletionMetadata(normalizedTaskId);
-
   return normalizedTaskId;
 }
 function purgeCompletedTasksPastDue() {
@@ -92,8 +90,6 @@ function purgeCompletedTasksPastDue() {
   }
   deleteRowsBySheetIndexes(assignmentsSheet, assignmentRowsToDelete);
   invalidateTableCache('Assignments');
-
-  deletedTaskIds.forEach((taskId) => removeTaskCompletionMetadata(taskId));
 
   return deletedTaskIds;
 }
@@ -155,12 +151,6 @@ function updateTaskStatus(taskId, newStatus) {
     updateRowValues(sheet, taskRowIndex + 1, updatedRow);
     invalidateTableCache('Tasks');
 
-    if (isMarkingCompleted) {
-      upsertTaskCompletionMetadata(normalizedTaskId, currentUserId, completedAt);
-    } else if (isReopeningCompleted) {
-      removeTaskCompletionMetadata(normalizedTaskId);
-    }
-
     const updatedTask = {};
     headers.forEach((header, index) => {
       const value = updatedRow[index];
@@ -168,7 +158,6 @@ function updateTaskStatus(taskId, newStatus) {
         ? serializeDateOnlyForClient(value)
         : (value instanceof Date ? value.toISOString() : value);
     });
-    appendTaskCompletionMetadataToTask(updatedTask);
 
     if (isMarkingCompleted) {
       const assigneeIds = getTableData('Assignments')
@@ -435,11 +424,6 @@ function updateTask(taskId, taskInput) {
     }
     updateRowValues(sheet, taskRowIndex + 1, updatedTaskRow);
     invalidateTableCache('Tasks');
-    if (isMarkingCompleted) {
-      upsertTaskCompletionMetadata(normalizedTaskId, currentUserId, completedAt);
-    } else if (isReopeningCompleted) {
-      removeTaskCompletionMetadata(normalizedTaskId);
-    }
 
     const assignmentsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Assignments');
     if (!assignmentsSheet) {
@@ -482,7 +466,6 @@ function updateTask(taskId, taskInput) {
         ? serializeDateOnlyForClient(value)
         : (value instanceof Date ? value.toISOString() : value);
     });
-    appendTaskCompletionMetadataToTask(updatedTask);
     const previousAssigneeSet = new Set(previousAssigneeIds);
     const newlyAssignedIds = assigneeIds.filter((assigneeId) => !previousAssigneeSet.has(assigneeId));
     sendTaskAssignmentNotifications(updatedTask, newlyAssignedIds, currentUserId);
@@ -551,13 +534,11 @@ function completeTask(taskId) {
     if (completedAtColumnIndex > -1) refreshedRow[completedAtColumnIndex] = completedAt;
     updateRowValues(tasksSheet, taskRowIndex + 1, refreshedRow);
     invalidateTableCache('Tasks');
-    upsertTaskCompletionMetadata(normalizedTaskId, currentUserId, completedAt);
     const completedTask = {};
     headers.forEach((header, index) => {
       const value = refreshedRow[index];
       completedTask[header] = value instanceof Date ? value.toISOString() : value;
     });
-    appendTaskCompletionMetadataToTask(completedTask);
     const assignments = getTableData('Assignments');
     const assigneeIds = assignments
       .filter((assignment) => (assignment.Assignment_ID || '').toString().trim() === normalizedTaskId)

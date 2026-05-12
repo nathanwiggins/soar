@@ -64,6 +64,8 @@ This project management system is implemented using **Google Apps Script** as th
 | `Created_Date` | Date, auto-fill | Date the task was created. | No |
 | `Description` | String | Detailed task description. | Yes |
 | `Priority` | Enum (`High`, `Medium`, `Low`) | Task urgency level. | Yes |
+| `Completed_By` | Int, `User_ID` alias | User ID of the person who completed the task. | Yes |
+| `Completed_At` | Date/Time, auto-fill | Date and time the task was marked completed. | Yes |
 
 #### Comments
 
