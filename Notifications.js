@@ -170,6 +170,7 @@ function sendDueDateReminderNotifications() {
   const assignmentsByTaskId = getAssignmentsByAssignmentId();
   const usersById = getUsersById();
   const scriptProperties = PropertiesService.getScriptProperties();
+  const scriptPropertiesCache = scriptProperties.getProperties();
   const todayKey = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   let sentCount = 0;
 
@@ -194,14 +195,15 @@ ${formatTaskNotificationBody(details)}
       const user = usersById[assigneeId];
       const email = normalizeEmail(user && user.Email);
       if (!email || sentEmails.has(email)) return;
-      if (!isNotificationEnabledForUser(user, 'dueDateReminders')) return;
+      if (!isNotificationEnabledForUser(user, 'dueDateReminders', scriptPropertiesCache)) return;
 
       const reminderKey = `soar_due_date_reminder:${todayKey}:${taskId}:${email}`;
-      if (scriptProperties.getProperty(reminderKey)) return;
+      if (scriptPropertiesCache[reminderKey]) return;
 
       sentEmails.add(email);
       if (safeSendEmail(email, subject, body)) {
-        scriptProperties.setProperty(reminderKey, new Date().toISOString());
+        scriptPropertiesCache[reminderKey] = new Date().toISOString();
+        scriptProperties.setProperty(reminderKey, scriptPropertiesCache[reminderKey]);
         sentCount += 1;
       }
     });
@@ -228,15 +230,16 @@ function sendWeeklyDigestNotifications() {
 
   const digestDateKey = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   const scriptProperties = PropertiesService.getScriptProperties();
+  const scriptPropertiesCache = scriptProperties.getProperties();
   let sentCount = 0;
 
   Object.keys(tasksByUserId).forEach((userId) => {
     const user = usersById[userId];
     const email = normalizeEmail(user && user.Email);
-    if (!email || !isNotificationEnabledForUser(user, 'weeklyDigest')) return;
+    if (!email || !isNotificationEnabledForUser(user, 'weeklyDigest', scriptPropertiesCache)) return;
 
     const digestKey = `soar_weekly_digest:${digestDateKey}:${email}`;
-    if (scriptProperties.getProperty(digestKey)) return;
+    if (scriptPropertiesCache[digestKey]) return;
 
     const taskLines = tasksByUserId[userId]
       .sort((left, right) => {
@@ -253,7 +256,8 @@ function sendWeeklyDigestNotifications() {
     const subject = 'Your weekly Soar task digest';
     const body = 'Here are your open Soar tasks for this week:\n\n' + taskLines.join('\n') + '\n';
     if (safeSendEmail(email, subject, body)) {
-      scriptProperties.setProperty(digestKey, new Date().toISOString());
+      scriptPropertiesCache[digestKey] = new Date().toISOString();
+      scriptProperties.setProperty(digestKey, scriptPropertiesCache[digestKey]);
       sentCount += 1;
     }
   });

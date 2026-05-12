@@ -128,9 +128,14 @@ function updateCurrentUserProfile(profileInput) {
     updatedRow[headerIndex.name] = normalizedName;
 
     if (headerIndex.profile_pic_url !== undefined) {
-      const latestProfilePicUrl = getCurrentUserProfilePhotoUrl();
-      if (latestProfilePicUrl) {
-        updatedRow[headerIndex.profile_pic_url] = latestProfilePicUrl;
+      const existingProfilePicUrl = updatedRow[headerIndex.profile_pic_url]
+        ? updatedRow[headerIndex.profile_pic_url].toString().trim()
+        : '';
+      if (!existingProfilePicUrl) {
+        const latestProfilePicUrl = getCurrentUserProfilePhotoUrl();
+        if (latestProfilePicUrl) {
+          updatedRow[headerIndex.profile_pic_url] = latestProfilePicUrl;
+        }
       }
     }
     updateRowValues(usersSheet, currentUserRowIndex + 1, updatedRow);

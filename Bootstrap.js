@@ -1,6 +1,5 @@
 function getInitialPayload() {
   const currentUserEmail = normalizeEmail(getCurrentUser());
-  const currentUserProfilePhotoUrl = getCurrentUserProfilePhotoUrl();
   const usersSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Users');
   let users = [];
 
@@ -8,9 +7,18 @@ function getInitialPayload() {
     const data = usersSheet.getDataRange().getValues();
     const headers = data[0] || [];
     const headerIndex = getHeaderIndex(headers);
+    const currentUserRow = currentUserEmail && headerIndex.Email !== undefined
+      ? data.find((row, index) => index > 0 && normalizeEmail(row[headerIndex.Email]) === currentUserEmail)
+      : null;
+    const currentUserProfilePhotoUrl = currentUserRow && headerIndex.Profile_Pic_Url !== undefined
+      ? (currentUserRow[headerIndex.Profile_Pic_Url] || '').toString().trim()
+      : '';
 
-    if (syncCurrentUserProfilePhoto(usersSheet, data, headerIndex, currentUserEmail, currentUserProfilePhotoUrl)) {
-      invalidateTableCache('Users');
+    if (currentUserRow && headerIndex.Profile_Pic_Url !== undefined && !currentUserProfilePhotoUrl) {
+      const fetchedProfilePhotoUrl = getCurrentUserProfilePhotoUrl();
+      if (syncCurrentUserProfilePhoto(usersSheet, data, headerIndex, currentUserEmail, fetchedProfilePhotoUrl)) {
+        invalidateTableCache('Users');
+      }
     }
     users = getTableData('Users');
   }

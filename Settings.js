@@ -22,13 +22,15 @@ function getUserSettingsPropertyKey(email) {
   const normalizedEmail = normalizeEmail(email);
   return normalizedEmail ? `${USER_SETTINGS_PROPERTY_PREFIX}${normalizedEmail}` : '';
 }
-function getUserSettingsByEmail(email) {
+function getUserSettingsByEmail(email, scriptPropertiesCache) {
   const propertyKey = getUserSettingsPropertyKey(email);
   if (!propertyKey) {
     return { notifications: getDefaultNotificationSettings() };
   }
 
-  const rawSettings = PropertiesService.getScriptProperties().getProperty(propertyKey);
+  const rawSettings = scriptPropertiesCache
+    ? scriptPropertiesCache[propertyKey]
+    : PropertiesService.getScriptProperties().getProperty(propertyKey);
   if (!rawSettings) {
     return { notifications: getDefaultNotificationSettings() };
   }
@@ -43,15 +45,15 @@ function getUserSettingsByEmail(email) {
     return { notifications: getDefaultNotificationSettings() };
   }
 }
-function isNotificationEnabledForEmail(email, notificationKey) {
+function isNotificationEnabledForEmail(email, notificationKey, scriptPropertiesCache) {
   const defaults = getDefaultNotificationSettings();
   if (!Object.prototype.hasOwnProperty.call(defaults, notificationKey)) return true;
 
-  const settings = getUserSettingsByEmail(email);
+  const settings = getUserSettingsByEmail(email, scriptPropertiesCache);
   return settings.notifications[notificationKey] !== false;
 }
-function isNotificationEnabledForUser(user, notificationKey) {
-  return isNotificationEnabledForEmail(user && user.Email, notificationKey);
+function isNotificationEnabledForUser(user, notificationKey, scriptPropertiesCache) {
+  return isNotificationEnabledForEmail(user && user.Email, notificationKey, scriptPropertiesCache);
 }
 function persistCurrentUserSettings(settingsInput) {
   const currentUserEmail = normalizeEmail(getCurrentUser());
