@@ -324,7 +324,36 @@ function createTask(projectId, taskInput) {
     });
     sendTaskAssignmentNotifications(createdTask, assigneeIds, creatorId);
 
-    return JSON.stringify({ success: true, task: createdTask, assignments: createdAssignments });
+    const subtaskTitles = Array.isArray(taskInput?.subtasks) ? taskInput.subtasks : [];
+    let createdSubtasks = [];
+    
+    if (subtaskTitles.length > 0 && headerIndex.Task_ID !== undefined) {
+      const subtasksSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Subtasks');
+      if (subtasksSheet) {
+        const subtaskHeaders = subtasksSheet.getRange(1, 1, 1, subtasksSheet.getLastColumn()).getValues()[0];
+        const subHeaderIdx = getHeaderIndex(subtaskHeaders);
+        
+        const subtaskRows = subtaskTitles.map(title => {
+          const row = new Array(subtaskHeaders.length).fill('');
+          if (subHeaderIdx.Subtask_ID !== undefined) row[subHeaderIdx.Subtask_ID] = generateNextId('Subtasks', 'S');
+          if (subHeaderIdx.Task_ID !== undefined) row[subHeaderIdx.Task_ID] = newRow[headerIndex.Task_ID];
+          if (subHeaderIdx.Subtask_Title !== undefined) row[subHeaderIdx.Subtask_Title] = title.toString().trim();
+          if (subHeaderIdx.Status !== undefined) row[subHeaderIdx.Status] = 'Incomplete';
+          return row;
+        });
+        
+        appendRows(subtasksSheet, subtaskRows);
+        invalidateTableCache('Subtasks');
+        
+        createdSubtasks = subtaskRows.map(row => {
+            const obj = {};
+            subtaskHeaders.forEach((h, i) => obj[h] = row[i]);
+            return obj;
+        });
+      }
+    }
+
+    return JSON.stringify({ success: true, task: createdTask, assignments: createdAssignments, subtasks: createdSubtasks });
   } catch (error) {
     return JSON.stringify({
       success: false,

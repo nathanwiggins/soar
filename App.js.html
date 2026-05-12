@@ -90,12 +90,14 @@
       const creatingTask = ref(false);
       const creatingProject = ref(false);
       const showAssigneeDropdown = ref(false);
+      const newDraftSubtask = ref('');
       const newTaskForm = ref({
         taskTitle: '',
         dueDate: '',
         description: '',
         priority: '',
-        assigneeIds: []
+        assigneeIds: [],
+        subtasks: []
       });
       const newProjectForm = ref({
         projectTitle: '',
@@ -1769,13 +1771,27 @@
       };
 
       const resetTaskForm = () => {
+        newDraftSubtask.value = '';
         newTaskForm.value = {
           taskTitle: '',
           dueDate: '',
           description: '',
           priority: '',
-          assigneeIds: getDefaultTaskAssigneeIds()
+          assigneeIds: getDefaultTaskAssigneeIds(),
+          subtasks: []
         };
+      };
+
+      const addDraftSubtask = () => {
+        const title = newDraftSubtask.value.trim();
+        if (title) {
+          newTaskForm.value.subtasks.push(title);
+          newDraftSubtask.value = '';
+        }
+      };
+
+      const removeDraftSubtask = (index) => {
+        newTaskForm.value.subtasks.splice(index, 1);
       };
 
       const resetProjectForm = () => {
@@ -1865,6 +1881,9 @@
               if (Array.isArray(result.assignments)) {
                 assignments.value.push(...result.assignments);
               }
+              if (Array.isArray(result.subtasks) && result.subtasks.length > 0) {
+                subtasks.value.push(...result.subtasks);
+              }
             } else {
               fetchData();
             }
@@ -1880,7 +1899,8 @@
             dueDate: newTaskForm.value.dueDate,
             description: newTaskForm.value.description,
             priority: newTaskForm.value.priority,
-            assigneeIds: newTaskForm.value.assigneeIds
+            assigneeIds: newTaskForm.value.assigneeIds,
+            subtasks: newTaskForm.value.subtasks
           });
       };
 
@@ -2265,7 +2285,10 @@
         creatingSubtask,
         currentTaskSubtasks,
         handleAddSubtask,
-        toggleSubtask
+        toggleSubtask,
+        newDraftSubtask,
+        addDraftSubtask,
+        removeDraftSubtask
       };
     }
   }).mount('#app');
