@@ -48,3 +48,30 @@ function updateSubtaskStatus(subtaskId, isComplete) {
     return JSON.stringify({ success: false, error: error.message });
   }
 }
+
+function deleteSubtask(subtaskId) {
+  const normalizedId = subtaskId ? subtaskId.toString().trim() : '';
+  if (!normalizedId) return JSON.stringify({ success: false, error: 'Subtask ID is required.' });
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Subtasks');
+  if (!sheet) return JSON.stringify({ success: false, error: 'Subtasks sheet not found.' });
+
+  try {
+    const data = sheet.getDataRange().getValues();
+    if (data.length <= 1) throw new Error('Subtasks sheet has no data rows.');
+
+    const headers = data[0];
+    const idCol = headers.indexOf('Subtask_ID');
+    if (idCol === -1) throw new Error('Subtasks sheet is missing Subtask_ID column.');
+
+    const rowIndex = data.findIndex((row, i) => i > 0 && (row[idCol] || '').toString().trim() === normalizedId);
+    if (rowIndex < 0) throw new Error('Subtask not found.');
+
+    deleteRowsBySheetIndexes(sheet, [rowIndex + 1]);
+    invalidateTableCache('Subtasks');
+
+    return JSON.stringify({ success: true, subtaskId: normalizedId });
+  } catch (error) {
+    return JSON.stringify({ success: false, error: error.message || 'Failed to delete subtask.' });
+  }
+}

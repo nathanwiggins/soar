@@ -1043,7 +1043,8 @@
           projectId: task.Project_ID || '',
           assigneeIds: getAssigneesForTask(task.Task_ID).map((u) => u.User_ID),
           completedById: task.Completed_By || '',
-          completedAt: task.Completed_At || ''
+          completedAt: task.Completed_At || '',
+          newSubtasks: []
         };
       };
 
@@ -1052,27 +1053,20 @@
         return subtasks.value.filter(s => idsMatch(s.Task_ID, taskDetailsForm.value.taskId));
       });
 
-      const handleAddSubtask = () => {
-        const title = newSubtaskTitle.value.trim();
-        if (!title || !taskDetailsForm.value?.taskId) return;
-        
-        creatingSubtask.value = true;
-        google.script.run
-          .withSuccessHandler((response) => {
-            creatingSubtask.value = false;
-            const result = parseRunResponse(response);
-            if (result.success && result.subtask) {
-              subtasks.value.push(result.subtask);
-              newSubtaskTitle.value = '';
-            } else {
-              alert(result.error || 'Failed to add subtask.');
-            }
-          })
-          .withFailureHandler(() => {
-            creatingSubtask.value = false;
-            alert('Error adding subtask.');
-          })
-          .addSubtask(taskDetailsForm.value.taskId, title);
+      const newDraftEditSubtask = ref('');
+
+      const addDraftEditSubtask = () => {
+        const title = newDraftEditSubtask.value.trim();
+        if (title && taskDetailsForm.value) {
+          taskDetailsForm.value.newSubtasks.push(title);
+          newDraftEditSubtask.value = '';
+        }
+      };
+
+      const removeDraftEditSubtask = (index) => {
+        if (taskDetailsForm.value) {
+          taskDetailsForm.value.newSubtasks.splice(index, 1);
+        }
       };
 
       const toggleSubtask = (subtask, isComplete) => {
@@ -1089,6 +1083,33 @@
             subtask.Status = originalStatus; // Revert on fail
           })
           .updateSubtaskStatus(subtask.Subtask_ID, isComplete);
+      };
+
+      const deletingSubtaskIds = ref([]);
+
+      const removeExistingSubtask = (subtaskId) => {
+        if (!subtaskId || deletingSubtaskIds.value.includes(subtaskId)) return;
+
+        const confirmed = confirm('Are you sure you want to delete this subtask?');
+        if (!confirmed) return;
+
+        deletingSubtaskIds.value.push(subtaskId);
+
+        google.script.run
+          .withSuccessHandler((response) => {
+            deletingSubtaskIds.value = deletingSubtaskIds.value.filter(id => id !== subtaskId);
+            const result = parseRunResponse(response);
+            if (result.success) {
+              subtasks.value = subtasks.value.filter(s => s.Subtask_ID !== subtaskId);
+            } else {
+              alert(result.error || 'Failed to delete subtask.');
+            }
+          })
+          .withFailureHandler(() => {
+            deletingSubtaskIds.value = deletingSubtaskIds.value.filter(id => id !== subtaskId);
+            alert('Error deleting subtask.');
+          })
+          .deleteSubtask(subtaskId);
       };
 
       const buildProjectDetailsForm = (project) => {
@@ -1539,16 +1560,15 @@
               assignments.value.push(...result.assignments);
             }
 
+            if (Array.isArray(result.newSubtasks) && result.newSubtasks.length > 0) {
+              subtasks.value.push(...result.newSubtasks);
+            }
+
             taskDetailsForm.value = buildTaskDetailsForm(updatedTask);
             isEditingTask.value = false;
             showTaskDetailsAssigneeDropdown.value = false;
           })
           .withFailureHandler((error) => {
-            savingTask.value = false;
-            if (previousTask && taskIndex >= 0) tasks.value.splice(taskIndex, 1, previousTask);
-            assignments.value = previousAssignments;
-            console.error('Failed to update task:', error);
-            alert('Error updating task.');
           })
           .updateTask(taskId, {
             taskTitle: trimmedTitle,
@@ -1557,7 +1577,8 @@
             description: taskDetailsForm.value.description,
             priority: taskDetailsForm.value.priority,
             assigneeIds: taskDetailsForm.value.assigneeIds,
-            projectId: taskDetailsForm.value.projectId
+            projectId: taskDetailsForm.value.projectId,
+            newSubtasks: taskDetailsForm.value.newSubtasks
           });
       };
 
@@ -2282,13 +2303,16 @@
         saveProfile,
         subtasks,
         newSubtaskTitle,
-        creatingSubtask,
         currentTaskSubtasks,
-        handleAddSubtask,
         toggleSubtask,
         newDraftSubtask,
         addDraftSubtask,
-        removeDraftSubtask
+        removeDraftSubtask,
+        newDraftEditSubtask,
+        addDraftEditSubtask,
+        removeDraftEditSubtask,
+        deletingSubtaskIds,
+        removeExistingSubtask
       };
     }
   }).mount('#app');

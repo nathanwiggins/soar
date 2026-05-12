@@ -1078,36 +1078,59 @@
             <div class="space-y-2 mb-3">
               <div v-for="subtask in currentTaskSubtasks" :key="subtask.Subtask_ID"
                    :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'"
-                   class="flex items-center gap-3 p-3 rounded-lg border">
-                <input type="checkbox"
-                       :checked="subtask.Status === 'Complete'"
-                       @change="toggleSubtask(subtask, $event.target.checked)"
-                       :disabled="!isEditingTask"
-                       class="h-4 w-4 text-[#DB0000] rounded border-gray-300 focus:ring-[#DB0000] cursor-pointer disabled:cursor-not-allowed">
-                <span :class="[
-                        isDarkMode ? 'text-gray-100' : 'text-gray-800',
-                        subtask.Status === 'Complete' ? 'line-through opacity-50' : ''
-                      ]"
-                      class="text-sm font-medium transition-all">
-                  {{ subtask.Subtask_Title }}
-                </span>
+                   class="flex items-center justify-between p-2 rounded-lg border">
+                
+                <div class="flex items-center gap-3">
+                  <input type="checkbox"
+                         :checked="subtask.Status === 'Complete'"
+                         @change="toggleSubtask(subtask, $event.target.checked)"
+                         :disabled="!isEditingTask"
+                         class="h-4 w-4 ml-1 text-[#DB0000] rounded border-gray-300 focus:ring-[#DB0000] cursor-pointer disabled:cursor-not-allowed">
+                  <span :class="[
+                          isDarkMode ? 'text-gray-100' : 'text-gray-800',
+                          subtask.Status === 'Complete' ? 'line-through opacity-50' : ''
+                        ]"
+                        class="text-sm font-medium transition-all">
+                    {{ subtask.Subtask_Title }}
+                  </span>
+                </div>
+
+                <button v-if="isEditingTask" type="button" @click="removeExistingSubtask(subtask.Subtask_ID)" class="text-red-500 hover:text-red-700 px-2 disabled:opacity-50" :disabled="deletingSubtaskIds.includes(subtask.Subtask_ID)">
+                  <i v-if="deletingSubtaskIds.includes(subtask.Subtask_ID)" class="fa-solid fa-spinner fa-spin text-sm"></i>
+                  <i v-else class="fa-solid fa-xmark text-sm"></i>
+                </button>
+
               </div>
               <p v-if="currentTaskSubtasks.length === 0" :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-sm italic">
                 No subtasks added yet.
               </p>
             </div>
 
-            <div v-if="isEditingTask" class="flex items-center gap-2">
-              <input v-model="newSubtaskTitle"
+            <div v-if="isEditingTask && taskDetailsForm.newSubtasks.length > 0" class="space-y-2 mb-3 mt-3">
+              <div v-for="(subtask, index) in taskDetailsForm.newSubtasks" :key="'draft-'+index"
+                   :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'"
+                   class="flex items-center justify-between p-2 rounded-lg border border-dashed">
+                <span :class="isDarkMode ? 'text-gray-200' : 'text-gray-800'" class="text-sm ml-2">
+                  <i class="fa-regular fa-square mr-2 opacity-50"></i> {{ subtask }} 
+                  </span>
+                <button type="button" @click="removeDraftEditSubtask(index)" class="text-red-500 hover:text-red-700 px-2">
+                  <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+              </div>
+            </div>
+
+            <div v-if="isEditingTask" class="flex items-center gap-2 mt-3">
+              <input v-model="newDraftEditSubtask"
                      type="text"
                      :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-800 focus:ring-[#DB0000]'"
                      class="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                     placeholder="Add a new subtask..."
-                     @keyup.enter="handleAddSubtask">
-              <button @click="handleAddSubtask"
-                      :disabled="creatingSubtask || !newSubtaskTitle.trim()"
+                     placeholder="Type a new subtask and press enter..."
+                     @keyup.enter="addDraftEditSubtask">
+              <button @click="addDraftEditSubtask"
+                      :disabled="!newDraftEditSubtask.trim()"
+                      type="button"
                       class="btn-action-red px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60 transition-colors">
-                {{ creatingSubtask ? 'Adding...' : 'Add' }}
+                Add
               </button>
             </div>
           </div>
