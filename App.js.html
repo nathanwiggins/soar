@@ -33,7 +33,6 @@
         }
       });
 
-      // Data models based on Data Dictionary
       const users = ref([]);
       const projects = ref([]);
       const tasks = ref([]);
@@ -82,7 +81,6 @@
 
       const taskStatusOptions = ['Not Started', 'In Progress', 'Completed', 'Delayed'];
 
-      // Add-task modal state
       const showAddTaskModal = ref(false);
       const showAddProjectModal = ref(false);
       const selectedProject = ref(null);
@@ -103,7 +101,6 @@
         status: 'Not Started'
       });
 
-      // Task details/edit modal state
       const showTaskDetailsModal = ref(false);
       const taskDetailsForm = ref(null);
       const showTaskDetailsAssigneeDropdown = ref(false);
@@ -119,7 +116,6 @@
       const isEditingProject = ref(false);
       const savingProject = ref(false);
 
-      // Computed properties
       const currentUser = computed(() => {
         return users.value.find((u) => normalizeEmail(u?.Email) === normalizeEmail(currentUserEmail.value)) || {
           Email: currentUserEmail.value,
@@ -435,7 +431,6 @@
         return 'Default';
       });
 
-      // Methods
       const readSessionStorage = (key) => {
         try {
           return sessionStorage.getItem(key);
@@ -901,7 +896,7 @@
       };
 
       const calendarTaskEntries = computed(() => {
-        return visibleTasks.value // <-- Preserves Codex visibility fix!
+        return visibleTasks.value
           .filter((task) => task?.Due_Date)
           .map((task) => {
             const dateKey = toCalendarDateKey(task.Due_Date);
@@ -911,7 +906,7 @@
             return {
               dateKey,
               taskTitle: task?.Task_Title || project?.Project_Title || 'Untitled Task',
-              task // <-- Now passing the full task object
+              task
             };
           })
           .filter(Boolean);
@@ -921,7 +916,7 @@
         const byDate = new Map();
         calendarTaskEntries.value.forEach((entry) => {
           if (!byDate.has(entry.dateKey)) byDate.set(entry.dateKey, []);
-          byDate.get(entry.dateKey).push(entry); // <-- Pushing the full entry object
+          byDate.get(entry.dateKey).push(entry);
         });
         return byDate;
       });

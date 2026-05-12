@@ -1,2 +1,4 @@
 .clasp.json
 appscript.json
+
+node_modules/
