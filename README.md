@@ -36,10 +36,11 @@
    - Note the Sheet ID from the URL: `https://docs.google.com/spreadsheets/d/{SHEET_ID}/...`
 
 2. **Create the data structure**
-   - Create 5 new sheet tabs with these exact names (right-click sheet tab → Insert sheet):
+   - Create 6 new sheet tabs with these exact names (right-click sheet tab → Insert sheet):
      - `Users`
      - `Projects`
      - `Tasks`
+     - `Subtasks`
      - `Comments`
      - `Assignments`
    - Add header rows to each tab (see [Data Model](#data-model) section for column names)
@@ -82,7 +83,7 @@
 ### First Steps in the App
 
 - **Create a project**: Click "New Project" button, fill details, choose status
-- **Create tasks**: Within a project, add tasks with priority and assignees
+- **Create tasks**: Within a project, add tasks with priority, assignees, and optional subtasks
 - **Assign tasks**: Select team members from your manager hierarchy
 - **Collaborate**: Add comments to tasks/projects using `@username` mentions
 - **Customize**: Adjust font size and notification preferences in Settings
@@ -101,6 +102,7 @@
 
 ✅ **Organize Work with Tasks**
 - Create tasks within projects
+- Add nested subtasks for any task
 - Set priority: `High`, `Medium`, `Low`
 - Track status independently from parent project
 - Due date management with visual indicators
@@ -187,7 +189,7 @@
                      │ AJAX/Fetch (JSON over HTTPS)
 ┌────────────────────┴────────────────────────────────────┐
 │         Google Apps Script V8 Runtime                   │
-│        (Backend Logic Layer - 7 modules)                │
+│        (Backend Logic Layer - 8 modules)                │
 │                                                         │
 │  ┌──────────────────────────────────────────────────┐   │
 │  │ Web App Layer (Code.js)                          │   │
@@ -200,6 +202,7 @@
 │  │ • Users.js → User CRUD + profiles                │   │
 │  │ • Projects.js → Project lifecycle                │   │
 │  │ • Tasks.js → Task operations + status flow       │   │
+│  │ • Subtasks.js → Subtask creation, updates, deletes │   │
 │  │ • Comments.js → Comments + mention extraction    │   │
 │  │ • Notifications.js → 5 email notification types  │   │
 │  │ • Settings.js → User preference persistence      │   │
@@ -223,14 +226,14 @@
 ┌────────────────────┴────────────────────────────────────┐
 │        Google Sheets (Data Persistence Layer)           │
 │                                                         │
-│  Tabs: Users | Projects | Tasks | Comments | Assignments|
+│  Tabs: Users | Projects | Tasks | Subtasks | Comments | Assignments
 │  (One tab per entity, human-readable ID columns)        │
 └─────────────────────────────────────────────────────────┘
 ```
 
 ### Frontend Architecture (Vue 3)
 
-- **Reactive Data**: Refs for `users`, `projects`, `tasks`, `assignments`, `comments`
+- **Reactive Data**: Refs for `users`, `projects`, `tasks`, `subtasks`, `assignments`, `comments`
 - **State Management**: Computed properties for derived state (current user, assignee summaries)
 - **Component Structure**: Modular views (Kanban, All Items, Modals) with reusable logic
 - **Data Sync**: Version hashing to detect stale data; memoization to prevent unnecessary re-renders
@@ -459,6 +462,11 @@ Task_ID | Project_ID | Task_Title | Description | Status | Priority | Created_Da
 Comment_ID | Topic_ID | Topic_Type | Commenter_ID | Content | Timestamp | Is_Resolved
 ```
 
+**Subtasks**:
+```
+Subtask_ID | Task_ID | Subtask_Title | Status
+```
+
 **Assignments**:
 ```
 Assignment_ID | Assignee_ID
@@ -584,6 +592,40 @@ Deletes a task and cascading assignments.
 
 **Parameters**:
 - `taskId` (string): Task_ID to delete
+
+**Returns**: `{success: true}`
+
+---
+
+### Subtask Functions
+
+#### `addSubtask(taskId, subtaskTitle)`
+Adds a subtask to an existing task.
+
+**Parameters**:
+- `taskId` (string): Parent Task_ID
+- `subtaskTitle` (string): Subtask title
+
+**Returns**: `{success: true, subtask: {...}}`
+
+---
+
+#### `updateSubtaskStatus(subtaskId, isComplete)`
+Sets a subtask status to `Complete` or `Incomplete`.
+
+**Parameters**:
+- `subtaskId` (string): Subtask_ID to update
+- `isComplete` (boolean): `true` for complete, `false` for incomplete
+
+**Returns**: `{success: true}`
+
+---
+
+#### `deleteSubtask(subtaskId)`
+Deletes a subtask from a task.
+
+**Parameters**:
+- `subtaskId` (string): Subtask_ID to delete
 
 **Returns**: `{success: true}`
 
