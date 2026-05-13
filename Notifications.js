@@ -64,8 +64,12 @@ function sendTaskAssignmentNotifications(task, assigneeIds, assignedByUserId) {
   const subject = `New task assignment: ${details.taskTitle}`;
 
   const sentEmails = new Set();
+  const normalizedAssignedByUserId = (assignedByUserId || '').toString().trim();
   assigneeIds.forEach((assigneeId) => {
-    const user = usersById[(assigneeId || '').toString().trim()];
+    const normalizedAssigneeId = (assigneeId || '').toString().trim();
+    if (normalizedAssigneeId && normalizedAssigneeId === normalizedAssignedByUserId) return;
+
+    const user = usersById[normalizedAssigneeId];
     const email = normalizeEmail(user && user.Email);
     if (!email || sentEmails.has(email)) return;
     if (!isNotificationEnabledForUser(user, 'taskAssignments')) return;

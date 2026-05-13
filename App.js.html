@@ -1095,6 +1095,17 @@
         return subtasks.value.filter(s => idsMatch(s.Task_ID, taskDetailsForm.value.taskId));
       });
 
+      const moveArrayItem = (items, fromIndex, direction) => {
+        const toIndex = fromIndex + direction;
+        if (!Array.isArray(items) || fromIndex < 0 || toIndex < 0 || fromIndex >= items.length || toIndex >= items.length) {
+          return false;
+        }
+
+        const [item] = items.splice(fromIndex, 1);
+        items.splice(toIndex, 0, item);
+        return true;
+      };
+
       const newDraftEditSubtask = ref('');
 
       const addDraftEditSubtask = () => {
@@ -1108,6 +1119,12 @@
       const removeDraftEditSubtask = (index) => {
         if (taskDetailsForm.value) {
           taskDetailsForm.value.newSubtasks.splice(index, 1);
+        }
+      };
+
+      const moveDraftEditSubtask = (index, direction) => {
+        if (taskDetailsForm.value) {
+          moveArrayItem(taskDetailsForm.value.newSubtasks, index, direction);
         }
       };
 
@@ -1128,6 +1145,90 @@
       };
 
       const deletingSubtaskIds = ref([]);
+      const savingSubtaskTitleIds = ref([]);
+      const reorderingSubtasks = ref(false);
+
+      const saveExistingSubtaskTitle = (subtask) => {
+        if (!subtask?.Subtask_ID || !isEditingTask.value) return;
+
+        const subtaskId = subtask.Subtask_ID;
+        const previousSubtask = subtasks.value.find((item) => idsMatch(item.Subtask_ID, subtaskId));
+        const previousTitle = subtask._originalTitle !== undefined ? subtask._originalTitle : (previousSubtask ? previousSubtask.Subtask_Title : '');
+        const title = (subtask.Subtask_Title || '').toString().trim();
+        if (!title) {
+          subtask.Subtask_Title = previousTitle;
+          delete subtask._originalTitle;
+          alert('Subtask title cannot be empty.');
+          return;
+        }
+        subtask.Subtask_Title = title;
+        savingSubtaskTitleIds.value.push(subtaskId);
+
+        google.script.run
+          .withSuccessHandler((response) => {
+            savingSubtaskTitleIds.value = savingSubtaskTitleIds.value.filter((id) => !idsMatch(id, subtaskId));
+            const result = parseRunResponse(response);
+            if (!result || !result.success) {
+              subtask.Subtask_Title = previousTitle;
+              delete subtask._originalTitle;
+              alert(result?.error || 'Failed to update subtask title.');
+              return;
+            }
+            if (result.subtask) {
+              Object.assign(subtask, result.subtask);
+            }
+            delete subtask._originalTitle;
+          })
+          .withFailureHandler((error) => {
+            savingSubtaskTitleIds.value = savingSubtaskTitleIds.value.filter((id) => !idsMatch(id, subtaskId));
+            subtask.Subtask_Title = previousTitle;
+            delete subtask._originalTitle;
+            console.error('Failed to update subtask title:', error);
+            alert('Error updating subtask title.');
+          })
+          .updateSubtaskTitle(subtaskId, title);
+      };
+
+      const moveExistingSubtask = (index, direction) => {
+        if (!taskDetailsForm.value?.taskId || reorderingSubtasks.value) return;
+
+        const visibleSubtasks = currentTaskSubtasks.value.slice();
+        if (!moveArrayItem(visibleSubtasks, index, direction)) return;
+
+        const previousSubtasks = subtasks.value.slice();
+        const reorderedIds = visibleSubtasks.map((subtask) => subtask.Subtask_ID);
+        const taskId = taskDetailsForm.value.taskId;
+        let visibleIndex = 0;
+        subtasks.value = subtasks.value.map((subtask) => {
+          if (!idsMatch(subtask.Task_ID, taskId)) return subtask;
+          const nextId = reorderedIds[visibleIndex++];
+          return visibleSubtasks.find((candidate) => idsMatch(candidate.Subtask_ID, nextId)) || subtask;
+        });
+
+        reorderingSubtasks.value = true;
+        google.script.run
+          .withSuccessHandler((response) => {
+            reorderingSubtasks.value = false;
+            const result = parseRunResponse(response);
+            if (!result || !result.success) {
+              subtasks.value = previousSubtasks;
+              alert(result?.error || 'Failed to reorder subtasks.');
+              return;
+            }
+            if (Array.isArray(result.subtasks)) {
+              subtasks.value = subtasks.value.filter((subtask) => !idsMatch(subtask.Task_ID, taskId));
+              subtasks.value.push(...result.subtasks);
+            }
+          })
+          .withFailureHandler((error) => {
+            reorderingSubtasks.value = false;
+            subtasks.value = previousSubtasks;
+            console.error('Failed to reorder subtasks:', error);
+            alert('Error reordering subtasks.');
+          })
+          .reorderSubtasks(taskId, reorderedIds);
+      };
+
 
       const removeExistingSubtask = (subtaskId) => {
         if (!subtaskId || deletingSubtaskIds.value.includes(subtaskId)) return;
@@ -1659,7 +1760,7 @@
             priority: taskDetailsForm.value.priority,
             assigneeIds: taskDetailsForm.value.assigneeIds,
             projectId: taskDetailsForm.value.projectId,
-            newSubtasks: taskDetailsForm.value.newSubtasks
+            newSubtasks: taskDetailsForm.value.newSubtasks.map((title) => title.trim()).filter(Boolean)
           });
       };
 
@@ -1896,6 +1997,10 @@
         newTaskForm.value.subtasks.splice(index, 1);
       };
 
+      const moveDraftSubtask = (index, direction) => {
+        moveArrayItem(newTaskForm.value.subtasks, index, direction);
+      };
+
       const resetProjectForm = () => {
         newProjectForm.value = {
           projectTitle: '',
@@ -2003,7 +2108,7 @@
             description: newTaskForm.value.description,
             priority: newTaskForm.value.priority,
             assigneeIds: newTaskForm.value.assigneeIds,
-            subtasks: newTaskForm.value.subtasks
+            subtasks: newTaskForm.value.subtasks.map((title) => title.trim()).filter(Boolean)
           });
       };
 
@@ -2394,10 +2499,16 @@
         newDraftSubtask,
         addDraftSubtask,
         removeDraftSubtask,
+        moveDraftSubtask,
         newDraftEditSubtask,
         addDraftEditSubtask,
         removeDraftEditSubtask,
+        moveDraftEditSubtask,
         deletingSubtaskIds,
+        savingSubtaskTitleIds,
+        reorderingSubtasks,
+        saveExistingSubtaskTitle,
+        moveExistingSubtask,
         removeExistingSubtask
       };
     }
