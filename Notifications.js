@@ -180,7 +180,7 @@ function sendDueDateReminderNotifications() {
 
   tasks.forEach((task) => {
     const status = (task.Status || '').toString().trim();
-    if (isTaskCompleteStatus(status)) return;
+    if (status === 'Completed') return;
 
     const daysUntilDue = getDaysUntilDate(task.Due_Date);
     if (daysUntilDue === null || daysUntilDue < 0 || daysUntilDue > 1) return;
@@ -223,7 +223,7 @@ function sendWeeklyDigestNotifications() {
 
   tasks.forEach((task) => {
     const status = (task.Status || '').toString().trim();
-    if (isTaskCompleteStatus(status)) return;
+    if (status === 'Completed') return;
 
     const taskId = (task.Task_ID || '').toString().trim();
     (assignmentsByTaskId[taskId] || []).forEach((assigneeId) => {

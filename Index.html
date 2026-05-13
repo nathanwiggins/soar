@@ -483,7 +483,7 @@
                 <div class="flex justify-between items-start mb-2">
                   <div class="relative inline-flex items-center" @click.stop>
                     <select
-                      :value="normalizeTaskStatusForDisplay(task.Status)"
+                      :value="task.Status || 'Not Started'"
                       :disabled="isUpdatingTaskStatus(task.Task_ID)"
                       :class="[
                         statusDropdownColor(task.Status),
@@ -1205,9 +1205,10 @@
               :disabled="!isEditingTask"
               :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 disabled:bg-gray-800/70 disabled:text-gray-400' : 'bg-white border-gray-300 text-gray-800 disabled:bg-gray-100'"
               class="w-full border rounded-lg px-3 py-2 text-sm">
-              <option v-for="statusOption in taskStatusOptions" :key="statusOption" :value="statusOption">
-                {{ statusOption }}
-              </option>
+              <option>Not Started</option>
+              <option>In Progress</option>
+              <option>Completed</option>
+              <option>Delayed</option>
             </select>
           </div>
 
@@ -1346,8 +1347,8 @@
             <button
               class="btn-action-red px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60 transition-colors"
               @click="completeTask"
-              :disabled="savingTask || deletingTask || completingTask || isCompleteStatus(taskDetailsForm.status)">
-              {{ completingTask ? 'Syncing...' : (isCompleteStatus(taskDetailsForm.status) ? 'Complete' : 'Complete Task') }}
+              :disabled="savingTask || deletingTask || completingTask || taskDetailsForm.status === 'Completed'">
+              {{ completingTask ? 'Syncing...' : (taskDetailsForm.status === 'Completed' ? 'Completed' : 'Complete Task') }}
             </button>
             <button
               class="px-4 py-2 rounded-lg text-sm font-medium border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-60"
