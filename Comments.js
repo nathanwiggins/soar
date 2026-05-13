@@ -1,3 +1,10 @@
+function getCommentTopicIdValue(comment) {
+  if (!comment) return '';
+  return (comment.Topic_ID || comment.Task_ID || comment.Project_ID || comment.Entity_ID || '').toString().trim();
+}
+function normalizeCommentResolvedValue(value) {
+  return value === true || value === 'TRUE' || value === 'true' || value === 'Yes' || value === 1 || value === '1';
+}
 function getCommentsByTopic(topicId) {
   const normalizedTopicId = topicId ? topicId.toString().trim() : '';
   if (!normalizedTopicId) {
@@ -6,7 +13,8 @@ function getCommentsByTopic(topicId) {
 
   try {
     const comments = getTableData('Comments')
-      .filter((comment) => (comment.Topic_ID || '').toString().trim() === normalizedTopicId)
+      .filter((comment) => getCommentTopicIdValue(comment) === normalizedTopicId)
+      .filter((comment) => !normalizeCommentResolvedValue(comment.Is_Resolved))
       .map((comment) => {
         const normalized = {};
         Object.keys(comment).forEach((key) => {
@@ -77,9 +85,11 @@ function addComment(topicId, commentInput) {
 
     if (headerIndex.Comment_ID !== undefined) newRow[headerIndex.Comment_ID] = generateNextId('Comments', 'C');
     if (headerIndex.Topic_ID !== undefined) newRow[headerIndex.Topic_ID] = normalizedTopicId;
+    if (headerIndex.Topic_Type !== undefined) newRow[headerIndex.Topic_Type] = 'Task';
     if (headerIndex.Commenter_ID !== undefined) newRow[headerIndex.Commenter_ID] = currentUserId;
-    if (headerIndex.Timestamp !== undefined) newRow[headerIndex.Timestamp] = now;
     if (headerIndex.Content !== undefined) newRow[headerIndex.Content] = content;
+    if (headerIndex.Timestamp !== undefined) newRow[headerIndex.Timestamp] = now;
+    if (headerIndex.Is_Resolved !== undefined) newRow[headerIndex.Is_Resolved] = false;
 
     appendRows(commentsSheet, [newRow]);
     invalidateTableCache('Comments');
