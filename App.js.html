@@ -82,7 +82,26 @@
         return value;
       };
 
-      const taskStatusOptions = ['Not Started', 'In Progress', 'Completed', 'Delayed'];
+      const taskDefaultStatus = 'Not Started';
+      const taskCompleteStatus = 'Complete';
+      const taskStatusOptions = [
+        taskDefaultStatus,
+        'Upcoming',
+        'Review',
+        'In Progress',
+        'Ongoing',
+        'On Hold',
+        'Cancelled',
+        taskCompleteStatus
+      ];
+      const isCompleteStatus = (status) => ['Complete', 'Completed'].includes((status || '').toString().trim());
+      const normalizeTaskStatusForDisplay = (status) => {
+        const normalizedStatus = (status || '').toString().trim();
+        if (normalizedStatus === 'Not Started') return taskDefaultStatus;
+        if (isCompleteStatus(normalizedStatus)) return taskCompleteStatus;
+        if (taskStatusOptions.includes(normalizedStatus)) return normalizedStatus;
+        return taskDefaultStatus;
+      };
       const defaultProjectColorScheme = 'red';
       const projectColorSchemes = {
         red: { label: 'Red', deep: '#DB0000', light: '#FEE2E2', darkLight: 'rgba(127, 29, 29, 0.28)', border: '#FECACA' },
@@ -303,7 +322,7 @@
           if (showAllWorkItems.value) return tasks.value;
           const assignedIds = assignedEntityIdsForCurrentUser.value;
           return tasks.value.filter((task) => {
-            if (task?.Status === 'Completed') return false;
+            if (isCompleteStatus(task?.Status)) return false;
             return assignedIds.has(normalizeId(task?.Task_ID));
           });
         });
@@ -314,7 +333,7 @@
       const pastAssignments = computed(() => {
         const assignedIds = assignedEntityIdsForCurrentUser.value;
         return tasks.value
-          .filter((task) => task?.Status === 'Completed' && assignedIds.has(normalizeId(task?.Task_ID)))
+          .filter((task) => isCompleteStatus(task?.Status) && assignedIds.has(normalizeId(task?.Task_ID)))
           .slice()
           .sort((left, right) => {
             const leftTime = parseAsLocalDate(left?.Due_Date || 0).getTime();
@@ -393,7 +412,7 @@
       const supervisorVisibleTasks = computed(() => {
         const assignedIds = assignedEntityIdsForSelectedSupervisorUsers.value;
         return tasks.value.filter((task) => {
-          if (task?.Status === 'Completed') return false;
+          if (isCompleteStatus(task?.Status)) return false;
           return assignedIds.has(normalizeId(task?.Task_ID));
         });
       });
@@ -865,10 +884,15 @@
 
       const statusColor = (status) => {
         const colors = {
-          'Not Started': 'bg-gray-100 text-gray-600',
+          [taskDefaultStatus]: 'bg-gray-100 text-gray-600',
+          Upcoming: 'bg-blue-100 text-blue-700',
+          Review: 'bg-purple-100 text-purple-700',
           'In Progress': 'bg-[#DB0000]/10 text-[#DB0000]',
-          Completed: 'bg-green-100 text-green-700',
-          Delayed: 'bg-[#C41425]/10 text-[#C41425]'
+          Ongoing: 'bg-teal-100 text-teal-700',
+          'On Hold': 'bg-slate-100 text-slate-700',
+          Cancelled: 'bg-red-100 text-red-700',
+          [taskCompleteStatus]: 'bg-green-100 text-green-700',
+          Completed: 'bg-green-100 text-green-700'
         };
         return colors[status] || 'bg-gray-100 text-gray-600';
       };
@@ -1004,7 +1028,7 @@
         return dueDate.getTime() < startOfToday.getTime();
       };
 
-      const shouldStrikeTask = (task) => task?.Status === 'Completed' && !isPastDueDate(task?.Due_Date);
+      const shouldStrikeTask = (task) => isCompleteStatus(task?.Status) && !isPastDueDate(task?.Due_Date);
 
       const getDaysUntilDueDate = (dueDateValue) => {
         if (!dueDateValue) return null;
@@ -1018,7 +1042,7 @@
       };
 
       const isTaskDueTomorrowAndOpen = (task) => {
-        if (!task || task?.Status === 'Completed') return false;
+        if (!task || isCompleteStatus(task?.Status)) return false;
         return getDaysUntilDueDate(task?.Due_Date) === 1;
       };
 
@@ -1078,7 +1102,7 @@
           taskId: task.Task_ID,
           taskTitle: task.Task_Title || '',
           description: task.Description || '',
-          status: task.Status || 'Not Started',
+          status: normalizeTaskStatusForDisplay(task.Status),
           priority: normalizePriority(task.Priority),
           createdDate: task.Created_Date || '',
           dueDate: formatDateForInput(task.Due_Date),
@@ -1618,8 +1642,8 @@
           ...(previousTask || task || {}),
           Task_ID: taskId,
           Status: newStatus,
-          Completed_By: newStatus === 'Completed' ? (currentUser.value?.User_ID || '') : '',
-          Completed_At: newStatus === 'Completed' ? new Date().toISOString() : '',
+          Completed_By: isCompleteStatus(newStatus) ? (currentUser.value?.User_ID || '') : '',
+          Completed_At: isCompleteStatus(newStatus) ? new Date().toISOString() : '',
           _syncing: true
         };
 
@@ -1807,7 +1831,7 @@
         const optimisticTask = {
           ...(previousTask || {}),
           Task_ID: taskId,
-          Status: 'Completed',
+          Status: taskCompleteStatus,
           Completed_By: currentUser.value?.User_ID || '',
           Completed_At: new Date().toISOString(),
           _syncing: true
@@ -2416,6 +2440,9 @@
         statusColor,
         statusDropdownColor,
         taskStatusOptions,
+        taskCompleteStatus,
+        isCompleteStatus,
+        normalizeTaskStatusForDisplay,
         isUpdatingTaskStatus,
         getInitials,
         formatDate,

@@ -1,3 +1,23 @@
+const TASK_DEFAULT_STATUS = 'Not Started';
+const TASK_COMPLETE_STATUS = 'Complete';
+const TASK_STATUS_OPTIONS = [
+  TASK_DEFAULT_STATUS,
+  'Upcoming',
+  'Review',
+  'In Progress',
+  'Ongoing',
+  'On Hold',
+  'Cancelled',
+  TASK_COMPLETE_STATUS
+];
+function isTaskCompleteStatus(status) {
+  return ['Complete', 'Completed'].includes((status || '').toString().trim());
+}
+function normalizeLegacyTaskStatus(status) {
+  const normalizedStatus = status ? status.toString().trim() : '';
+  if (normalizedStatus === 'Not Started') return TASK_DEFAULT_STATUS;
+  return isTaskCompleteStatus(normalizedStatus) ? TASK_COMPLETE_STATUS : normalizedStatus;
+}
 function getTaskById(taskId) {
   const normalizedTaskId = taskId ? taskId.toString().trim() : '';
   if (!normalizedTaskId) return null;
@@ -70,7 +90,7 @@ function purgeCompletedTasksPastDue() {
   for (let i = taskData.length - 1; i >= 1; i--) {
     const status = (taskData[i][statusColumnIndex] || '').toString().trim();
     const dueDateValue = taskData[i][dueDateColumnIndex];
-    if (status === 'Completed' && hasDueDatePassed(dueDateValue)) {
+    if (isTaskCompleteStatus(status) && hasDueDatePassed(dueDateValue)) {
       deletedTaskIds.push(taskData[i][taskIdColumnIndex]);
       taskRowsToDelete.push(i + 1);
     }
@@ -126,8 +146,8 @@ function updateTaskStatus(taskId, newStatus) {
     }
 
     const previousStatus = (data[taskRowIndex][statusColumnIndex] || '').toString().trim();
-    const isMarkingCompleted = status === 'Completed' && previousStatus !== 'Completed';
-    const isReopeningCompleted = status !== 'Completed' && previousStatus === 'Completed';
+    const isMarkingCompleted = isTaskCompleteStatus(status) && !isTaskCompleteStatus(previousStatus);
+    const isReopeningCompleted = !isTaskCompleteStatus(status) && isTaskCompleteStatus(previousStatus);
     const completedAt = new Date();
     const currentUserId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
     const updatedRow = data[taskRowIndex].slice();
@@ -289,7 +309,7 @@ function createTask(projectId, taskInput) {
     if (headerIndex.Project_ID !== undefined) newRow[headerIndex.Project_ID] = normalizedProjectId;
     if (headerIndex.Task_Title !== undefined) newRow[headerIndex.Task_Title] = taskTitle;
     if (headerIndex.Due_Date !== undefined) newRow[headerIndex.Due_Date] = hasValidDueDate ? parsedDueDate : '';
-    if (headerIndex.Status !== undefined) newRow[headerIndex.Status] = 'Not Started';
+    if (headerIndex.Status !== undefined) newRow[headerIndex.Status] = TASK_DEFAULT_STATUS;
     if (headerIndex.Created_Date !== undefined) newRow[headerIndex.Created_Date] = now;
     if (headerIndex.Description !== undefined) newRow[headerIndex.Description] = description;
     if (headerIndex.Priority !== undefined) newRow[headerIndex.Priority] = priority;
@@ -362,8 +382,8 @@ function createTask(projectId, taskInput) {
   }
 }
 function normalizeTaskStatus(status) {
-  const allowedStatuses = ['Not Started', 'In Progress', 'Completed', 'Delayed'];
-  const normalizedStatus = status ? status.toString().trim() : '';
+  const allowedStatuses = TASK_STATUS_OPTIONS;
+  const normalizedStatus = normalizeLegacyTaskStatus(status);
 
   if (!normalizedStatus) {
     throw new Error('Status is required.');
@@ -426,8 +446,8 @@ function updateTask(taskId, taskInput) {
     const editorId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
 
     const currentUserId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
-    const isMarkingCompleted = status === 'Completed' && previousStatus !== 'Completed';
-    const isReopeningCompleted = status !== 'Completed' && previousStatus === 'Completed';
+    const isMarkingCompleted = isTaskCompleteStatus(status) && !isTaskCompleteStatus(previousStatus);
+    const isReopeningCompleted = !isTaskCompleteStatus(status) && isTaskCompleteStatus(previousStatus);
 
     const updatedTaskRow = data[taskRowIndex].slice();
     if (headerIndex.Project_ID !== undefined) updatedTaskRow[headerIndex.Project_ID] = projectId;
@@ -587,7 +607,7 @@ function completeTask(taskId) {
     const currentUserId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
     const completedAt = new Date();
     const refreshedRow = taskData[taskRowIndex].slice();
-    refreshedRow[statusColumnIndex] = 'Completed';
+    refreshedRow[statusColumnIndex] = TASK_COMPLETE_STATUS;
     if (completedByColumnIndex > -1) refreshedRow[completedByColumnIndex] = currentUserId || '';
     if (completedAtColumnIndex > -1) refreshedRow[completedAtColumnIndex] = completedAt;
     updateRowValues(tasksSheet, taskRowIndex + 1, refreshedRow);
