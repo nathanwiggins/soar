@@ -5,6 +5,8 @@
   <title>Soar Project Hub</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vuedraggable@4.1.0/dist/vuedraggable.umd.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
     .kanban-scroll::-webkit-scrollbar { height: 8px; }
@@ -456,149 +458,170 @@
       </div>
 
       <div v-else :class="isDarkMode ? 'bg-gray-950' : 'bg-gray-50/50'" class="flex-1 overflow-x-auto kanban-scroll p-8 transition-colors duration-200">
-        <div class="flex space-x-6 h-full items-start">
+  <div class="flex space-x-6 h-full items-start">
 
-          <div v-for="project in (currentTab === 'supervisor-view' ? supervisorVisibleProjects : visibleProjects)" :key="project.Project_ID" class="w-80 flex-shrink-0 flex flex-col max-h-full">
-            <div class="flex items-center justify-between mb-4 px-1">
-              <h3 :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="font-bold text-sm uppercase tracking-wide flex items-center">
-                <span class="w-2 h-2 rounded-full mr-2" :style="getProjectDotStyle(project)"></span>
-                <button
-                  type="button"
-                  :class="isDarkMode ? 'hover:text-red-300' : 'hover:text-[#DB0000]'"
-                  class="transition-colors text-left"
-                  @click.stop="openProjectInfo(project)">
-                  {{ project.Project_Title }}
-                  <span v-if="project._syncing" class="ml-2 normal-case text-amber-500 text-[10px]">Syncing...</span>
-                </button>
-              </h3>
-              <span :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'" class="text-xs font-medium">{{ currentTab === 'supervisor-view' ? getSupervisorTasksForProject(project.Project_ID).length : getTasksForProject(project.Project_ID).length }}</span>
-            </div>
+    <draggable
+      :list="currentTab === 'supervisor-view' ? supervisorVisibleProjects : visibleProjects"
+      item-key="Project_ID"
+      class="flex space-x-6 h-full items-start"
+      handle=".project-drag-handle"
+      @change="onProjectChange">
+      
+      <template #item="{ element: project }">
+        <div class="w-80 flex-shrink-0 flex flex-col max-h-full">
+          
+          <div class="flex items-center justify-between mb-4 px-1 project-drag-handle cursor-grab active:cursor-grabbing">
+            <h3 :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="font-bold text-sm uppercase tracking-wide flex items-center">
+              <span class="w-2 h-2 rounded-full mr-2" :style="getProjectDotStyle(project)"></span>
+              <button
+                type="button"
+                :class="isDarkMode ? 'hover:text-red-300' : 'hover:text-[#DB0000]'"
+                class="transition-colors text-left"
+                @click.stop="openProjectInfo(project)">
+                {{ project.Project_Title }}
+                <span v-if="project._syncing" class="ml-2 normal-case text-amber-500 text-[10px]">Syncing...</span>
+              </button>
+            </h3>
+            <span :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'" class="text-xs font-medium">{{ currentTab === 'supervisor-view' ? getSupervisorTasksForProject(project.Project_ID).length : getTasksForProject(project.Project_ID).length }}</span>
+          </div>
 
-            <div class="flex-1 overflow-y-auto space-y-3 pb-4">
-              <div v-for="task in (currentTab === 'supervisor-view' ? getSupervisorTasksForProject(project.Project_ID) : getTasksForProject(project.Project_ID))" :key="task.Task_ID"
-                   :class="isDarkMode ? 'bg-gray-900 border-gray-700 hover:shadow-gray-900' : 'bg-white border-gray-100'" class="p-4 rounded-xl shadow-sm border hover:shadow-md transition-shadow cursor-pointer group"
-                   :style="getProjectTaskCardStyle(project)"
-                   @click="openTaskInfo(task)">
+<div class="flex-1 overflow-y-auto space-y-3 pb-4">
+            
+            <draggable
+              :list="currentTab === 'supervisor-view' ? getSupervisorTasksForProject(project.Project_ID) : getTasksForProject(project.Project_ID)"
+              item-key="Task_ID"
+              group="tasks"
+              class="space-y-3 min-h-[50px] h-full"
+              @change="onTaskChange($event, project.Project_ID)">
+              
+              <template #item="{ element: task }">
+                <div :class="isDarkMode ? 'bg-gray-900 border-gray-700 hover:shadow-gray-900' : 'bg-white border-gray-100'" class="p-4 rounded-xl shadow-sm border hover:shadow-md transition-shadow cursor-grab group"
+                     :style="getProjectTaskCardStyle(project)"
+                     @click="openTaskInfo(task)">
 
-                <div class="flex justify-between items-start mb-2">
-                  <div class="relative inline-flex items-center" @click.stop>
-                    <select
-                      :value="normalizeTaskStatusForDisplay(task.Status)"
-                      :disabled="isUpdatingTaskStatus(task.Task_ID)"
-                      :class="[
-                        statusDropdownColor(task.Status),
-                        isUpdatingTaskStatus(task.Task_ID) ? 'opacity-70 cursor-wait' : 'cursor-pointer hover:ring-2 hover:ring-[#DB0000]/20'
-                      ]"
-                      class="appearance-none border text-[10px] font-bold pl-2 pr-6 py-1 rounded-full uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-[#DB0000]/40 transition"
-                      title="Update task status"
-                      @click.stop
-                      @change.stop="updateTaskStatusFromCard(task, $event.target.value)">
-                      <option v-for="statusOption in taskStatusOptions" :key="statusOption" :value="statusOption">
-                        {{ statusOption }}
-                      </option>
-                    </select>
-                    <i
-                      :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'"
-                      class="fa-solid fa-chevron-down pointer-events-none absolute right-2 text-[8px]"></i>
+                  <div class="flex justify-between items-start mb-2">
+                    <div class="relative inline-flex items-center" @click.stop>
+                      <select
+                        :value="normalizeTaskStatusForDisplay(task.Status)"
+                        :disabled="isUpdatingTaskStatus(task.Task_ID)"
+                        :class="[
+                          statusDropdownColor(task.Status),
+                          isUpdatingTaskStatus(task.Task_ID) ? 'opacity-70 cursor-wait' : 'cursor-pointer hover:ring-2 hover:ring-[#DB0000]/20'
+                        ]"
+                        class="appearance-none border text-[10px] font-bold pl-2 pr-6 py-1 rounded-full uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-[#DB0000]/40 transition"
+                        title="Update task status"
+                        @click.stop
+                        @change.stop="updateTaskStatusFromCard(task, $event.target.value)">
+                        <option v-for="statusOption in taskStatusOptions" :key="statusOption" :value="statusOption">
+                          {{ statusOption }}
+                        </option>
+                      </select>
+                      <i
+                        :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'"
+                        class="fa-solid fa-chevron-down pointer-events-none absolute right-2 text-[8px]"></i>
+                    </div>
+                    <button
+                      type="button"
+                      class="text-gray-300 hover:text-[#C41425] transition-colors inline-flex items-center gap-1"
+                      @click.stop="openTaskComments(task)"
+                      title="Open comments">
+                      <i class="fa-regular fa-comments"></i>
+                      <span
+                        :class="isDarkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'"
+                        class="min-w-5 h-5 px-1 rounded-full text-[10px] font-semibold flex items-center justify-center">
+                        {{ getCommentCountForTask(task.Task_ID) }}
+                      </span>
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    class="text-gray-300 hover:text-[#C41425] transition-colors inline-flex items-center gap-1"
-                    @click.stop="openTaskComments(task)"
-                    title="Open comments">
-                    <i class="fa-regular fa-comments"></i>
-                    <span
-                      :class="isDarkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'"
-                      class="min-w-5 h-5 px-1 rounded-full text-[10px] font-semibold flex items-center justify-center">
-                      {{ getCommentCountForTask(task.Task_ID) }}
-                    </span>
-                  </button>
-                </div>
 
-                <h4
-                  :class="[
-                    isDarkMode ? 'text-gray-100' : 'text-gray-800',
-                    shouldStrikeTask(task) ? 'line-through opacity-70' : ''
-                  ]"
-                  class="text-sm font-medium mb-2">
-                  {{ task.Task_Title }}
-                  <span v-if="task._syncing" class="ml-2 text-amber-500 text-[10px] font-semibold">Syncing...</span>
-                </h4>
+                  <h4
+                    :class="[
+                      isDarkMode ? 'text-gray-100' : 'text-gray-800',
+                      shouldStrikeTask(task) ? 'line-through opacity-70' : ''
+                    ]"
+                    class="text-sm font-medium mb-2">
+                    {{ task.Task_Title }}
+                    <span v-if="task._syncing" class="ml-2 text-amber-500 text-[10px] font-semibold">Syncing...</span>
+                  </h4>
 
-                <div class="flex items-center justify-between mt-4">
-                  <div class="flex -space-x-2">
-                    <div
-                      v-for="assignee in getAssigneesForTask(task.Task_ID)"
-                      :key="assignee.User_ID"
-                      :class="isDarkMode ? 'bg-gray-700 border-gray-900 text-gray-200' : 'bg-gray-200 border-white text-gray-600'"
-                      class="w-6 h-6 rounded-full border-2 flex items-center justify-center text-[8px] font-bold overflow-hidden"
-                      :title="assignee.Name">
-                      <img
-                        v-if="assignee?.Profile_Pic_Url"
-                        :src="assignee.Profile_Pic_Url"
-                        :alt="`${assignee?.Name || 'Assignee'} profile image`"
-                        class="w-full h-full object-cover">
-                      <span v-else>{{ getInitials(assignee.Name) }}</span>
+                  <div class="flex items-center justify-between mt-4">
+                    <div class="flex -space-x-2">
+                      <div
+                        v-for="assignee in getAssigneesForTask(task.Task_ID)"
+                        :key="assignee.User_ID"
+                        :class="isDarkMode ? 'bg-gray-700 border-gray-900 text-gray-200' : 'bg-gray-200 border-white text-gray-600'"
+                        class="w-6 h-6 rounded-full border-2 flex items-center justify-center text-[8px] font-bold overflow-hidden"
+                        :title="assignee.Name">
+                        <img
+                          v-if="assignee?.Profile_Pic_Url"
+                          :src="assignee.Profile_Pic_Url"
+                          :alt="`${assignee?.Name || 'Assignee'} profile image`"
+                          class="w-full h-full object-cover">
+                        <span v-else>{{ getInitials(assignee.Name) }}</span>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                      <span
+                        v-if="hasPriority(task.Priority)"
+                        :class="[
+                          isDarkMode ? 'text-gray-300' : 'text-gray-500',
+                          shouldStrikeTask(task) ? 'line-through opacity-70' : ''
+                        ]"
+                        class="text-xs font-semibold inline-flex items-center gap-1"
+                        :title="getPriorityTitle(task.Priority)">
+                        <i class="fa-solid" :class="priorityIconClass(task.Priority)"></i>
+                        <span>{{ getPriorityLabel(task.Priority) }}</span>
+                      </span>
+                      <span
+                        v-if="task.Due_Date"
+                        :class="[
+                          isTaskDueTomorrowAndOpen(task)
+                            ? (isDarkMode ? 'text-red-400' : 'text-red-600')
+                            : (isDarkMode ? 'text-gray-400' : 'text-gray-500'),
+                          shouldStrikeTask(task) ? 'line-through opacity-70' : ''
+                        ]"
+                        class="text-xs font-medium"
+                        :title="getDueDateTooltip(task)">
+                        <i class="fa-regular fa-clock mr-1"></i> {{ formatDate(task.Due_Date) }}
+                      </span>
                     </div>
                   </div>
-                  <div class="flex items-center gap-3">
-                    <span
-                      v-if="hasPriority(task.Priority)"
-                      :class="[
-                        isDarkMode ? 'text-gray-300' : 'text-gray-500',
-                        shouldStrikeTask(task) ? 'line-through opacity-70' : ''
-                      ]"
-                      class="text-xs font-semibold inline-flex items-center gap-1"
-                      :title="getPriorityTitle(task.Priority)">
-                      <i class="fa-solid" :class="priorityIconClass(task.Priority)"></i>
-                      <span>{{ getPriorityLabel(task.Priority) }}</span>
-                    </span>
-                    <span
-                      v-if="task.Due_Date"
-                      :class="[
-                        isTaskDueTomorrowAndOpen(task)
-                          ? (isDarkMode ? 'text-red-400' : 'text-red-600')
-                          : (isDarkMode ? 'text-gray-400' : 'text-gray-500'),
-                        shouldStrikeTask(task) ? 'line-through opacity-70' : ''
-                      ]"
-                      class="text-xs font-medium"
-                      :title="getDueDateTooltip(task)">
-                      <i class="fa-regular fa-clock mr-1"></i> {{ formatDate(task.Due_Date) }}
-                    </span>
                   </div>
-                </div>
-              </div>
+              </template>
+            </draggable>
 
-              <button
-                v-if="currentTab === 'project-board' || currentTab === 'supervisor-view'"
-                @click="openAddTask(project)"
-                :class="isDarkMode ? 'border-gray-700 text-gray-500 hover:border-[#C41425] hover:text-[#DB0000]' : 'border-gray-200 text-gray-400 hover:border-[#C41425] hover:text-[#DB0000]'"
-                class="w-full py-2 border-2 border-dashed rounded-xl transition-colors text-sm font-medium">
-                + Add Task
-              </button>
-            </div>
+            <button
+              v-if="currentTab === 'project-board' || currentTab === 'supervisor-view'"
+              @click="openAddTask(project)"
+              :class="isDarkMode ? 'border-gray-700 text-gray-500 hover:border-[#C41425] hover:text-[#DB0000]' : 'border-gray-200 text-gray-400 hover:border-[#C41425] hover:text-[#DB0000]'"
+              class="w-full py-2 border-2 border-dashed rounded-xl mt-3 transition-colors text-sm font-medium">
+              + Add Task
+            </button>
           </div>
-
-          <div
-            v-if="(currentTab === 'supervisor-view' ? supervisorVisibleProjects : visibleProjects).length === 0"
-            :class="isDarkMode ? 'bg-gray-900 border-gray-700 text-gray-300' : 'bg-white border-gray-200 text-gray-600'"
-            class="w-full max-w-xl rounded-xl border p-6 shadow-sm">
-            <template v-if="currentTab === 'supervisor-view'">
-              <p class="font-semibold mb-1">View projects for individuals you supervise.</p>
-              <p class="text-sm">
-                Select one or more direct reports to view their assignments.
-              </p>
-            </template>
-            <template v-else>
-              <p class="font-semibold mb-1">No work to show.</p>
-              <p class="text-sm">
-                You are currently seeing your tasks/projects only.
-              </p>
-            </template>
-          </div>
-
         </div>
-      </div>
+      </template>
+    </draggable>
+
+    <div
+      v-if="(currentTab === 'supervisor-view' ? supervisorVisibleProjects : visibleProjects).length === 0"
+      :class="isDarkMode ? 'bg-gray-900 border-gray-700 text-gray-300' : 'bg-white border-gray-200 text-gray-600'"
+      class="w-full max-w-xl rounded-xl border p-6 shadow-sm">
+      <template v-if="currentTab === 'supervisor-view'">
+        <p class="font-semibold mb-1">View projects for individuals you supervise.</p>
+        <p class="text-sm">
+          Select one or more direct reports to view their assignments.
+        </p>
+      </template>
+      <template v-else>
+        <p class="font-semibold mb-1">No work to show.</p>
+        <p class="text-sm">
+          You are currently seeing your tasks/projects only.
+        </p>
+      </template>
+    </div>
+
+  </div>
+</div>
     </main>
 
     <div
@@ -760,30 +783,30 @@
           <div>
             <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Subtasks</label>
             
-            <div v-if="newTaskForm.subtasks.length > 0" class="space-y-2 mb-3">
-              <div v-for="(subtask, index) in newTaskForm.subtasks" :key="`new-subtask-${index}`"
-                   :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'"
-                   class="flex items-center gap-2 p-2 rounded-lg border">
-                <i class="fa-regular fa-square opacity-50" :class="isDarkMode ? 'text-gray-300' : 'text-gray-500'"></i>
-                <input
-                  v-model="newTaskForm.subtasks[index]"
-                  type="text"
-                  :class="isDarkMode ? 'bg-gray-900 border-gray-600 text-gray-100 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-800 focus:ring-[#DB0000]'"
-                  class="min-w-0 flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                  :aria-label="`Subtask ${index + 1} title`">
-                <div class="flex items-center gap-1">
-                  <button type="button" @click="moveDraftSubtask(index, -1)" :disabled="index === 0" :class="isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-500 hover:bg-gray-100'" class="h-8 w-8 rounded-md disabled:opacity-40 disabled:cursor-not-allowed" aria-label="Move subtask up">
-                    <i class="fa-solid fa-chevron-up text-xs"></i>
-                  </button>
-                  <button type="button" @click="moveDraftSubtask(index, 1)" :disabled="index === newTaskForm.subtasks.length - 1" :class="isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-500 hover:bg-gray-100'" class="h-8 w-8 rounded-md disabled:opacity-40 disabled:cursor-not-allowed" aria-label="Move subtask down">
-                    <i class="fa-solid fa-chevron-down text-xs"></i>
-                  </button>
-                  <button type="button" @click="removeDraftSubtask(index)" class="text-red-500 hover:text-red-700 h-8 w-8 rounded-md" aria-label="Remove subtask">
-                    <i class="fa-solid fa-xmark text-sm"></i>
-                  </button>
+            <draggable v-if="newTaskForm.subtasks.length > 0"
+                       :list="newTaskForm.subtasks"
+                       item-key="id"
+                       handle=".subtask-drag-handle"
+                       class="space-y-2 mb-3">
+              <template #item="{ element: subtask, index }">
+                <div :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'"
+                     class="flex items-center gap-2 p-2 rounded-lg border">
+                  <i class="fa-solid fa-grip-vertical subtask-drag-handle cursor-grab active:cursor-grabbing px-1" :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'"></i>
+                  <i class="fa-regular fa-square opacity-50" :class="isDarkMode ? 'text-gray-300' : 'text-gray-500'"></i>
+                  <input
+                    v-model="subtask.title"
+                    type="text"
+                    :class="isDarkMode ? 'bg-gray-900 border-gray-600 text-gray-100 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-800 focus:ring-[#DB0000]'"
+                    class="min-w-0 flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                    :aria-label="`Subtask ${index + 1} title`">
+                  <div class="flex items-center gap-1">
+                    <button type="button" @click="removeDraftSubtask(index)" class="text-red-500 hover:text-red-700 h-8 w-8 rounded-md" aria-label="Remove subtask">
+                      <i class="fa-solid fa-xmark text-sm"></i>
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </div>
+              </template>
+            </draggable>
 
             <div class="flex items-center gap-2">
               <input v-model="newDraftSubtask"
@@ -1111,76 +1134,79 @@
           <div class="md:col-span-2">
             <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Subtasks</label>
 
-            <div class="space-y-2 mb-3">
-              <div v-for="(subtask, index) in currentTaskSubtasks" :key="subtask.Subtask_ID"
-                   :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'"
-                   class="flex items-center gap-3 p-2 rounded-lg border">
-                <input type="checkbox"
-                       :checked="subtask.Status === 'Complete'"
-                       @change="toggleSubtask(subtask, $event.target.checked)"
-                       :disabled="!isEditingTask"
-                       class="h-4 w-4 ml-1 text-[#DB0000] rounded border-gray-300 focus:ring-[#DB0000] cursor-pointer disabled:cursor-not-allowed">
-                <input
-                  v-if="isEditingTask"
-                  v-model="subtask.Subtask_Title"
-                  type="text"
-                  :disabled="savingSubtaskTitleIds.includes(subtask.Subtask_ID)"
-                  @focus="subtask._originalTitle = subtask.Subtask_Title"
-                  @change="saveExistingSubtaskTitle(subtask)"
-                  :class="isDarkMode ? 'bg-gray-900 border-gray-600 text-gray-100 focus:ring-[#DB0000] disabled:text-gray-400' : 'bg-white border-gray-300 text-gray-800 focus:ring-[#DB0000] disabled:bg-gray-100'"
-                  class="min-w-0 flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                  :aria-label="`Subtask ${index + 1} title`">
-                <span
-                  v-else
-                  :class="[
-                    isDarkMode ? 'text-gray-100' : 'text-gray-800',
-                    subtask.Status === 'Complete' ? 'line-through opacity-50' : ''
-                  ]"
-                  class="min-w-0 flex-1 text-sm font-medium transition-all">
-                  {{ subtask.Subtask_Title }}
-                </span>
-                <div v-if="isEditingTask" class="flex items-center gap-1">
-                  <button type="button" @click="moveExistingSubtask(index, -1)" :disabled="index === 0 || reorderingSubtasks" :class="isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-500 hover:bg-gray-100'" class="h-8 w-8 rounded-md disabled:opacity-40 disabled:cursor-not-allowed" aria-label="Move subtask up">
-                    <i class="fa-solid fa-chevron-up text-xs"></i>
-                  </button>
-                  <button type="button" @click="moveExistingSubtask(index, 1)" :disabled="index === currentTaskSubtasks.length - 1 || reorderingSubtasks" :class="isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-500 hover:bg-gray-100'" class="h-8 w-8 rounded-md disabled:opacity-40 disabled:cursor-not-allowed" aria-label="Move subtask down">
-                    <i class="fa-solid fa-chevron-down text-xs"></i>
-                  </button>
-                  <button type="button" @click="removeExistingSubtask(subtask.Subtask_ID)" class="text-red-500 hover:text-red-700 h-8 w-8 rounded-md disabled:opacity-50" :disabled="deletingSubtaskIds.includes(subtask.Subtask_ID)" aria-label="Delete subtask">
-                    <i v-if="deletingSubtaskIds.includes(subtask.Subtask_ID)" class="fa-solid fa-spinner fa-spin text-sm"></i>
-                    <i v-else class="fa-solid fa-xmark text-sm"></i>
-                  </button>
+            <draggable class="space-y-2 mb-3"
+                       :list="currentTaskSubtasks"
+                       item-key="Subtask_ID"
+                       handle=".subtask-drag-handle"
+                       @change="onExistingSubtaskChange">
+              <template #item="{ element: subtask, index }">
+                <div :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'"
+                     class="flex items-center gap-3 p-2 rounded-lg border">
+                  
+                  <i v-if="isEditingTask" class="fa-solid fa-grip-vertical subtask-drag-handle cursor-grab active:cursor-grabbing px-1" :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'"></i>
+                  
+                  <input type="checkbox"
+                         :checked="subtask.Status === 'Complete'"
+                         @change="toggleSubtask(subtask, $event.target.checked)"
+                         :disabled="!isEditingTask"
+                         class="h-4 w-4 ml-1 text-[#DB0000] rounded border-gray-300 focus:ring-[#DB0000] cursor-pointer disabled:cursor-not-allowed">
+                  <input
+                    v-if="isEditingTask"
+                    v-model="subtask.Subtask_Title"
+                    type="text"
+                    :disabled="savingSubtaskTitleIds.includes(subtask.Subtask_ID)"
+                    @focus="subtask._originalTitle = subtask.Subtask_Title"
+                    @change="saveExistingSubtaskTitle(subtask)"
+                    :class="isDarkMode ? 'bg-gray-900 border-gray-600 text-gray-100 focus:ring-[#DB0000] disabled:text-gray-400' : 'bg-white border-gray-300 text-gray-800 focus:ring-[#DB0000] disabled:bg-gray-100'"
+                    class="min-w-0 flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                    :aria-label="`Subtask ${index + 1} title`">
+                  <span
+                    v-else
+                    :class="[
+                      isDarkMode ? 'text-gray-100' : 'text-gray-800',
+                      subtask.Status === 'Complete' ? 'line-through opacity-50' : ''
+                    ]"
+                    class="min-w-0 flex-1 text-sm font-medium transition-all">
+                    {{ subtask.Subtask_Title }}
+                  </span>
+                  
+                  <div v-if="isEditingTask" class="flex items-center gap-1">
+                    <button type="button" @click="removeExistingSubtask(subtask.Subtask_ID)" class="text-red-500 hover:text-red-700 h-8 w-8 rounded-md disabled:opacity-50" :disabled="deletingSubtaskIds.includes(subtask.Subtask_ID)" aria-label="Delete subtask">
+                      <i v-if="deletingSubtaskIds.includes(subtask.Subtask_ID)" class="fa-solid fa-spinner fa-spin text-sm"></i>
+                      <i v-else class="fa-solid fa-xmark text-sm"></i>
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <p v-if="currentTaskSubtasks.length === 0" :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-sm italic">
-                No subtasks added yet.
-              </p>
-            </div>
+              </template>
+            </draggable>
+            <p v-if="currentTaskSubtasks.length === 0" :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-sm italic">
+              No subtasks added yet.
+            </p>
 
-            <div v-if="isEditingTask && taskDetailsForm.newSubtasks.length > 0" class="space-y-2 mb-3 mt-3">
-              <div v-for="(subtask, index) in taskDetailsForm.newSubtasks" :key="`draft-${index}`"
-                   :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'"
-                   class="flex items-center gap-2 p-2 rounded-lg border border-dashed">
-                <i class="fa-regular fa-square opacity-50" :class="isDarkMode ? 'text-gray-300' : 'text-gray-500'"></i>
-                <input
-                  v-model="taskDetailsForm.newSubtasks[index]"
-                  type="text"
-                  :class="isDarkMode ? 'bg-gray-900 border-gray-600 text-gray-100 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-800 focus:ring-[#DB0000]'"
-                  class="min-w-0 flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                  :aria-label="`New subtask ${index + 1} title`">
-                <div class="flex items-center gap-1">
-                  <button type="button" @click="moveDraftEditSubtask(index, -1)" :disabled="index === 0" :class="isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-500 hover:bg-gray-100'" class="h-8 w-8 rounded-md disabled:opacity-40 disabled:cursor-not-allowed" aria-label="Move new subtask up">
-                    <i class="fa-solid fa-chevron-up text-xs"></i>
-                  </button>
-                  <button type="button" @click="moveDraftEditSubtask(index, 1)" :disabled="index === taskDetailsForm.newSubtasks.length - 1" :class="isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-500 hover:bg-gray-100'" class="h-8 w-8 rounded-md disabled:opacity-40 disabled:cursor-not-allowed" aria-label="Move new subtask down">
-                    <i class="fa-solid fa-chevron-down text-xs"></i>
-                  </button>
-                  <button type="button" @click="removeDraftEditSubtask(index)" class="text-red-500 hover:text-red-700 h-8 w-8 rounded-md" aria-label="Remove new subtask">
-                    <i class="fa-solid fa-xmark text-sm"></i>
-                  </button>
+            <draggable v-if="isEditingTask && taskDetailsForm.newSubtasks.length > 0"
+                       :list="taskDetailsForm.newSubtasks"
+                       item-key="id"
+                       handle=".subtask-drag-handle"
+                       class="space-y-2 mb-3 mt-3">
+              <template #item="{ element: subtask, index }">
+                <div :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'"
+                     class="flex items-center gap-2 p-2 rounded-lg border border-dashed">
+                  <i class="fa-solid fa-grip-vertical subtask-drag-handle cursor-grab active:cursor-grabbing px-1" :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'"></i>
+                  <i class="fa-regular fa-square opacity-50" :class="isDarkMode ? 'text-gray-300' : 'text-gray-500'"></i>
+                  <input
+                    v-model="subtask.title"
+                    type="text"
+                    :class="isDarkMode ? 'bg-gray-900 border-gray-600 text-gray-100 focus:ring-[#DB0000]' : 'bg-white border-gray-300 text-gray-800 focus:ring-[#DB0000]'"
+                    class="min-w-0 flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                    :aria-label="`New subtask ${index + 1} title`">
+                  <div class="flex items-center gap-1">
+                    <button type="button" @click="removeDraftEditSubtask(index)" class="text-red-500 hover:text-red-700 h-8 w-8 rounded-md" aria-label="Remove new subtask">
+                      <i class="fa-solid fa-xmark text-sm"></i>
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </div>
+              </template>
+            </draggable>
 
             <div v-if="isEditingTask" class="flex items-center gap-2 mt-3">
               <input v-model="newDraftEditSubtask"

@@ -1,7 +1,7 @@
 <script>
   const { createApp, ref, computed, onMounted, nextTick } = Vue;
 
-  createApp({
+  const app = createApp({
     setup() {
       const loading = ref(true);
       const currentUserEmail = ref('');
@@ -459,8 +459,6 @@
           });
 
           summaries.forEach((summary) => {
-            summary.tasks.sort(compareTasksByPriority);
-            summary.supervisorTasks.sort(compareTasksByPriority);
           });
 
           return summaries;
@@ -1135,7 +1133,7 @@
       const addDraftEditSubtask = () => {
         const title = newDraftEditSubtask.value.trim();
         if (title && taskDetailsForm.value) {
-          taskDetailsForm.value.newSubtasks.push(title);
+          taskDetailsForm.value.newSubtasks.push({ title, id: Date.now() + Math.random() });
           newDraftEditSubtask.value = '';
         }
       };
@@ -1146,24 +1144,18 @@
         }
       };
 
-      const moveDraftEditSubtask = (index, direction) => {
-        if (taskDetailsForm.value) {
-          moveArrayItem(taskDetailsForm.value.newSubtasks, index, direction);
-        }
-      };
-
       const toggleSubtask = (subtask, isComplete) => {
         const originalStatus = subtask.Status;
         const newStatus = isComplete ? 'Complete' : 'Incomplete';
-        subtask.Status = newStatus; // Optimistic update
+        subtask.Status = newStatus;
         
         google.script.run
           .withSuccessHandler((response) => {
             const result = parseRunResponse(response);
-            if (!result.success) subtask.Status = originalStatus; // Revert on fail
+            if (!result.success) subtask.Status = originalStatus;
           })
           .withFailureHandler(() => {
-            subtask.Status = originalStatus; // Revert on fail
+            subtask.Status = originalStatus;
           })
           .updateSubtaskStatus(subtask.Subtask_ID, isComplete);
       };
@@ -1212,47 +1204,6 @@
           })
           .updateSubtaskTitle(subtaskId, title);
       };
-
-      const moveExistingSubtask = (index, direction) => {
-        if (!taskDetailsForm.value?.taskId || reorderingSubtasks.value) return;
-
-        const visibleSubtasks = currentTaskSubtasks.value.slice();
-        if (!moveArrayItem(visibleSubtasks, index, direction)) return;
-
-        const previousSubtasks = subtasks.value.slice();
-        const reorderedIds = visibleSubtasks.map((subtask) => subtask.Subtask_ID);
-        const taskId = taskDetailsForm.value.taskId;
-        let visibleIndex = 0;
-        subtasks.value = subtasks.value.map((subtask) => {
-          if (!idsMatch(subtask.Task_ID, taskId)) return subtask;
-          const nextId = reorderedIds[visibleIndex++];
-          return visibleSubtasks.find((candidate) => idsMatch(candidate.Subtask_ID, nextId)) || subtask;
-        });
-
-        reorderingSubtasks.value = true;
-        google.script.run
-          .withSuccessHandler((response) => {
-            reorderingSubtasks.value = false;
-            const result = parseRunResponse(response);
-            if (!result || !result.success) {
-              subtasks.value = previousSubtasks;
-              alert(result?.error || 'Failed to reorder subtasks.');
-              return;
-            }
-            if (Array.isArray(result.subtasks)) {
-              subtasks.value = subtasks.value.filter((subtask) => !idsMatch(subtask.Task_ID, taskId));
-              subtasks.value.push(...result.subtasks);
-            }
-          })
-          .withFailureHandler((error) => {
-            reorderingSubtasks.value = false;
-            subtasks.value = previousSubtasks;
-            console.error('Failed to reorder subtasks:', error);
-            alert('Error reordering subtasks.');
-          })
-          .reorderSubtasks(taskId, reorderedIds);
-      };
-
 
       const removeExistingSubtask = (subtaskId) => {
         if (!subtaskId || deletingSubtaskIds.value.includes(subtaskId)) return;
@@ -1784,7 +1735,7 @@
             priority: taskDetailsForm.value.priority,
             assigneeIds: taskDetailsForm.value.assigneeIds,
             projectId: taskDetailsForm.value.projectId,
-            newSubtasks: taskDetailsForm.value.newSubtasks.map((title) => title.trim()).filter(Boolean)
+            newSubtasks: taskDetailsForm.value.newSubtasks.map((s) => s.title.trim()).filter(Boolean)
           });
       };
 
@@ -2012,17 +1963,57 @@
       const addDraftSubtask = () => {
         const title = newDraftSubtask.value.trim();
         if (title) {
-          newTaskForm.value.subtasks.push(title);
+          newTaskForm.value.subtasks.push({ title, id: Date.now() + Math.random() });
           newDraftSubtask.value = '';
+        }
+      };
+
+      const onExistingSubtaskChange = (evt) => {
+        if (evt.moved && taskDetailsForm.value?.taskId) {
+          const element = evt.moved.element;
+          const newIndex = evt.moved.newIndex;
+          const taskId = taskDetailsForm.value.taskId;
+
+          const globalIndex = subtasks.value.findIndex(s => idsMatch(s.Subtask_ID, element.Subtask_ID));
+          const globalSubtask = subtasks.value[globalIndex];
+          subtasks.value.splice(globalIndex, 1);
+
+          const currentList = subtasks.value.filter(s => idsMatch(s.Task_ID, taskId));
+          
+          if (newIndex === 0) {
+            if (currentList.length > 0) {
+              const insertIndex = subtasks.value.findIndex(s => idsMatch(s.Subtask_ID, currentList[0].Subtask_ID));
+              subtasks.value.splice(insertIndex, 0, globalSubtask);
+            } else {
+              subtasks.value.push(globalSubtask);
+            }
+          } else {
+            const precedingSubtask = currentList[newIndex - 1];
+            const insertIndex = subtasks.value.findIndex(s => idsMatch(s.Subtask_ID, precedingSubtask.Subtask_ID));
+            subtasks.value.splice(insertIndex + 1, 0, globalSubtask);
+          }
+
+          const reorderedIds = subtasks.value.filter(s => idsMatch(s.Task_ID, taskId)).map(s => s.Subtask_ID);
+          reorderingSubtasks.value = true;
+          
+          google.script.run
+            .withSuccessHandler((response) => {
+              reorderingSubtasks.value = false;
+              const result = parseRunResponse(response);
+              if (!result || !result.success) {
+                 alert(result?.error || 'Failed to reorder subtasks.');
+              }
+            })
+            .withFailureHandler((error) => {
+               reorderingSubtasks.value = false;
+               alert('Error reordering subtasks.');
+            })
+            .reorderSubtasks(taskId, reorderedIds);
         }
       };
 
       const removeDraftSubtask = (index) => {
         newTaskForm.value.subtasks.splice(index, 1);
-      };
-
-      const moveDraftSubtask = (index, direction) => {
-        moveArrayItem(newTaskForm.value.subtasks, index, direction);
       };
 
       const resetProjectForm = () => {
@@ -2132,7 +2123,7 @@
             description: newTaskForm.value.description,
             priority: newTaskForm.value.priority,
             assigneeIds: newTaskForm.value.assigneeIds,
-            subtasks: newTaskForm.value.subtasks.map((title) => title.trim()).filter(Boolean)
+            subtasks: newTaskForm.value.subtasks.map((s) => s.title.trim()).filter(Boolean)
           });
       };
 
@@ -2347,6 +2338,68 @@
           });
       };
 
+      const onProjectChange = (evt) => {
+        if (evt.moved) {
+          const element = evt.moved.element;
+          const newIndex = evt.moved.newIndex;
+          
+          const globalIndex = projects.value.findIndex(p => idsMatch(p.Project_ID, element.Project_ID));
+          const globalProject = projects.value[globalIndex];
+          projects.value.splice(globalIndex, 1);
+          
+          const visibleList = currentTab.value === 'supervisor-view' ? supervisorVisibleProjects.value : visibleProjects.value;
+          
+          if (newIndex === 0) {
+            if (visibleList.length > 0) {
+               const insertIndex = projects.value.findIndex(p => idsMatch(p.Project_ID, visibleList[0].Project_ID));
+               projects.value.splice(insertIndex, 0, globalProject);
+            } else {
+               projects.value.push(globalProject);
+            }
+          } else {
+            const precedingProject = visibleList[newIndex - 1];
+            const insertIndex = projects.value.findIndex(p => idsMatch(p.Project_ID, precedingProject.Project_ID));
+            projects.value.splice(insertIndex + 1, 0, globalProject);
+          }
+
+          const orderedIds = projects.value.map(p => p.Project_ID);
+          google.script.run.reorderProjects(orderedIds);
+        }
+      };
+
+      const onTaskChange = (evt, targetProjectId) => {
+        if (evt.added || evt.moved) {
+           const element = evt.added ? evt.added.element : evt.moved.element;
+           const newIndex = evt.added ? evt.added.newIndex : evt.moved.newIndex;
+           
+           const globalTaskIndex = tasks.value.findIndex(t => idsMatch(t.Task_ID, element.Task_ID));
+           const globalTask = tasks.value[globalTaskIndex];
+           tasks.value.splice(globalTaskIndex, 1);
+           
+           globalTask.Project_ID = targetProjectId;
+           
+           const currentProjectTasks = tasks.value.filter(t => idsMatch(t.Project_ID, targetProjectId));
+           if (newIndex === 0) {
+              if (currentProjectTasks.length > 0) {
+                 const insertIndex = tasks.value.findIndex(t => idsMatch(t.Task_ID, currentProjectTasks[0].Task_ID));
+                 tasks.value.splice(insertIndex, 0, globalTask);
+              } else {
+                 tasks.value.push(globalTask);
+              }
+           } else {
+              const precedingTask = currentProjectTasks[newIndex - 1];
+              const insertIndex = tasks.value.findIndex(t => idsMatch(t.Task_ID, precedingTask.Task_ID));
+              tasks.value.splice(insertIndex + 1, 0, globalTask);
+           }
+           
+           const orderedTargetTaskIds = tasks.value
+              .filter(t => idsMatch(t.Project_ID, targetProjectId))
+              .map(t => t.Task_ID);
+              
+           google.script.run.updateTaskProjectAndOrder(globalTask.Task_ID, targetProjectId, orderedTargetTaskIds);
+        }
+      };
+
       onMounted(() => {
         applyFontScale(settingsForm.value.fontScale);
         loadSettings();
@@ -2526,18 +2579,21 @@
         newDraftSubtask,
         addDraftSubtask,
         removeDraftSubtask,
-        moveDraftSubtask,
         newDraftEditSubtask,
         addDraftEditSubtask,
         removeDraftEditSubtask,
-        moveDraftEditSubtask,
         deletingSubtaskIds,
         savingSubtaskTitleIds,
         reorderingSubtasks,
         saveExistingSubtaskTitle,
-        moveExistingSubtask,
-        removeExistingSubtask
+        removeExistingSubtask,
+        onProjectChange,
+        onTaskChange,
+        onExistingSubtaskChange
       };
     }
-  }).mount('#app');
+  });
+  
+  app.component('draggable', window.vuedraggable);
+  app.mount('#app');
 </script>
