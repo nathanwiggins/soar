@@ -24,7 +24,7 @@
 </head>
 <body class="h-screen flex overflow-hidden">
 
-  <div id="app" :class="isDarkMode ? 'bg-gray-950 text-gray-100' : 'bg-gray-50 text-gray-800'" class="w-full h-full flex transition-colors duration-200" v-cloak @click="isUserMenuOpen = false">
+  <div id="app" :class="isDarkMode ? 'bg-gray-950 text-gray-100' : 'bg-gray-50 text-gray-800'" class="w-full h-full flex transition-colors duration-200" v-cloak @click="isUserMenuOpen = false; showAgendaShareDropdown = false">
     <div
       v-if="showProfileModal"
       class="fixed inset-0 bg-gray-900/50 flex items-center justify-center z-50 px-4"
@@ -1129,7 +1129,7 @@
 
     <div
       v-if="showTaskDetailsModal && taskDetailsForm"
-      class="fixed inset-0 bg-gray-900/50 flex items-center justify-center z-50 px-4"
+      class="fixed inset-0 bg-gray-900/50 flex items-center justify-center z-[60] px-4"
       @click.self="closeTaskInfo">
       <div
         :class="isDarkMode ? 'bg-gray-900 border-gray-700 text-gray-100' : 'bg-white border-gray-100 text-gray-800'"
@@ -1452,7 +1452,7 @@
 
     <div
       v-if="showCommentModal && commentModalTask"
-      class="fixed inset-0 bg-gray-900/50 flex items-center justify-center z-50 px-4"
+      class="fixed inset-0 bg-gray-900/50 flex items-center justify-center z-[70] px-4"
       @click.self="closeCommentModal">
       <div :class="isDarkMode ? 'bg-gray-900 border-gray-700 text-gray-100' : 'bg-white border-gray-100 text-gray-800'" class="w-full max-w-2xl rounded-2xl shadow-2xl border max-h-[90vh] overflow-y-auto">
         <div :class="isDarkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-100 bg-white'" class="px-6 py-4 border-b flex items-center justify-between sticky top-0 z-10">
@@ -1575,16 +1575,72 @@
           <input v-model="activeAgenda.Title" type="text" :class="isDarkMode ? 'bg-transparent text-gray-100 focus:ring-gray-700' : 'bg-transparent text-gray-800 focus:ring-gray-200'" class="text-lg font-bold border-none focus:ring-2 rounded px-2 w-1/2">
           
           <div class="flex items-center gap-2">
-            <div class="relative group">
-              <button :class="isDarkMode ? 'bg-gray-800 text-gray-200' : 'bg-gray-100 text-gray-700'" class="px-3 py-2 rounded-lg text-sm border font-medium">Share <i class="fa-solid fa-users ml-1"></i></button>
-              <div :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'" class="absolute right-0 mt-1 w-64 rounded-lg shadow-lg border hidden group-hover:block p-2 z-20 max-h-48 overflow-y-auto">
-                <label v-for="user in users" :key="user.User_ID" v-show="!idsMatch(user.User_ID, activeAgenda.Creator_ID)" class="flex items-center gap-2 p-1 cursor-pointer">
-                  <input type="checkbox" :checked="activeAgendaShares.includes(user.User_ID)" @change="toggleAgendaShare(user.User_ID)" class="text-[#DB0000] focus:ring-[#DB0000] rounded">
-                  <span class="text-sm" :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'">{{ user.Name }}</span>
-                </label>
+            
+            <div class="relative">
+              <button @click.stop="toggleAgendaShareDropdown" :class="isDarkMode ? 'bg-gray-800 text-gray-200 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'" class="px-3 py-2 rounded-lg text-sm border font-medium transition-colors">
+                Share <i class="fa-solid fa-users ml-1"></i>
+              </button>
+              
+              <div v-if="showAgendaShareDropdown" @click.stop :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'" class="absolute right-0 mt-2 w-80 rounded-xl shadow-xl border p-3 z-30 flex flex-col gap-3">
+                <div class="flex justify-between items-center mb-1">
+                  <h4 class="text-sm font-semibold" :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'">Share Agenda</h4>
+                  <button @click="closeAgendaShareDropdown" class="text-gray-400 hover:text-gray-600 transition-colors"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                
+                <div class="relative">
+                  <input 
+                    ref="agendaShareInputRef"
+                    v-model="agendaShareQuery"
+                    @keydown="handleAgendaShareKeyDown"
+                    type="text" 
+                    placeholder="Add people (Type name or email)..." 
+                    :class="isDarkMode ? 'bg-gray-900 border-gray-600 text-gray-100 placeholder-gray-500 focus:ring-[#DB0000]' : 'bg-gray-50 border-gray-300 text-gray-900 placeholder-gray-400 focus:ring-[#DB0000]'" 
+                    class="w-full text-sm border rounded-lg px-3 py-2 focus:outline-none focus:ring-2">
+                  
+                  <div v-if="agendaShareQuery && filteredAgendaShareSuggestions.length > 0" :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'" class="absolute left-0 right-0 mt-1 border rounded-lg shadow-lg max-h-40 overflow-y-auto z-40">
+                    <button v-for="user in filteredAgendaShareSuggestions" :key="'sug-'+user.User_ID" @click="addAgendaShare(user.User_ID)" class="w-full text-left px-3 py-2 text-sm flex items-center justify-between transition-colors" :class="isDarkMode ? 'hover:bg-gray-800 text-gray-200' : 'hover:bg-gray-50 text-gray-700'">
+                      <span class="font-medium">{{ user.Name }}</span>
+                      <span class="text-xs text-gray-500">{{ user.Email }}</span>
+                    </button>
+                  </div>
+                  <div v-else-if="agendaShareQuery" :class="isDarkMode ? 'bg-gray-900 border-gray-700 text-gray-400' : 'bg-white border-gray-200 text-gray-500'" class="absolute left-0 right-0 mt-1 border rounded-lg shadow-lg p-3 text-sm text-center z-40">
+                    No matching users found.
+                  </div>
+                </div>
+
+                <div class="max-h-48 overflow-y-auto space-y-2 mt-2">
+                  <p class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">People with access</p>
+                  
+                  <div class="flex items-center justify-between py-1">
+                    <div class="flex items-center gap-2">
+                      <div :class="isDarkMode ? 'bg-gray-700 text-gray-300 border-gray-600' : 'bg-gray-200 text-gray-600 border-white'" class="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold overflow-hidden border">
+                        <img v-if="getUserById(activeAgenda.Creator_ID)?.Profile_Pic_Url" :src="getUserById(activeAgenda.Creator_ID).Profile_Pic_Url" class="w-full h-full object-cover">
+                        <span v-else>{{ getInitials(getUserById(activeAgenda.Creator_ID)?.Name) }}</span>
+                      </div>
+                      <div>
+                        <p class="text-sm font-medium leading-tight" :class="isDarkMode ? 'text-gray-200' : 'text-gray-800'">{{ getUserById(activeAgenda.Creator_ID)?.Name }} (You)</p>
+                      </div>
+                    </div>
+                    <span class="text-xs text-gray-500 italic">Owner</span>
+                  </div>
+
+                  <div v-for="user in activeAgendaSharedUsers" :key="'shared-'+user.User_ID" class="flex items-center justify-between py-1 group">
+                    <div class="flex items-center gap-2">
+                      <div :class="isDarkMode ? 'bg-gray-700 text-gray-300 border-gray-600' : 'bg-gray-200 text-gray-600 border-white'" class="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold overflow-hidden border">
+                        <img v-if="user.Profile_Pic_Url" :src="user.Profile_Pic_Url" class="w-full h-full object-cover">
+                        <span v-else>{{ getInitials(user.Name) }}</span>
+                      </div>
+                      <div>
+                        <p class="text-sm font-medium leading-tight" :class="isDarkMode ? 'text-gray-200' : 'text-gray-800'">{{ user.Name }}</p>
+                      </div>
+                    </div>
+                    <button @click="removeAgendaShare(user.User_ID)" class="text-gray-400 hover:text-red-500 transition-colors" title="Remove access"><i class="fa-solid fa-xmark"></i></button>
+                  </div>
+                </div>
               </div>
             </div>
-            <button @click="closeAgendaModal" class="text-gray-400 hover:text-gray-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+
+            <button @click="closeAgendaModal" class="text-gray-400 hover:text-gray-600 transition-colors ml-2"><i class="fa-solid fa-xmark text-lg"></i></button>
           </div>
         </div>
 

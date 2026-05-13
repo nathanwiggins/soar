@@ -2511,10 +2511,61 @@
         activeAgenda.value.headers[headerIndex].items.splice(itemIndex, 1);
       };
       
-      const toggleAgendaShare = (userId) => {
+      const showAgendaShareDropdown = ref(false);
+      const agendaShareQuery = ref('');
+      const agendaShareInputRef = ref(null);
+
+      const filteredAgendaShareSuggestions = computed(() => {
+        if (!agendaShareQuery.value) return [];
+        const query = agendaShareQuery.value.toLowerCase();
+        return users.value.filter((u) => {
+          if (activeAgenda.value && idsMatch(u.User_ID, activeAgenda.value.Creator_ID)) return false;
+          if (activeAgendaShares.value.includes(u.User_ID)) return false;
+          return (u.Name || '').toLowerCase().includes(query) || (u.Email || '').toLowerCase().includes(query);
+        }).slice(0, 5);
+      });
+
+      const activeAgendaSharedUsers = computed(() => {
+        return activeAgendaShares.value.map(id => getUserById(id)).filter(Boolean);
+      });
+
+      const toggleAgendaShareDropdown = () => {
+        showAgendaShareDropdown.value = !showAgendaShareDropdown.value;
+        if (showAgendaShareDropdown.value) {
+          agendaShareQuery.value = '';
+          nextTick(() => {
+            if (agendaShareInputRef.value) agendaShareInputRef.value.focus();
+          });
+        }
+      };
+
+      const closeAgendaShareDropdown = () => {
+        showAgendaShareDropdown.value = false;
+        agendaShareQuery.value = '';
+      };
+
+      const addAgendaShare = (userId) => {
+        if (!activeAgendaShares.value.includes(userId)) {
+          activeAgendaShares.value.push(userId);
+        }
+        agendaShareQuery.value = '';
+        nextTick(() => {
+          if (agendaShareInputRef.value) agendaShareInputRef.value.focus();
+        });
+      };
+
+      const removeAgendaShare = (userId) => {
         const idx = activeAgendaShares.value.indexOf(userId);
         if (idx > -1) activeAgendaShares.value.splice(idx, 1);
-        else activeAgendaShares.value.push(userId);
+      };
+
+      const handleAgendaShareKeyDown = (e) => {
+        if ((e.key === 'Tab' || e.key === 'Enter') && filteredAgendaShareSuggestions.value.length > 0) {
+          e.preventDefault();
+          addAgendaShare(filteredAgendaShareSuggestions.value[0].User_ID);
+        } else if (e.key === 'Escape') {
+          closeAgendaShareDropdown();
+        }
       };
 
       onMounted(() => {
@@ -2607,6 +2658,7 @@
         getAssigneesForTask,
         getProjectById,
         getTaskById,
+        getUserById,
         idsMatch,
         statusColor,
         statusDropdownColor,
@@ -2724,7 +2776,16 @@
         addAgendaTextItem,
         addAgendaTaskItem,
         removeAgendaItem,
-        toggleAgendaShare
+        showAgendaShareDropdown,
+        agendaShareQuery,
+        agendaShareInputRef,
+        filteredAgendaShareSuggestions,
+        activeAgendaSharedUsers,
+        toggleAgendaShareDropdown,
+        closeAgendaShareDropdown,
+        addAgendaShare,
+        removeAgendaShare,
+        handleAgendaShareKeyDown
       };
     }
   });
