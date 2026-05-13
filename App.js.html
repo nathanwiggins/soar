@@ -60,7 +60,7 @@
       const currentTab = ref('project-board');
       const showSupervisorUserDropdown = ref(false);
       const selectedSupervisorUserIds = ref([]);
-      const INITIAL_PAYLOAD_CACHE_KEY = 'soar_initial_payload_v2';
+      const INITIAL_PAYLOAD_CACHE_KEY = 'soar_initial_payload_v4';
       const LOGO_CACHE_KEY = 'soar_processed_logo_v1';
       const memoCache = new Map();
 
@@ -83,6 +83,21 @@
       };
 
       const taskStatusOptions = ['Not Started', 'In Progress', 'Completed', 'Delayed'];
+      const defaultProjectColorScheme = 'red';
+      const projectColorSchemes = {
+        red: { label: 'Red', deep: '#DB0000', light: '#FEE2E2', darkLight: 'rgba(127, 29, 29, 0.28)', border: '#FECACA' },
+        blue: { label: 'Blue', deep: '#1D4ED8', light: '#DBEAFE', darkLight: 'rgba(30, 64, 175, 0.28)', border: '#BFDBFE' },
+        green: { label: 'Green', deep: '#047857', light: '#D1FAE5', darkLight: 'rgba(6, 95, 70, 0.28)', border: '#A7F3D0' },
+        purple: { label: 'Purple', deep: '#6D28D9', light: '#EDE9FE', darkLight: 'rgba(91, 33, 182, 0.28)', border: '#DDD6FE' },
+        amber: { label: 'Amber', deep: '#B45309', light: '#FEF3C7', darkLight: 'rgba(146, 64, 14, 0.28)', border: '#FDE68A' },
+        teal: { label: 'Teal', deep: '#0F766E', light: '#CCFBF1', darkLight: 'rgba(17, 94, 89, 0.28)', border: '#99F6E4' }
+      };
+      const projectColorSchemeOptions = Object.entries(projectColorSchemes).map(([value, scheme]) => ({
+        value,
+        label: scheme.label,
+        deep: scheme.deep,
+        light: scheme.light
+      }));
 
       const showAddTaskModal = ref(false);
       const showAddProjectModal = ref(false);
@@ -103,7 +118,8 @@
         projectTitle: '',
         dueDate: '',
         description: '',
-        status: 'Not Started'
+        status: 'Not Started',
+        colorScheme: defaultProjectColorScheme
       });
 
       const showTaskDetailsModal = ref(false);
@@ -170,7 +186,7 @@
         if (!topicId) return [];
 
         return comments.value
-          .filter((comment) => idsMatch(comment.Topic_ID, topicId))
+          .filter((comment) => !isResolvedComment(comment) && idsMatch(getCommentTopicId(comment), topicId))
           .slice()
           .sort((left, right) => {
             const leftTime = new Date(left.Timestamp || 0).getTime();
@@ -398,7 +414,7 @@
 
       const projectSummaries = computed(() => {
         const signature = [
-          getCollectionSignature(projects.value, 'Project_ID', ['Project_Title', 'Status', 'Due_Date']),
+          getCollectionSignature(projects.value, 'Project_ID', ['Project_Title', 'Status', 'Due_Date', 'Color_Scheme']),
           getCollectionSignature(visibleTasks.value, 'Task_ID', ['Project_ID', 'Status', 'Due_Date', 'Priority', 'Task_Title', '_syncing']),
           getCollectionSignature(supervisorVisibleTasks.value, 'Task_ID', ['Project_ID', 'Status', 'Due_Date', 'Priority', 'Task_Title', '_syncing'])
         ].join('::');
@@ -592,10 +608,9 @@
               users: payload.users || [],
               projects: payload.projects || [],
               tasks: payload.tasks || [],
-              tasks: payload.tasks || [],
               subtasks: payload.subtasks || [],
               assignments: payload.assignments || [],
-              assignments: payload.assignments || [],
+              comments: payload.comments || [],
               currentUserSettings: payload.currentUserSettings || {},
               versionHash: payload.versionHash,
               lastUpdated: payload.lastUpdated || ''
@@ -615,8 +630,14 @@
         tasks.value = Array.isArray(payload.tasks) ? payload.tasks : [];
         subtasks.value = Array.isArray(payload.subtasks) ? payload.subtasks : [];
         assignments.value = Array.isArray(payload.assignments) ? payload.assignments : [];
-        comments.value = [];
-        loadedCommentTopicIds.value = [];
+        comments.value = Array.isArray(payload.comments) ? payload.comments : [];
+        loadedCommentTopicIds.value = [
+          ...new Set([
+            ...tasks.value.map((task) => normalizeId(task?.Task_ID)).filter(Boolean),
+            ...projects.value.map((project) => normalizeId(project?.Project_ID)).filter(Boolean),
+            ...comments.value.map((comment) => normalizeId(getCommentTopicId(comment))).filter(Boolean)
+          ])
+        ];
         loadingCommentTopicIds.value = [];
         dataVersionHash.value = payload.versionHash || '';
         applyNotificationSettings(payload.currentUserSettings?.notifications);
@@ -1031,6 +1052,27 @@
         return normalizedPriority ? `${normalizedPriority} priority` : 'Priority not set';
       };
 
+      const normalizeProjectColorScheme = (colorScheme) => {
+        const normalizedScheme = (colorScheme || '').toString().trim().toLowerCase();
+        return projectColorSchemes[normalizedScheme] ? normalizedScheme : defaultProjectColorScheme;
+      };
+
+      const getProjectColorScheme = (project) => {
+        return projectColorSchemes[normalizeProjectColorScheme(project?.Color_Scheme)] || projectColorSchemes[defaultProjectColorScheme];
+      };
+
+      const getProjectDotStyle = (project) => ({
+        backgroundColor: getProjectColorScheme(project).deep
+      });
+
+      const getProjectTaskCardStyle = (project) => {
+        const scheme = getProjectColorScheme(project);
+        return {
+          backgroundColor: isDarkMode.value ? scheme.darkLight : scheme.light,
+          borderColor: isDarkMode.value ? scheme.deep : scheme.border
+        };
+      };
+
       const buildTaskDetailsForm = (task) => {
         return {
           taskId: task.Task_ID,
@@ -1053,6 +1095,17 @@
         return subtasks.value.filter(s => idsMatch(s.Task_ID, taskDetailsForm.value.taskId));
       });
 
+      const moveArrayItem = (items, fromIndex, direction) => {
+        const toIndex = fromIndex + direction;
+        if (!Array.isArray(items) || fromIndex < 0 || toIndex < 0 || fromIndex >= items.length || toIndex >= items.length) {
+          return false;
+        }
+
+        const [item] = items.splice(fromIndex, 1);
+        items.splice(toIndex, 0, item);
+        return true;
+      };
+
       const newDraftEditSubtask = ref('');
 
       const addDraftEditSubtask = () => {
@@ -1066,6 +1119,12 @@
       const removeDraftEditSubtask = (index) => {
         if (taskDetailsForm.value) {
           taskDetailsForm.value.newSubtasks.splice(index, 1);
+        }
+      };
+
+      const moveDraftEditSubtask = (index, direction) => {
+        if (taskDetailsForm.value) {
+          moveArrayItem(taskDetailsForm.value.newSubtasks, index, direction);
         }
       };
 
@@ -1086,6 +1145,90 @@
       };
 
       const deletingSubtaskIds = ref([]);
+      const savingSubtaskTitleIds = ref([]);
+      const reorderingSubtasks = ref(false);
+
+      const saveExistingSubtaskTitle = (subtask) => {
+        if (!subtask?.Subtask_ID || !isEditingTask.value) return;
+
+        const subtaskId = subtask.Subtask_ID;
+        const previousSubtask = subtasks.value.find((item) => idsMatch(item.Subtask_ID, subtaskId));
+        const previousTitle = subtask._originalTitle !== undefined ? subtask._originalTitle : (previousSubtask ? previousSubtask.Subtask_Title : '');
+        const title = (subtask.Subtask_Title || '').toString().trim();
+        if (!title) {
+          subtask.Subtask_Title = previousTitle;
+          delete subtask._originalTitle;
+          alert('Subtask title cannot be empty.');
+          return;
+        }
+        subtask.Subtask_Title = title;
+        savingSubtaskTitleIds.value.push(subtaskId);
+
+        google.script.run
+          .withSuccessHandler((response) => {
+            savingSubtaskTitleIds.value = savingSubtaskTitleIds.value.filter((id) => !idsMatch(id, subtaskId));
+            const result = parseRunResponse(response);
+            if (!result || !result.success) {
+              subtask.Subtask_Title = previousTitle;
+              delete subtask._originalTitle;
+              alert(result?.error || 'Failed to update subtask title.');
+              return;
+            }
+            if (result.subtask) {
+              Object.assign(subtask, result.subtask);
+            }
+            delete subtask._originalTitle;
+          })
+          .withFailureHandler((error) => {
+            savingSubtaskTitleIds.value = savingSubtaskTitleIds.value.filter((id) => !idsMatch(id, subtaskId));
+            subtask.Subtask_Title = previousTitle;
+            delete subtask._originalTitle;
+            console.error('Failed to update subtask title:', error);
+            alert('Error updating subtask title.');
+          })
+          .updateSubtaskTitle(subtaskId, title);
+      };
+
+      const moveExistingSubtask = (index, direction) => {
+        if (!taskDetailsForm.value?.taskId || reorderingSubtasks.value) return;
+
+        const visibleSubtasks = currentTaskSubtasks.value.slice();
+        if (!moveArrayItem(visibleSubtasks, index, direction)) return;
+
+        const previousSubtasks = subtasks.value.slice();
+        const reorderedIds = visibleSubtasks.map((subtask) => subtask.Subtask_ID);
+        const taskId = taskDetailsForm.value.taskId;
+        let visibleIndex = 0;
+        subtasks.value = subtasks.value.map((subtask) => {
+          if (!idsMatch(subtask.Task_ID, taskId)) return subtask;
+          const nextId = reorderedIds[visibleIndex++];
+          return visibleSubtasks.find((candidate) => idsMatch(candidate.Subtask_ID, nextId)) || subtask;
+        });
+
+        reorderingSubtasks.value = true;
+        google.script.run
+          .withSuccessHandler((response) => {
+            reorderingSubtasks.value = false;
+            const result = parseRunResponse(response);
+            if (!result || !result.success) {
+              subtasks.value = previousSubtasks;
+              alert(result?.error || 'Failed to reorder subtasks.');
+              return;
+            }
+            if (Array.isArray(result.subtasks)) {
+              subtasks.value = subtasks.value.filter((subtask) => !idsMatch(subtask.Task_ID, taskId));
+              subtasks.value.push(...result.subtasks);
+            }
+          })
+          .withFailureHandler((error) => {
+            reorderingSubtasks.value = false;
+            subtasks.value = previousSubtasks;
+            console.error('Failed to reorder subtasks:', error);
+            alert('Error reordering subtasks.');
+          })
+          .reorderSubtasks(taskId, reorderedIds);
+      };
+
 
       const removeExistingSubtask = (subtaskId) => {
         if (!subtaskId || deletingSubtaskIds.value.includes(subtaskId)) return;
@@ -1120,6 +1263,7 @@
           status: project.Status || 'Not Started',
           createdDate: project.Created_Date || '',
           dueDate: formatDateForInput(project.Due_Date),
+          colorScheme: normalizeProjectColorScheme(project.Color_Scheme),
           creatorId: project.Creator_ID || ''
         };
       };
@@ -1193,12 +1337,21 @@
         taskDetailsForm.value = null;
       };
 
+      const getCommentTopicId = (comment) => {
+        return comment?.Topic_ID || comment?.Task_ID || comment?.Project_ID || comment?.Entity_ID || '';
+      };
+
+      const isResolvedComment = (comment) => {
+        const value = comment?.Is_Resolved;
+        return value === true || value === 'TRUE' || value === 'true' || value === 'Yes' || value === 1 || value === '1';
+      };
+
       const getCommentCountForTask = (taskId) => {
-        return comments.value.filter((comment) => idsMatch(comment.Topic_ID, taskId)).length;
+        return comments.value.filter((comment) => !isResolvedComment(comment) && idsMatch(getCommentTopicId(comment), taskId)).length;
       };
 
       const getCommentAuthor = (comment) => {
-        return getUserById(comment?.Commenter_ID);
+        return getUserById(comment?.Commenter_ID || comment?.User_ID || comment?.Author_ID);
       };
 
       const formatCommentTimestamp = (timestamp) => {
@@ -1270,7 +1423,7 @@
               return;
             }
 
-            comments.value = comments.value.filter((comment) => !idsMatch(comment.Topic_ID, normalizedTopicId));
+            comments.value = comments.value.filter((comment) => !idsMatch(getCommentTopicId(comment), normalizedTopicId));
             comments.value.push(...(result.comments || []));
             markCommentTopicLoaded(normalizedTopicId);
           })
@@ -1607,7 +1760,7 @@
             priority: taskDetailsForm.value.priority,
             assigneeIds: taskDetailsForm.value.assigneeIds,
             projectId: taskDetailsForm.value.projectId,
-            newSubtasks: taskDetailsForm.value.newSubtasks
+            newSubtasks: taskDetailsForm.value.newSubtasks.map((title) => title.trim()).filter(Boolean)
           });
       };
 
@@ -1804,7 +1957,8 @@
             projectTitle: trimmedTitle,
             dueDate: projectDetailsForm.value.dueDate,
             status: projectDetailsForm.value.status,
-            description: projectDetailsForm.value.description
+            description: projectDetailsForm.value.description,
+            colorScheme: projectDetailsForm.value.colorScheme
           });
       };
 
@@ -1843,12 +1997,17 @@
         newTaskForm.value.subtasks.splice(index, 1);
       };
 
+      const moveDraftSubtask = (index, direction) => {
+        moveArrayItem(newTaskForm.value.subtasks, index, direction);
+      };
+
       const resetProjectForm = () => {
         newProjectForm.value = {
           projectTitle: '',
           dueDate: '',
           description: '',
-          status: 'Not Started'
+          status: 'Not Started',
+          colorScheme: defaultProjectColorScheme
         };
       };
 
@@ -1949,7 +2108,7 @@
             description: newTaskForm.value.description,
             priority: newTaskForm.value.priority,
             assigneeIds: newTaskForm.value.assigneeIds,
-            subtasks: newTaskForm.value.subtasks
+            subtasks: newTaskForm.value.subtasks.map((title) => title.trim()).filter(Boolean)
           });
       };
 
@@ -1992,7 +2151,8 @@
             projectTitle: trimmedTitle,
             dueDate: newProjectForm.value.dueDate,
             description: newProjectForm.value.description,
-            status: newProjectForm.value.status || 'Not Started'
+            status: newProjectForm.value.status || 'Not Started',
+            colorScheme: newProjectForm.value.colorScheme
           });
       };
 
@@ -2247,6 +2407,7 @@
         savingProject,
         projectDetailsCreator,
         completedTaskByUser,
+        projectColorSchemeOptions,
         getTasksForProject,
         getSupervisorTasksForProject,
         getAssigneesForTask,
@@ -2272,6 +2433,8 @@
         getPriorityLabel,
         hasPriority,
         getPriorityTitle,
+        getProjectDotStyle,
+        getProjectTaskCardStyle,
         normalizePriority,
         priorityOptions,
         openTaskInfo,
@@ -2336,10 +2499,16 @@
         newDraftSubtask,
         addDraftSubtask,
         removeDraftSubtask,
+        moveDraftSubtask,
         newDraftEditSubtask,
         addDraftEditSubtask,
         removeDraftEditSubtask,
+        moveDraftEditSubtask,
         deletingSubtaskIds,
+        savingSubtaskTitleIds,
+        reorderingSubtasks,
+        saveExistingSubtaskTitle,
+        moveExistingSubtask,
         removeExistingSubtask
       };
     }

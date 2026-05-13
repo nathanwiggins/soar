@@ -33,6 +33,13 @@ function getInitialPayload() {
     tasks: getTableData('Tasks'),
     subtasks: getTableData('Subtasks'),
     assignments: getTableData('Assignments'),
+    comments: getTableData('Comments').map((comment) => {
+      const normalized = {};
+      Object.keys(comment).forEach((key) => {
+        normalized[key] = normalizeValueForClient(comment[key]);
+      });
+      return normalized;
+    }),
     currentUserSettings: getUserSettingsByEmail(currentUserEmail),
     versionHash: buildGlobalVersionHash(),
     lastUpdated: getStoredDataVersion()
