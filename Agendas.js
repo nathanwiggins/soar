@@ -42,9 +42,13 @@ function updateAgenda(agendaId, title, contentJson, sharedUserIds) {
 
   const sharesSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Sharing');
   const sharesData = sharesSheet.getDataRange().getValues();
+  const previousSharedUserIds = [];
   const rowsToDelete = [];
   for (let i = sharesData.length - 1; i >= 1; i--) {
-    if (sharesData[i][0] === agendaId) rowsToDelete.push(i + 1);
+    if (sharesData[i][0] === agendaId) {
+      previousSharedUserIds.push((sharesData[i][1] || '').toString().trim());
+      rowsToDelete.push(i + 1);
+    }
   }
   deleteRowsBySheetIndexes(sharesSheet, rowsToDelete);
   
@@ -60,6 +64,14 @@ function updateAgenda(agendaId, title, contentJson, sharedUserIds) {
     const val = updatedRow[index];
     updatedAgenda[header] = val instanceof Date ? val.toISOString() : val;
   });
+
+  const previousSharesSet = new Set(previousSharedUserIds);
+  const newlySharedIds = (sharedUserIds || []).filter(uid => !previousSharesSet.has(uid.toString().trim()));
+  const currentUserId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
+  
+  if (typeof sendAgendaShareNotifications === 'function') {
+    sendAgendaShareNotifications(updatedAgenda, newlySharedIds, currentUserId);
+  }
 
   return JSON.stringify({ 
     success: true, 
