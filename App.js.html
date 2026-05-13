@@ -37,6 +37,12 @@
       const projects = ref([]);
       const tasks = ref([]);
       const subtasks = ref([]);
+      const agendas = ref([]);
+      const agendaShares = ref([]);
+      const showAgendaModal = ref(false);
+      const activeAgenda = ref(null);
+      const activeAgendaShares = ref([]);
+      const savingAgenda = ref(false);
       const newSubtaskTitle = ref('');
       const creatingSubtask = ref(false);
       const assignments = ref([]);
@@ -357,6 +363,19 @@
         });
       });
 
+      const myAgendas = computed(() => {
+        return agendas.value.filter(a => idsMatch(a.Creator_ID, currentUserId.value));
+      });
+
+      const sharedAgendas = computed(() => {
+        const mySharedAgendaIds = new Set(
+          agendaShares.value
+            .filter(share => idsMatch(share.User_ID, currentUserId.value))
+            .map(share => share.Agenda_ID)
+        );
+        return agendas.value.filter(a => mySharedAgendaIds.has(a.Agenda_ID));
+      });
+
       const directReportUsers = computed(() => {
         const managerId = currentUserId.value;
         if (!managerId) return [];
@@ -627,6 +646,8 @@
               tasks: payload.tasks || [],
               subtasks: payload.subtasks || [],
               assignments: payload.assignments || [],
+              agendas: payload.agendas || [],
+              agendaShares: payload.agendaShares || [],
               comments: payload.comments || [],
               currentUserSettings: payload.currentUserSettings || {},
               versionHash: payload.versionHash,
@@ -647,6 +668,8 @@
         tasks.value = Array.isArray(payload.tasks) ? payload.tasks : [];
         subtasks.value = Array.isArray(payload.subtasks) ? payload.subtasks : [];
         assignments.value = Array.isArray(payload.assignments) ? payload.assignments : [];
+        agendas.value = Array.isArray(payload.agendas) ? payload.agendas : [];
+        agendaShares.value = Array.isArray(payload.agendaShares) ? payload.agendaShares : [];
         comments.value = Array.isArray(payload.comments) ? payload.comments : [];
         loadedCommentTopicIds.value = [
           ...new Set([
@@ -2400,6 +2423,99 @@
         }
       };
 
+      const openNewAgenda = () => {
+        const title = prompt("Enter a title for the new Meeting Agenda:");
+        if (!title) return;
+        
+        google.script.run
+          .withSuccessHandler((res) => {
+            const result = parseRunResponse(res);
+            if (result.success) {
+              agendas.value.push(result.agenda);
+              openAgendaModal(result.agenda);
+            }
+          })
+          .createAgenda(title);
+      };
+
+      const openAgendaModal = (agenda) => {
+        let parsedContent = [];
+        try {
+          parsedContent = JSON.parse(agenda.Content_JSON || '[]');
+        } catch (e) { parsedContent = []; }
+        
+        activeAgenda.value = {
+          ...agenda,
+          headers: parsedContent
+        };
+        activeAgendaShares.value = agendaShares.value
+          .filter(s => idsMatch(s.Agenda_ID, agenda.Agenda_ID))
+          .map(s => s.User_ID);
+          
+        showAgendaModal.value = true;
+      };
+
+      const closeAgendaModal = () => {
+        showAgendaModal.value = false;
+        activeAgenda.value = null;
+      };
+
+      const saveAgenda = () => {
+        if (!activeAgenda.value) return;
+        savingAgenda.value = true;
+        
+        const contentStr = JSON.stringify(activeAgenda.value.headers);
+        
+        google.script.run
+          .withSuccessHandler((res) => {
+            savingAgenda.value = false;
+            const result = parseRunResponse(res);
+            if (result.success) {
+              const idx = agendas.value.findIndex(a => idsMatch(a.Agenda_ID, result.agenda.Agenda_ID));
+              if (idx >= 0) agendas.value.splice(idx, 1, result.agenda);
+              
+              agendaShares.value = agendaShares.value.filter(s => !idsMatch(s.Agenda_ID, result.agenda.Agenda_ID));
+              agendaShares.value.push(...result.shares);
+              closeAgendaModal();
+            }
+          })
+          .updateAgenda(activeAgenda.value.Agenda_ID, activeAgenda.value.Title, contentStr, activeAgendaShares.value);
+      };
+
+      const deleteAgenda = (id) => {
+        if (!confirm("Are you sure you want to delete this agenda?")) return;
+        google.script.run
+          .withSuccessHandler(() => {
+            agendas.value = agendas.value.filter(a => !idsMatch(a.Agenda_ID, id));
+            if (activeAgenda.value && idsMatch(activeAgenda.value.Agenda_ID, id)) closeAgendaModal();
+          })
+          .deleteAgenda(id);
+      };
+
+      const addAgendaHeader = () => {
+        const title = prompt("Enter header title:");
+        if (title) activeAgenda.value.headers.push({ id: Date.now().toString(), title, items: [] });
+      };
+
+      const addAgendaTextItem = (headerIndex) => {
+        activeAgenda.value.headers[headerIndex].items.push({ id: Date.now().toString(), type: 'text', content: '' });
+      };
+
+      const addAgendaTaskItem = (headerIndex, taskId) => {
+        if (!taskId) return;
+        activeAgenda.value.headers[headerIndex].items.push({ id: Date.now().toString(), type: 'task', taskId });
+      };
+
+      const removeAgendaItem = (headerIndex, itemIndex) => {
+        activeAgenda.value.headers[headerIndex].items.splice(itemIndex, 1);
+      };
+      
+      const toggleAgendaShare = (userId) => {
+        const idx = activeAgendaShares.value.indexOf(userId);
+        if (idx > -1) activeAgendaShares.value.splice(idx, 1);
+        else activeAgendaShares.value.push(userId);
+      };
+
       onMounted(() => {
         applyFontScale(settingsForm.value.fontScale);
         loadSettings();
@@ -2589,7 +2705,24 @@
         removeExistingSubtask,
         onProjectChange,
         onTaskChange,
-        onExistingSubtaskChange
+        onExistingSubtaskChange,
+        agendas,
+        myAgendas,
+        sharedAgendas,
+        showAgendaModal,
+        activeAgenda,
+        activeAgendaShares,
+        savingAgenda,
+        openNewAgenda,
+        openAgendaModal,
+        closeAgendaModal,
+        saveAgenda,
+        deleteAgenda,
+        addAgendaHeader,
+        addAgendaTextItem,
+        addAgendaTaskItem,
+        removeAgendaItem,
+        toggleAgendaShare
       };
     }
   });
