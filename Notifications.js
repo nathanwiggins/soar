@@ -268,3 +268,35 @@ function sendWeeklyDigestNotifications() {
 
   return sentCount;
 }
+
+function sendAgendaShareNotifications(agenda, sharedUserIds, sharedByUserId) {
+  if (!agenda || !Array.isArray(sharedUserIds) || sharedUserIds.length === 0) return;
+
+  const usersById = getUsersById();
+  const sharedBy = usersById[(sharedByUserId || '').toString().trim()];
+  const sharedByName = sharedBy && sharedBy.Name ? sharedBy.Name : 'A teammate';
+  const agendaTitle = (agenda.Title || '').toString().trim() || 'Untitled agenda';
+  const subject = `New agenda shared with you: ${agendaTitle}`;
+  const appUrl = ScriptApp.getService().getUrl();
+
+  const sentEmails = new Set();
+  const normalizedSharedByUserId = (sharedByUserId || '').toString().trim();
+  
+  sharedUserIds.forEach((userId) => {
+    const normalizedUserId = (userId || '').toString().trim();
+    if (normalizedUserId && normalizedUserId === normalizedSharedByUserId) return;
+
+    const user = usersById[normalizedUserId];
+    const email = normalizeEmail(user && user.Email);
+    if (!email || sentEmails.has(email)) return;
+    
+    // Check if the user has opted out of this specific notification
+    if (!isNotificationEnabledForUser(user, 'agendaShares')) return;
+
+    const recipientName = user && user.Name ? user.Name : 'there';
+    const body = `Hi ${recipientName},\n\n${sharedByName} shared a meeting agenda with you.\n\nAgenda: ${agendaTitle}\n\nYou can access your project hub to view it here:\n${appUrl}\n`;
+
+    sentEmails.add(email);
+    safeSendEmail(email, subject, body);
+  });
+}
