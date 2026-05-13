@@ -612,3 +612,66 @@ function completeTask(taskId) {
     });
   }
 }
+
+function updateTaskProjectAndOrder(taskId, newProjectId, orderedTaskIdsInProject) {
+  const normalizedTaskId = taskId ? taskId.toString().trim() : '';
+  const normalizedProjectId = newProjectId ? newProjectId.toString().trim() : '';
+  if (!normalizedTaskId || !normalizedProjectId) return JSON.stringify({ success: false, error: 'IDs missing.' });
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Tasks');
+  if (!sheet) return JSON.stringify({ success: false, error: 'Tasks sheet not found.' });
+
+  try {
+    const data = sheet.getDataRange().getValues();
+    if (data.length <= 1) return JSON.stringify({ success: true });
+
+    const headers = data[0];
+    const idCol = headers.indexOf('Task_ID');
+    const projCol = headers.indexOf('Project_ID');
+    const bodyRows = data.slice(1);
+    
+    const taskRowIndex = bodyRows.findIndex(row => (row[idCol] || '').toString().trim() === normalizedTaskId);
+    if (taskRowIndex >= 0) bodyRows[taskRowIndex][projCol] = normalizedProjectId;
+
+    const projectRows = [];
+    const originalIndices = [];
+    bodyRows.forEach((row, i) => {
+       if ((row[projCol] || '').toString().trim() === normalizedProjectId) {
+           projectRows.push(row);
+           originalIndices.push(i);
+       }
+    });
+
+    const rowsById = {};
+    projectRows.forEach(row => rowsById[(row[idCol] || '').toString().trim()] = row);
+    
+    const reorderedProjectRows = [];
+    const seenIds = new Set();
+    
+    if (Array.isArray(orderedTaskIdsInProject)) {
+      orderedTaskIdsInProject.forEach(id => {
+          const normId = (id || '').toString().trim();
+          if (rowsById[normId]) {
+              reorderedProjectRows.push(rowsById[normId]);
+              seenIds.add(normId);
+          }
+      });
+    }
+
+    projectRows.forEach(row => {
+        const id = (row[idCol] || '').toString().trim();
+        if (!seenIds.has(id)) reorderedProjectRows.push(row);
+    });
+
+    originalIndices.forEach((origIndex, i) => {
+       bodyRows[origIndex] = reorderedProjectRows[i];
+    });
+
+    sheet.getRange(2, 1, bodyRows.length, headers.length).setValues(bodyRows);
+    invalidateTableCache('Tasks');
+    
+    return JSON.stringify({ success: true });
+  } catch (error) {
+    return JSON.stringify({ success: false, error: error.message });
+  }
+}
