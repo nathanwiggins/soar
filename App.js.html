@@ -844,6 +844,7 @@
       const getAssigneesForTask = (taskId) => userStats.value.assigneesByTaskId.get(normalizeId(taskId)) || [];
 
       const getProjectById = (projectId) => projects.value.find((p) => idsMatch(p.Project_ID, projectId)) || null;
+      const getTaskById = (taskId) => tasks.value.find((t) => idsMatch(t.Task_ID, taskId)) || null;
       const getUserById = (userId) => userStats.value.usersById.get(normalizeId(userId)) || null;
 
       function parseAsLocalDate(dateValue) {
@@ -2605,6 +2606,7 @@
         getSupervisorTasksForProject,
         getAssigneesForTask,
         getProjectById,
+        getTaskById,
         idsMatch,
         statusColor,
         statusDropdownColor,
