@@ -518,11 +518,11 @@
         }
       };
 
-      const makeLogoTransparent = () => {
-        const logo = document.querySelector('.soar-logo');
+      const makeImageTransparent = (selector, cacheKey) => {
+        const logo = document.querySelector(selector);
         if (!logo) return;
 
-        const cachedLogo = readSessionStorage(LOGO_CACHE_KEY);
+        const cachedLogo = readSessionStorage(cacheKey);
         if (cachedLogo) {
           logo.src = cachedLogo;
           return;
@@ -601,9 +601,9 @@
             ctx.putImageData(imageData, 0, 0);
             const processedLogo = canvas.toDataURL('image/png');
             logo.src = processedLogo;
-            writeSessionStorage(LOGO_CACHE_KEY, processedLogo);
+            writeSessionStorage(cacheKey, processedLogo);
           } catch (error) {
-            console.warn('Unable to process logo transparency:', error);
+            console.warn(`Unable to process transparency for ${selector}:`, error);
           }
         };
 
@@ -2748,7 +2748,8 @@
         applyFontScale(settingsForm.value.fontScale);
         loadSettings();
         fetchData();
-        makeLogoTransparent();
+        makeImageTransparent('.soar-logo', LOGO_CACHE_KEY);
+        makeImageTransparent('.chat-logo', 'soar_chat_logo_v1');
       });
 
       return {
