@@ -3,7 +3,8 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
   taskAssignments: true,
   commentsAndMentions: true,
   dueDateReminders: true,
-  weeklyDigest: false
+  weeklyDigest: false,
+  agendaShares: true
 };
 function getDefaultNotificationSettings() {
   return Object.assign({}, DEFAULT_NOTIFICATION_SETTINGS);

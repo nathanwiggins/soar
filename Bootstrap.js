@@ -33,6 +33,8 @@ function getInitialPayload() {
     tasks: getTableData('Tasks'),
     subtasks: getTableData('Subtasks'),
     assignments: getTableData('Assignments'),
+    agendas: getTableData('Agendas'),
+    agendaShares: getTableData('Sharing'),
     comments: getTableData('Comments').map((comment) => {
       const normalized = {};
       Object.keys(comment).forEach((key) => {
