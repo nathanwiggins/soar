@@ -65,6 +65,7 @@
       const quickCommentTextarea = ref(null);
       const showAllWorkItems = ref(false);
       const currentTab = ref('project-board');
+      const kanbanScrollContainer = ref(null);
       const showSupervisorUserDropdown = ref(false);
       const selectedSupervisorUserIds = ref([]);
       const INITIAL_PAYLOAD_CACHE_KEY = 'soar_initial_payload_v4';
@@ -986,7 +987,8 @@
             return {
               dateKey,
               taskTitle: task?.Task_Title || project?.Project_Title || 'Untitled Task',
-              task
+              task,
+              project
             };
           })
           .filter(Boolean);
@@ -1116,6 +1118,15 @@
         const scheme = getProjectColorScheme(project);
         return {
           backgroundColor: isDarkMode.value ? scheme.darkLight : scheme.light,
+          borderColor: isDarkMode.value ? scheme.deep : scheme.border
+        };
+      };
+
+      const getProjectCalendarTaskStyle = (project) => {
+        const scheme = getProjectColorScheme(project);
+        return {
+          backgroundColor: isDarkMode.value ? scheme.darkLight : scheme.light,
+          color: isDarkMode.value ? '#f3f4f6' : scheme.deep,
           borderColor: isDarkMode.value ? scheme.deep : scheme.border
         };
       };
@@ -2363,6 +2374,68 @@
           });
       };
 
+
+      const isKanbanAutoScrollActive = ref(false);
+      let kanbanAutoScrollFrameId = null;
+      let latestPointerX = null;
+
+      const stopKanbanAutoScroll = () => {
+        isKanbanAutoScrollActive.value = false;
+        latestPointerX = null;
+        if (kanbanAutoScrollFrameId !== null) {
+          cancelAnimationFrame(kanbanAutoScrollFrameId);
+          kanbanAutoScrollFrameId = null;
+        }
+      };
+
+      const runKanbanAutoScroll = () => {
+        if (!isKanbanAutoScrollActive.value) {
+          kanbanAutoScrollFrameId = null;
+          return;
+        }
+
+        const container = kanbanScrollContainer.value;
+        if (!container || typeof latestPointerX !== 'number') {
+          kanbanAutoScrollFrameId = requestAnimationFrame(runKanbanAutoScroll);
+          return;
+        }
+
+        const rect = container.getBoundingClientRect();
+        const edgeThreshold = 120;
+        const maxStep = 24;
+        let delta = 0;
+
+        if (latestPointerX < rect.left + edgeThreshold) {
+          const intensity = Math.min(1, (rect.left + edgeThreshold - latestPointerX) / edgeThreshold);
+          delta = -Math.max(1, Math.round(maxStep * intensity));
+        } else if (latestPointerX > rect.right - edgeThreshold) {
+          const intensity = Math.min(1, (latestPointerX - (rect.right - edgeThreshold)) / edgeThreshold);
+          delta = Math.max(1, Math.round(maxStep * intensity));
+        }
+
+        if (delta !== 0) container.scrollLeft += delta;
+        kanbanAutoScrollFrameId = requestAnimationFrame(runKanbanAutoScroll);
+      };
+
+      const handleKanbanDragPointerMove = (event) => {
+        if (!isKanbanAutoScrollActive.value) return;
+        latestPointerX = event.clientX;
+      };
+
+      const startKanbanAutoScroll = () => {
+        if (isKanbanAutoScrollActive.value) return;
+        isKanbanAutoScrollActive.value = true;
+        document.addEventListener('dragover', handleKanbanDragPointerMove);
+        document.addEventListener('pointermove', handleKanbanDragPointerMove);
+        runKanbanAutoScroll();
+      };
+
+      const endKanbanAutoScroll = () => {
+        document.removeEventListener('dragover', handleKanbanDragPointerMove);
+        document.removeEventListener('pointermove', handleKanbanDragPointerMove);
+        stopKanbanAutoScroll();
+      };
+
       const onProjectChange = (evt) => {
         if (evt.moved) {
           const element = evt.moved.element;
@@ -2580,6 +2653,7 @@
         loading,
         isDarkMode,
         currentTab,
+        kanbanScrollContainer,
         isUserMenuOpen,
         showCreateAccountModal,
         createAccountForm,
@@ -2686,6 +2760,7 @@
         getPriorityTitle,
         getProjectDotStyle,
         getProjectTaskCardStyle,
+        getProjectCalendarTaskStyle,
         normalizePriority,
         priorityOptions,
         openTaskInfo,
@@ -2760,6 +2835,8 @@
         removeExistingSubtask,
         onProjectChange,
         onTaskChange,
+        startKanbanAutoScroll,
+        endKanbanAutoScroll,
         onExistingSubtaskChange,
         agendas,
         myAgendas,
