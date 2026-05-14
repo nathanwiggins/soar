@@ -34,6 +34,14 @@
         }
       });
 
+      const isChatOpen = ref(false);
+      const isChatLoading = ref(false);
+      const chatInput = ref('');
+      const chatMessages = ref([
+        { role: 'assistant', content: 'Hi there! I am your SOAR AI Assistant. How can I help you use SOAR today?' }
+      ]);
+      const chatScrollContainer = ref(null);
+
       const users = ref([]);
       const projects = ref([]);
       const tasks = ref([]);
@@ -2681,6 +2689,51 @@
         }
       };
 
+      const toggleChat = () => {
+        isChatOpen.value = !isChatOpen.value;
+        if (isChatOpen.value) {
+          scrollToChatBottom();
+        }
+      };
+
+      const scrollToChatBottom = () => {
+        nextTick(() => {
+          if (chatScrollContainer.value) {
+            chatScrollContainer.value.scrollTop = chatScrollContainer.value.scrollHeight;
+          }
+        });
+      };
+
+      const sendChatMessage = () => {
+        const text = chatInput.value.trim();
+        if (!text || isChatLoading.value) return;
+
+        // Add user message
+        chatMessages.value.push({ role: 'user', content: text });
+        chatInput.value = '';
+        isChatLoading.value = true;
+        scrollToChatBottom();
+
+        google.script.run
+          .withSuccessHandler((response) => {
+            isChatLoading.value = false;
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            
+            if (result && result.success) {
+              chatMessages.value.push({ role: 'assistant', content: result.text });
+            } else {
+              chatMessages.value.push({ role: 'assistant', content: `Error: ${result?.error || 'Could not connect to AI.'}` });
+            }
+            scrollToChatBottom();
+          })
+          .withFailureHandler((error) => {
+            isChatLoading.value = false;
+            chatMessages.value.push({ role: 'assistant', content: 'Network error connecting to the assistant.' });
+            scrollToChatBottom();
+          })
+          .askGeminiAssistant(chatMessages.value.slice(-10)); // send last 10 messages for context
+      };
+
       onMounted(() => {
         applyFontScale(settingsForm.value.fontScale);
         loadSettings();
@@ -2904,7 +2957,14 @@
         closeAgendaShareDropdown,
         addAgendaShare,
         removeAgendaShare,
-        handleAgendaShareKeyDown
+        handleAgendaShareKeyDown,
+        isChatOpen,
+        isChatLoading,
+        chatInput,
+        chatMessages,
+        chatScrollContainer,
+        toggleChat,
+        sendChatMessage
       };
     }
   });
