@@ -994,9 +994,35 @@
           .filter(Boolean);
       });
 
+      const calendarProjectEntries = computed(() => {
+        return visibleProjects.value
+          .filter((project) => project?.Due_Date)
+          .map((project) => {
+            const dateKey = toCalendarDateKey(project.Due_Date);
+            if (!dateKey) return null;
+
+            return {
+              dateKey,
+              projectTitle: project?.Project_Title || 'Untitled Project',
+              project
+            };
+          })
+          .filter(Boolean)
+          .sort((left, right) => left.projectTitle.localeCompare(right.projectTitle));
+      });
+
       const calendarTasksByDate = computed(() => {
         const byDate = new Map();
         calendarTaskEntries.value.forEach((entry) => {
+          if (!byDate.has(entry.dateKey)) byDate.set(entry.dateKey, []);
+          byDate.get(entry.dateKey).push(entry);
+        });
+        return byDate;
+      });
+
+      const calendarProjectsByDate = computed(() => {
+        const byDate = new Map();
+        calendarProjectEntries.value.forEach((entry) => {
           if (!byDate.has(entry.dateKey)) byDate.set(entry.dateKey, []);
           byDate.get(entry.dateKey).push(entry);
         });
@@ -1027,6 +1053,10 @@
           };
         });
       });
+
+      const getCalendarProjectEntries = (dateKey) => {
+        return calendarProjectsByDate.value.get(dateKey) || [];
+      };
 
       const getCalendarTaskEntries = (dateKey) => {
         return calendarTasksByDate.value.get(dateKey) || [];
@@ -1121,6 +1151,15 @@
           borderColor: isDarkMode.value ? scheme.deep : scheme.border
         };
       };
+
+      const getCalendarProjectDueStyle = (project) => {
+        const scheme = getProjectColorScheme(project);
+        return {
+          backgroundColor: isDarkMode.value ? scheme.darkLight : scheme.light,
+          borderColor: scheme.deep,
+          color: isDarkMode.value ? '#F9F1FB' : scheme.deep
+        }
+      }
 
       const getProjectCalendarTaskStyle = (project) => {
         const scheme = getProjectColorScheme(project);
@@ -2747,7 +2786,9 @@
         calendarMonthLabel,
         calendarWeekdays,
         calendarDays,
+        getCalendarProjectEntries,
         getCalendarTaskEntries,
+        getCalendarProjectDueStyle,
         goToPreviousCalendarMonth,
         goToNextCalendarMonth,
         goToCurrentCalendarMonth,
