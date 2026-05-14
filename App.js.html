@@ -1152,6 +1152,15 @@
         };
       };
 
+      const getCalendarProjectDueStyle = (project) => {
+        const scheme = getProjectColorScheme(project);
+        return {
+          backgroundColor: isDarkMode.value ? scheme.darkLight : scheme.light,
+          borderColor: scheme.deep,
+          color: isDarkMode.value ? '#F9F1FB' : scheme.deep
+        }
+      }
+
       const getProjectCalendarTaskStyle = (project) => {
         const scheme = getProjectColorScheme(project);
         return {
