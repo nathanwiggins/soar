@@ -7,6 +7,7 @@
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/vuedraggable@4.1.0/dist/vuedraggable.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
     .kanban-scroll::-webkit-scrollbar { height: 8px; }
@@ -1745,9 +1746,8 @@
               msg.role === 'user' 
                 ? 'bg-[#DB0000] text-white rounded-l-xl rounded-tr-xl' 
                 : (isDarkMode ? 'bg-gray-700 text-gray-100 rounded-r-xl rounded-tl-xl' : 'bg-white border border-gray-200 text-gray-800 rounded-r-xl rounded-tl-xl'),
-              'px-3 py-2 max-w-[85%] text-sm whitespace-pre-wrap shadow-sm'
-            ]">
-              {{ msg.content }}
+              'px-3 py-2 max-w-[85%] text-sm shadow-sm prose prose-sm max-w-none'
+            ]" v-html="renderMarkdown(msg.content)">
             </div>
           </div>
           

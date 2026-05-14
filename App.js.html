@@ -2704,15 +2704,21 @@
         });
       };
 
+      const renderMarkdown = (text) => {
+        if (!text) return '';
+        return typeof marked !== 'undefined' ? marked.parse(text) : text;
+      };
+
       const sendChatMessage = () => {
         const text = chatInput.value.trim();
         if (!text || isChatLoading.value) return;
 
-        // Add user message
         chatMessages.value.push({ role: 'user', content: text });
         chatInput.value = '';
         isChatLoading.value = true;
         scrollToChatBottom();
+
+        const context = `The user is currently viewing the '${currentTab.value}' tab. They currently have ${directReportUsers.value.length} direct reports (meaning they ${directReportUsers.value.length > 0 ? 'CAN' : 'CANNOT'} use Supervisor Tools).`;
 
         google.script.run
           .withSuccessHandler((response) => {
@@ -2721,6 +2727,10 @@
             
             if (result && result.success) {
               chatMessages.value.push({ role: 'assistant', content: result.text });
+              
+              if (result.debugPayload) {
+                console.log('=== DEBUG: Last API Payload ===', result.debugPayload);
+              }
             } else {
               chatMessages.value.push({ role: 'assistant', content: `Error: ${result?.error || 'Could not connect to AI.'}` });
             }
@@ -2731,7 +2741,7 @@
             chatMessages.value.push({ role: 'assistant', content: 'Network error connecting to the assistant.' });
             scrollToChatBottom();
           })
-          .askGeminiAssistant(chatMessages.value.slice(-10)); // send last 10 messages for context
+          .askGeminiAssistant(chatMessages.value.slice(-10), context);
       };
 
       onMounted(() => {
@@ -2964,7 +2974,8 @@
         chatMessages,
         chatScrollContainer,
         toggleChat,
-        sendChatMessage
+        sendChatMessage,
+        renderMarkdown
       };
     }
   });
