@@ -65,6 +65,7 @@
       const quickCommentTextarea = ref(null);
       const showAllWorkItems = ref(false);
       const currentTab = ref('project-board');
+      const isSidebarVisible = ref(true);
       const kanbanScrollContainer = ref(null);
       const showSupervisorUserDropdown = ref(false);
       const selectedSupervisorUserIds = ref([]);
@@ -112,12 +113,18 @@
       };
       const defaultProjectColorScheme = 'red';
       const projectColorSchemes = {
-        red: { label: 'Red', deep: '#DB0000', light: '#FEE2E2', darkLight: 'rgba(127, 29, 29, 0.28)', border: '#FECACA' },
-        blue: { label: 'Blue', deep: '#1D4ED8', light: '#DBEAFE', darkLight: 'rgba(30, 64, 175, 0.28)', border: '#BFDBFE' },
-        green: { label: 'Green', deep: '#047857', light: '#D1FAE5', darkLight: 'rgba(6, 95, 70, 0.28)', border: '#A7F3D0' },
-        purple: { label: 'Purple', deep: '#6D28D9', light: '#EDE9FE', darkLight: 'rgba(91, 33, 182, 0.28)', border: '#DDD6FE' },
-        amber: { label: 'Amber', deep: '#B45309', light: '#FEF3C7', darkLight: 'rgba(146, 64, 14, 0.28)', border: '#FDE68A' },
-        teal: { label: 'Teal', deep: '#0F766E', light: '#CCFBF1', darkLight: 'rgba(17, 94, 89, 0.28)', border: '#99F6E4' }
+        red: { label: 'SUU Red', deep: '#C41230', light: '#FEE2E2', darkLight: 'rgba(127, 29, 29, 0.28)', border: '#FECACA' },
+        sunsetOrange: { label: 'Sunset Orange', deep: '#F97316', light: '#FFEDD5', darkLight: 'rgba(194, 65, 12, 0.28)', border: '#FDBA74' },
+        amberGold: { label: 'Amber Gold', deep: '#F59E0B', light: '#FEF3C7', darkLight: 'rgba(180, 83, 9, 0.28)', border: '#FDE68A' },
+        limeGreen: { label: 'Lime Green', deep: '#84CC16', light: '#ECFCCB', darkLight: 'rgba(77, 124, 15, 0.28)', border: '#BEF264' },
+        emeraldGreen: { label: 'Emerald Green', deep: '#10B981', light: '#D1FAE5', darkLight: 'rgba(6, 95, 70, 0.28)', border: '#6EE7B7' },
+        teal: { label: 'Teal', deep: '#14B8A6', light: '#CCFBF1', darkLight: 'rgba(15, 118, 110, 0.28)', border: '#99F6E4' },
+        skyBlue: { label: 'Sky Blue', deep: '#0EA5E9', light: '#E0F2FE', darkLight: 'rgba(3, 105, 161, 0.28)', border: '#7DD3FC' },
+        royalBlue: { label: 'Royal Blue', deep: '#2563EB', light: '#DBEAFE', darkLight: 'rgba(29, 78, 216, 0.28)', border: '#93C5FD' },
+        indigo: { label: 'Indigo', deep: '#4F46E5', light: '#E0E7FF', darkLight: 'rgba(67, 56, 202, 0.28)', border: '#A5B4FC' },
+        violet: { label: 'Violet', deep: '#7C3AED', light: '#EDE9FE', darkLight: 'rgba(109, 40, 217, 0.28)', border: '#C4B5FD' },
+        pinkRose: { label: 'Pink Rose', deep: '#EC4899', light: '#FCE7F3', darkLight: 'rgba(190, 24, 93, 0.28)', border: '#F9A8D4' },
+        slateGray: { label: 'Slate Gray', deep: '#64748B', light: '#F1F5F9', darkLight: 'rgba(71, 85, 105, 0.28)', border: '#CBD5E1' }
       };
       const projectColorSchemeOptions = Object.entries(projectColorSchemes).map(([value, scheme]) => ({
         value,
@@ -2692,6 +2699,7 @@
         loading,
         isDarkMode,
         currentTab,
+        isSidebarVisible,
         kanbanScrollContainer,
         isUserMenuOpen,
         showCreateAccountModal,
