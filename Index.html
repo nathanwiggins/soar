@@ -1728,7 +1728,7 @@
     <div class="fixed bottom-6 right-6 z-50 flex flex-col items-end">
       <div v-if="isChatOpen" 
            :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'" 
-           class="w-80 h-96 rounded-2xl shadow-2xl border mb-4 flex flex-col overflow-hidden transition-colors">
+           class="w-[400px] h-[500px] rounded-2xl shadow-2xl border mb-4 flex flex-col overflow-hidden transition-colors">
         
         <div class="bg-[#DB0000] text-white px-4 py-3 flex justify-between items-center shrink-0">
           <div class="font-semibold flex items-center gap-2">
@@ -1771,6 +1771,9 @@
               <i class="fa-solid fa-paper-plane text-xs"></i>
             </button>
           </form>
+          <div :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'" class="text-[10px] text-center mt-2 px-1 leading-tight">
+            <i class="fa-solid fa-shield-halved mr-1"></i> Messages are processed by Gemini API and data from this chat may be used to train Google's AI models. This chat is intended solely for assistance with using SOAR. The SOAR Assistant cannot see your personal data in this app. Do NOT share private or sensitive information in this chat.
+          </div>
         </div>
       </div>
 
