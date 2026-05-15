@@ -1412,22 +1412,24 @@
                 :key="`task-details-assignee-row-${assignee.User_ID}`"
                 :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'"
                 class="rounded-lg border px-3 py-2 flex items-center gap-3">
-<div
-  :class="isDarkMode ? 'bg-gray-700 border-gray-900' : 'bg-gray-200 border-white'"
-  class="w-8 h-8 rounded-full border-2 overflow-hidden flex items-center justify-center text-xs font-bold">
+                
+                <div
+                  :class="isDarkMode ? 'bg-gray-700 border-gray-900' : 'bg-gray-200 border-white'"
+                  class="w-8 h-8 rounded-full border-2 overflow-hidden flex items-center justify-center text-xs font-bold">
+                  <img
+                    v-if="assignee?.Profile_Pic_Url"
+                    :src="assignee.Profile_Pic_Url"
+                    :alt="`${assignee?.Name || 'User'} profile image`"
+                    class="w-full h-full object-cover">
+                  <span v-else>{{ getInitials(assignee.Name) }}</span>
+                </div>
 
-  <img
-    v-if="assignee?.Profile_Pic_Url"
-    :src="assignee.Profile_Pic_Url"
-    :alt="`${assignee?.Name || 'User'} profile image`"
-    class="w-full h-full object-cover">
-
-  <span v-else>{{ getInitials(assignee.Name) }}</span>
-</div>                <div class="min-w-0">
+                <div class="min-w-0">
                   <p :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'" class="text-sm font-medium truncate">{{ assignee.Name }}</p>
                   <p :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-xs truncate">{{ assignee.Email }}</p>
                 </div>
               </div>
+
               <p
                 v-if="taskDetailsAssigneeUsers.length === 0"
                 :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'"
