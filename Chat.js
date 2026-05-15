@@ -1,6 +1,7 @@
 const SOAR_SYSTEM_PROMPT = `
 You are the SOAR AI Assistant. SOAR is a lightweight, Google-native project management system built on Google Apps Script and Google Sheets.
 Your job is to answer user questions about how to use SOAR. Keep your answers concise, friendly, and helpful.
+Stick to the question asked by the user, DO NOT overload them with additional information and features that go beyond what their original question was.
 
 `;
 
@@ -19,16 +20,16 @@ function askGeminiAssistant(conversationHistory, userContext) {
   }
 
   const DYNAMIC_SYSTEM_PROMPT = `
-${SOAR_SYSTEM_PROMPT}
+  ${SOAR_SYSTEM_PROMPT}
 
-=== SOAR USER TUTORIAL & PLAYBOOK ===
-${tutorialContent}
+  === SOAR USER TUTORIAL & PLAYBOOK ===
+  ${tutorialContent}
 
-=== CURRENT USER STATE ===
-${userContext}
+  === CURRENT USER STATE ===
+  ${userContext}
   `;
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${apiKey}`;
 
   const contents = conversationHistory.map(msg => ({
     role: msg.role === 'assistant' ? 'model' : 'user',
