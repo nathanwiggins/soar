@@ -42,6 +42,39 @@
       ]);
       const chatScrollContainer = ref(null);
 
+      const chatOffsetX = ref(0);
+      const chatOffsetY = ref(0);
+      const isDraggingChat = ref(false);
+      let dragStartX = 0;
+      let dragStartY = 0;
+      let initialOffsetX = 0;
+      let initialOffsetY = 0;
+
+      const startChatDrag = (event) => {
+        isDraggingChat.value = true;
+        dragStartX = event.clientX;
+        dragStartY = event.clientY;
+        initialOffsetX = chatOffsetX.value;
+        initialOffsetY = chatOffsetY.value;
+        
+        document.addEventListener('pointermove', onChatDrag);
+        document.addEventListener('pointerup', stopChatDrag);
+        document.body.style.userSelect = 'none';
+      };
+
+      const onChatDrag = (event) => {
+        if (!isDraggingChat.value) return;
+        chatOffsetX.value = initialOffsetX + (event.clientX - dragStartX);
+        chatOffsetY.value = initialOffsetY + (event.clientY - dragStartY);
+      };
+
+      const stopChatDrag = () => {
+        isDraggingChat.value = false;
+        document.removeEventListener('pointermove', onChatDrag);
+        document.removeEventListener('pointerup', stopChatDrag);
+        document.body.style.userSelect = ''; // Restore text highlighting
+      };
+
       const users = ref([]);
       const projects = ref([]);
       const tasks = ref([]);
@@ -2976,7 +3009,11 @@
         chatScrollContainer,
         toggleChat,
         sendChatMessage,
-        renderMarkdown
+        renderMarkdown,
+        chatOffsetX,
+        chatOffsetY,
+        isDraggingChat,
+        startChatDrag
       };
     }
   });
