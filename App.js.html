@@ -34,6 +34,14 @@
         }
       });
 
+      const isChatOpen = ref(false);
+      const isChatLoading = ref(false);
+      const chatInput = ref('');
+      const chatMessages = ref([
+        { role: 'assistant', content: 'Hi there! I am your SOAR AI Assistant. How can I help you use SOAR today?' }
+      ]);
+      const chatScrollContainer = ref(null);
+
       const users = ref([]);
       const projects = ref([]);
       const tasks = ref([]);
@@ -510,11 +518,11 @@
         }
       };
 
-      const makeLogoTransparent = () => {
-        const logo = document.querySelector('.soar-logo');
+      const makeImageTransparent = (selector, cacheKey) => {
+        const logo = document.querySelector(selector);
         if (!logo) return;
 
-        const cachedLogo = readSessionStorage(LOGO_CACHE_KEY);
+        const cachedLogo = readSessionStorage(cacheKey);
         if (cachedLogo) {
           logo.src = cachedLogo;
           return;
@@ -593,9 +601,9 @@
             ctx.putImageData(imageData, 0, 0);
             const processedLogo = canvas.toDataURL('image/png');
             logo.src = processedLogo;
-            writeSessionStorage(LOGO_CACHE_KEY, processedLogo);
+            writeSessionStorage(cacheKey, processedLogo);
           } catch (error) {
-            console.warn('Unable to process logo transparency:', error);
+            console.warn(`Unable to process transparency for ${selector}:`, error);
           }
         };
 
@@ -2681,11 +2689,67 @@
         }
       };
 
+      const toggleChat = () => {
+        isChatOpen.value = !isChatOpen.value;
+        if (isChatOpen.value) {
+          scrollToChatBottom();
+        }
+      };
+
+      const scrollToChatBottom = () => {
+        nextTick(() => {
+          if (chatScrollContainer.value) {
+            chatScrollContainer.value.scrollTop = chatScrollContainer.value.scrollHeight;
+          }
+        });
+      };
+
+      const renderMarkdown = (text) => {
+        if (!text) return '';
+        return typeof marked !== 'undefined' ? marked.parse(text) : text;
+      };
+
+      const sendChatMessage = () => {
+        const text = chatInput.value.trim();
+        if (!text || isChatLoading.value) return;
+
+        chatMessages.value.push({ role: 'user', content: text });
+        chatInput.value = '';
+        isChatLoading.value = true;
+        scrollToChatBottom();
+
+        const context = `The user is currently viewing the '${currentTab.value}' tab. They currently have ${directReportUsers.value.length} direct reports (meaning they ${directReportUsers.value.length > 0 ? 'CAN' : 'CANNOT'} use Supervisor Tools).`;
+
+        google.script.run
+          .withSuccessHandler((response) => {
+            isChatLoading.value = false;
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            
+            if (result && result.success) {
+              chatMessages.value.push({ role: 'assistant', content: result.text });
+              
+              if (result.debugPayload) {
+                console.log('=== DEBUG: Last API Payload ===', result.debugPayload);
+              }
+            } else {
+              chatMessages.value.push({ role: 'assistant', content: `Error: ${result?.error || 'Could not connect to AI.'}` });
+            }
+            scrollToChatBottom();
+          })
+          .withFailureHandler((error) => {
+            isChatLoading.value = false;
+            chatMessages.value.push({ role: 'assistant', content: 'Network error connecting to the assistant.' });
+            scrollToChatBottom();
+          })
+          .askGeminiAssistant(chatMessages.value.slice(-10), context);
+      };
+
       onMounted(() => {
         applyFontScale(settingsForm.value.fontScale);
         loadSettings();
         fetchData();
-        makeLogoTransparent();
+        makeImageTransparent('.soar-logo', LOGO_CACHE_KEY);
+        makeImageTransparent('.chat-logo', 'soar_chat_logo_v1');
       });
 
       return {
@@ -2904,7 +2968,15 @@
         closeAgendaShareDropdown,
         addAgendaShare,
         removeAgendaShare,
-        handleAgendaShareKeyDown
+        handleAgendaShareKeyDown,
+        isChatOpen,
+        isChatLoading,
+        chatInput,
+        chatMessages,
+        chatScrollContainer,
+        toggleChat,
+        sendChatMessage,
+        renderMarkdown
       };
     }
   });
