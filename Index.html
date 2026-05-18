@@ -540,19 +540,27 @@
       <template #item="{ element: project }">
         <div class="w-80 flex-shrink-0 flex flex-col max-h-full">
           
-          <div class="flex items-center justify-between mb-4 px-1 project-drag-handle cursor-grab active:cursor-grabbing">
-            <h3 :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="font-bold text-sm uppercase tracking-wide flex items-center">
-              <span class="w-2 h-2 rounded-full mr-2" :style="getProjectDotStyle(project)"></span>
-              <button
-                type="button"
-                :class="isDarkMode ? 'hover:text-red-300' : 'hover:text-[#DB0000]'"
-                class="transition-colors text-left"
-                @click.stop="openProjectInfo(project)">
-                {{ project.Project_Title }}
-                <span v-if="project._syncing" class="ml-2 normal-case text-amber-500 text-[10px]">Syncing...</span>
-              </button>
-            </h3>
-            <span :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'" class="text-xs font-medium">{{ currentTab === 'supervisor-view' ? getSupervisorTasksForProject(project.Project_ID).length : getTasksForProject(project.Project_ID).length }}</span>
+          <div class="flex items-start justify-between mb-4 px-1 project-drag-handle cursor-grab active:cursor-grabbing">
+            <div class="flex flex-col gap-1 min-w-0">
+              <h3 :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="font-bold text-sm uppercase tracking-wide flex items-center">
+                <span class="w-2 h-2 rounded-full mr-2 flex-shrink-0" :style="getProjectDotStyle(project)"></span>
+                <button
+                  type="button"
+                  :class="isDarkMode ? 'hover:text-red-300' : 'hover:text-[#DB0000]'"
+                  class="transition-colors text-left"
+                  @click.stop="openProjectInfo(project)">
+                  {{ project.Project_Title }}
+                  <span v-if="project._syncing" class="ml-2 normal-case text-amber-500 text-[10px]">Syncing...</span>
+                </button>
+              </h3>
+              <span
+                v-if="project.Due_Date"
+                class="text-xs font-medium ml-4"
+                :class="getProjectDueDateClass(project)">
+                <i class="fa-regular fa-clock mr-1"></i>Due {{ formatDate(project.Due_Date) }}
+              </span>
+            </div>
+            <span :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'" class="text-xs font-medium flex-shrink-0 mt-0.5">{{ currentTab === 'supervisor-view' ? getSupervisorTasksForProject(project.Project_ID).length : getTasksForProject(project.Project_ID).length }}</span>
           </div>
 
 <div class="flex-1 overflow-y-auto space-y-3 pb-4">
@@ -647,9 +655,7 @@
                       <span
                         v-if="task.Due_Date"
                         :class="[
-                          isTaskDueTomorrowAndOpen(task)
-                            ? (isDarkMode ? 'text-red-400' : 'text-red-600')
-                            : (isDarkMode ? 'text-gray-400' : 'text-gray-500'),
+                          getTaskDueDateClass(task),
                           shouldStrikeTask(task) ? 'line-through opacity-70' : ''
                         ]"
                         class="text-xs font-medium"
