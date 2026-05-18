@@ -155,18 +155,17 @@
       const buildProjectColorScheme = (label, deep, light, darkLight, border) => ({ label, deep, light, darkLight, border });
       const defaultProjectColorScheme = 'suu_red';
       const projectColorSchemes = {
-        suu_red: buildProjectColorScheme('SUU Red', '#DB0000', '#FEE2E2', 'rgba(127, 29, 29, 0.28)', '#FECACA'),
+        suu_red: buildProjectColorScheme('SUU Red (Default)', '#DB0000', '#FEE2E2', 'rgba(127, 29, 29, 0.28)', '#FECACA'),
         sunset_orange: buildProjectColorScheme('Sunset Orange', '#F97316', '#FFEDD5', 'rgba(124, 45, 18, 0.28)', '#FED7AA'),
         amber_gold: buildProjectColorScheme('Amber Gold', '#F59E0B', '#FEF3C7', 'rgba(146, 64, 14, 0.28)', '#FDE68A'),
-        lime_green: buildProjectColorScheme('Lime Green', '#84CC16', '#ECFCCB', 'rgba(63, 98, 18, 0.28)', '#D9F99D'),
         emerald_green: buildProjectColorScheme('Emerald Green', '#10B981', '#D1FAE5', 'rgba(6, 95, 70, 0.28)', '#A7F3D0'),
-        teal: buildProjectColorScheme('Teal', '#14B8A6', '#CCFBF1', 'rgba(15, 118, 110, 0.28)', '#99F6E4'),
+        ocean_teal: buildProjectColorScheme('Ocean Teal', '#14B8A6', '#CCFBF1', 'rgba(15, 118, 110, 0.28)', '#99F6E4'),
         sky_blue: buildProjectColorScheme('Sky Blue', '#0EA5E9', '#E0F2FE', 'rgba(3, 105, 161, 0.28)', '#BAE6FD'),
-        royal_blue: buildProjectColorScheme('Royal Blue', '#2563EB', '#DBEAFE', 'rgba(30, 64, 175, 0.28)', '#BFDBFE'),
-        indigo: buildProjectColorScheme('Indigo', '#4F46E5', '#E0E7FF', 'rgba(67, 56, 202, 0.28)', '#C7D2FE'),
-        violet: buildProjectColorScheme('Violet', '#7C3AED', '#EDE9FE', 'rgba(91, 33, 182, 0.28)', '#DDD6FE'),
-        pink_rose: buildProjectColorScheme('Pink Rose', '#EC4899', '#FCE7F3', 'rgba(157, 23, 77, 0.28)', '#FBCFE8'),
-        slate_gray: buildProjectColorScheme('Slate Gray', '#64748B', '#F1F5F9', 'rgba(51, 65, 85, 0.28)', '#CBD5E1')
+        deep_indigo: buildProjectColorScheme('Deep Indigo', '#4F46E5', '#E0E7FF', 'rgba(67, 56, 202, 0.28)', '#C7D2FE'),
+        soft_violet: buildProjectColorScheme('Soft Violet', '#7C3AED', '#EDE9FE', 'rgba(91, 33, 182, 0.28)', '#DDD6FE'),
+        rose_pink: buildProjectColorScheme('Rose Pink', '#EC4899', '#FCE7F3', 'rgba(157, 23, 77, 0.28)', '#FBCFE8'),
+        slate_gray: buildProjectColorScheme('Slate Gray', '#475569', '#E2E8F0', 'rgba(51, 65, 85, 0.28)', '#94A3B8'),
+        pearl_white: buildProjectColorScheme('Pearl White', '#6B7280', '#FFFFFF', 'rgba(75, 85, 99, 0.28)', '#E5E7EB')
       };
       const projectColorSchemeOptions = Object.entries(projectColorSchemes).map(([value, scheme]) => ({
         value,
