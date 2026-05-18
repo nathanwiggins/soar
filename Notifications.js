@@ -118,6 +118,7 @@ ${formatTaskNotificationBody(details)}
     const manager = usersById[managerId];
     const email = normalizeEmail(manager && manager.Email);
     if (!email || sentEmails.has(email)) return;
+    if (!isNotificationEnabledForUser(manager, 'taskCompletion')) return;
     sentEmails.add(email);
     safeSendEmail(email, subject, body);
   });
