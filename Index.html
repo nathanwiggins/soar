@@ -625,6 +625,7 @@
                       title="Open comments">
                       <i class="fa-regular fa-comments"></i>
                       <span
+                        v-if="getCommentCountForTask(task.Task_ID) > 0"
                         :class="isDarkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'"
                         class="min-w-5 h-5 px-1 rounded-full text-[10px] font-semibold flex items-center justify-center">
                         {{ getCommentCountForTask(task.Task_ID) }}
