@@ -305,3 +305,57 @@ function reorderProjects(orderedProjectIds) {
     return JSON.stringify({ success: false, error: error.message });
   }
 }
+function updateProjectDueDate(projectId, dueDate) {
+  const normalizedProjectId = projectId ? projectId.toString().trim() : '';
+  if (!normalizedProjectId) {
+    return JSON.stringify({ success: false, error: 'Project ID is required.' });
+  }
+
+  const parsedDueDate = parseDateInput(dueDate);
+  if (!parsedDueDate || parsedDueDate.toString() === 'Invalid Date') {
+    return JSON.stringify({ success: false, error: 'A valid due date is required.' });
+  }
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Projects');
+  if (!sheet) {
+    return JSON.stringify({ success: false, error: 'Projects sheet was not found.' });
+  }
+
+  try {
+    const data = sheet.getDataRange().getValues();
+    if (data.length <= 1) throw new Error('Projects sheet has no data rows.');
+
+    const headers = data[0];
+    const headerIndex = headers.reduce((acc, header, index) => {
+      acc[header] = index;
+      return acc;
+    }, {});
+
+    if (headerIndex.Project_ID === undefined || headerIndex.Due_Date === undefined) {
+      throw new Error('Projects sheet is missing required columns.');
+    }
+
+    const rowIndex = data.findIndex((row, index) => index > 0 && row[headerIndex.Project_ID] === normalizedProjectId);
+    if (rowIndex < 0) throw new Error('Project not found.');
+
+    const updatedRow = data[rowIndex].slice();
+    updatedRow[headerIndex.Due_Date] = parsedDueDate;
+    updateRowValues(sheet, rowIndex + 1, updatedRow);
+    invalidateTableCache('Projects');
+
+    const updatedProject = {};
+    headers.forEach((header, index) => {
+      const value = updatedRow[index];
+      updatedProject[header] = header === 'Due_Date'
+        ? serializeDateOnlyForClient(value)
+        : (value instanceof Date ? value.toISOString() : value);
+    });
+
+    return JSON.stringify({ success: true, project: updatedProject });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: error && error.message ? error.message : 'Failed to update project due date.'
+    });
+  }
+}
