@@ -1,16 +1,25 @@
 function normalizeProjectColorSchemeValue(value) {
-  const validColorSchemes = ['red', 'blue', 'green', 'purple', 'amber', 'teal'];
-  const normalizedValue = value ? value.toString().trim().toLowerCase() : 'red';
-  return validColorSchemes.includes(normalizedValue) ? normalizedValue : 'red';
+  const validColorSchemes = ['suu_red', 'sunset_orange', 'amber_gold', 'lime_green', 'emerald_green', 'teal', 'sky_blue', 'royal_blue', 'indigo', 'violet', 'pink_rose', 'slate_gray'];
+  const normalizedValue = value ? value.toString().trim().toLowerCase() : 'suu_red';
+  return validColorSchemes.includes(normalizedValue) ? normalizedValue : 'suu_red';
 }
 function getProjectHeadersWithColorScheme(sheet) {
   const lastColumn = Math.max(sheet.getLastColumn(), 1);
   const headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
-  if (headers.indexOf('Color_Scheme') !== -1) return headers;
+  if (getProjectColorSchemeColumnIndex(headers) !== -1) return headers;
 
   const nextColumn = headers.length + 1;
   sheet.getRange(1, nextColumn).setValue('Color_Scheme');
   return headers.concat('Color_Scheme');
+}
+function getProjectColorSchemeColumnIndex(headers) {
+  if (!Array.isArray(headers)) return -1;
+  const supportedHeaders = ['Color_Scheme', 'ColorScheme', 'Color Scheme'];
+  for (let i = 0; i < supportedHeaders.length; i++) {
+    const columnIndex = headers.indexOf(supportedHeaders[i]);
+    if (columnIndex !== -1) return columnIndex;
+  }
+  return -1;
 }
 function getProjectById(projectId) {
   const normalizedProjectId = projectId ? projectId.toString().trim() : '';
@@ -57,7 +66,8 @@ function createProject(projectInput) {
     if (headerIndex.Created_Date !== undefined) newRow[headerIndex.Created_Date] = now;
     if (headerIndex.Due_Date !== undefined) newRow[headerIndex.Due_Date] = hasValidDueDate ? parsedDueDate : '';
     if (headerIndex.Creator_ID !== undefined) newRow[headerIndex.Creator_ID] = creatorId;
-    if (headerIndex.Color_Scheme !== undefined) newRow[headerIndex.Color_Scheme] = colorScheme;
+    const colorSchemeColumnIndex = getProjectColorSchemeColumnIndex(headers);
+    if (colorSchemeColumnIndex !== -1) newRow[colorSchemeColumnIndex] = colorScheme;
 
     appendRows(sheet, [newRow]);
     invalidateTableCache('Projects');
@@ -156,7 +166,8 @@ function updateProject(projectId, projectInput) {
     if (headerIndex.Description !== undefined) refreshedRow[headerIndex.Description] = description;
     if (headerIndex.Status !== undefined) refreshedRow[headerIndex.Status] = status;
     if (headerIndex.Due_Date !== undefined) refreshedRow[headerIndex.Due_Date] = hasValidDueDate ? parsedDueDate : '';
-    if (headerIndex.Color_Scheme !== undefined) refreshedRow[headerIndex.Color_Scheme] = colorScheme;
+    const colorSchemeColumnIndex = getProjectColorSchemeColumnIndex(headers);
+    if (colorSchemeColumnIndex !== -1) refreshedRow[colorSchemeColumnIndex] = colorScheme;
     updateRowValues(projectsSheet, projectRowIndex + 1, refreshedRow);
     invalidateTableCache('Projects');
 
