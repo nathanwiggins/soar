@@ -1,0 +1,468 @@
+# Soar — Project Management
+
+**Soar** is a lightweight project management system.
+
+**Perfect for**: Small to mid-sized teams who want project management without complex setup or external infrastructure.
+
+--
+
+## Quick Start
+
+- **Create a project**: On **Project Board**, click **New Project**, fill **Project Title**, optional **Due Date**, **Status**, **Color Scheme**, and optional **Description**, then click **Create Project**.
+- **Create a task**: Inside a project column, click **+ Add Task** (not “New Task”), fill the **Add Task** modal, select at least one user under **Assigned To**, then click **Create Task**.
+- **Update a task quickly**: Use the status pill/dropdown on a task card to choose `Not Started`, `Upcoming`, `Review`, `In Progress`, `Ongoing`, `On Hold`, `Cancelled`, or `Complete`.
+- **Open details**: Click a project title to open **Project Details**. Click a task card to open **Task Details**.
+- **Comment on tasks**: Click the speech-bubble icon on a task card to open **Comments**, type in **Write a comment...**, optionally use `@` mentions, then click **Post Comment**.
+- **Create an agenda**: Go to **Meeting Agendas**, click **New Agenda**, add headers/items/tasks, optionally click **Share**, then click **Save Agenda**.
+- **Customize**: Open the user menu at the lower-left, then use **Profile**, **Settings**, or **Dark Mode**.
+
+---
+
+## SOAR Tutorial
+
+### Main Layout
+
+SOAR has a left sidebar, a top header, a main work area, a lower-left user menu, and a lower-right chat bubble.
+
+#### Left sidebar tabs
+
+- **Project Board**: The default work board. Shows project columns and task cards.
+- **Supervisor Tools**: Only available to users who have direct reports. Shows selected direct reports' assigned work.
+- **Calendar**: Month view of project due dates and task due dates.
+- **Past Assignments**: Completed tasks assigned to the current user.
+- **Meeting Agendas**: Agenda cards under **My Agendas** and **Shared With Me**.
+
+#### Top header actions
+
+- On **Project Board**, the primary red button is **New Project**.
+- On **Meeting Agendas**, the primary red button is **New Agenda**.
+- On **Supervisor Tools**, the header has a team-member selector whose default text is **Select team members**.
+- On **Calendar**, the header has previous-month and next-month arrow buttons, a **Today** button, and the current month label.
+
+#### Lower-left user menu
+
+Click your name/avatar at the bottom of the sidebar to open:
+
+- **Profile**: Opens **My Profile**.
+- **Settings**: Opens **Settings**.
+- **Dark Mode**: Toggles dark mode. The menu displays `On` or `Off`.
+
+#### Lower-right SOAR Assistant
+
+- Click the red circular message button to open **SOAR Assistant**.
+- Type in the **Ask a question...** box and submit with the paper-plane button.
+- The assistant sends recent chat history and a small current-page context to `askGeminiAssistant()`.
+- The assistant needs Script Property `GEMINI_API_KEY`; otherwise, it responds with a configuration error.
+
+### Project Board: Everyday Task and Project Work
+
+The **Project Board** displays each visible project as a column. Within each column, task cards are sorted by priority and due date.
+
+#### Visibility on Project Board
+
+By default, a user sees:
+
+- projects directly assigned to them, and
+- projects containing open tasks assigned to them.
+
+Completed tasks are not shown on the main **Project Board** after they are complete; they appear in **Past Assignments** for assigned users. Project visibility can expand when the app's internal `showAllWorkItems` state is enabled, but there is no visible button in the current UI for end users to toggle that state.
+
+#### Project columns
+
+Each project column shows:
+
+- a colored dot using the project's **Color Scheme**;
+- the project title as a clickable button that opens **Project Details**;
+- the project due date (when set), color-coded: yellow if due within 7 days, orange if due within 1 day, red if overdue;
+- the number of visible tasks in that project;
+- draggable task cards;
+- a dashed **+ Add Task** button at the bottom.
+
+Projects can be reordered by dragging the project header area. The app saves the new order with `reorderProjects()`.
+
+#### Task cards
+
+Each task card shows:
+
+- status dropdown/pill with title **Update task status**;
+- speech-bubble comments button with the number of unresolved comments;
+- task title;
+- assignee avatars or initials;
+- priority icon/label when priority is set;
+- due date when set, color-coded: yellow if due within 7 days, orange if due within 1 day, red if overdue (gray for completed tasks).
+
+Task cards can be dragged between project columns. Dragging a task to another project changes its `Project_ID` and persists the task order with `updateTaskProjectAndOrder()`.
+
+### Creating a Project
+
+1. Go to **Project Board**.
+2. Click **New Project** in the top header.
+3. The **New Project** modal opens.
+4. Complete fields:
+   - **Project Title**: required; placeholder **Enter project title**.
+   - **Due Date**: optional date picker.
+   - **Status**: `Not Started`, `In Progress`, `Completed`, or `Delayed`.
+   - **Color Scheme**: `Red`, `Blue`, `Green`, `Purple`, `Amber`, or `Teal`.
+   - **Description**: optional; placeholder **Describe the project**.
+5. Click **Create Project**. To exit without saving, click **Cancel** or the **X** icon.
+
+What SOAR records:
+
+- `Project_ID` generated as `P-00000001`, etc.
+- `Project_Title`, `Description`, `Status`, `Created_Date`, `Due_Date`, `Creator_ID`, and `Color_Scheme`.
+- An assignment row assigning the project to the creator.
+
+### Editing or Deleting a Project
+
+1. On **Project Board**, click a project title.
+2. The **Project Details** modal opens.
+3. Click **Edit Project**.
+4. Edit fields:
+   - **Project Title**
+   - **Date Due**
+   - **Status**
+   - **Color Scheme**
+   - **Created By** (display-only)
+   - **Description**
+5. Click **Save Changes**.
+
+Other buttons:
+
+- **Delete Project**: Deletes the project row, tasks in that project, and assignment rows for those deleted tasks. It does not currently remove the project creator assignment row from `Assignments`.
+- **Cancel**: Cancels edit mode.
+- **Close**: Closes the modal when not editing.
+
+### Creating a Task
+
+1. On **Project Board**, find the target project column.
+2. Click **+ Add Task** at the bottom of that project column.
+3. The **Add Task** modal opens and shows `Project: {Project_Title}` below the heading.
+4. Complete fields:
+   - **Task Title**: required; placeholder **Enter task title**.
+   - **Due Date**: optional date picker.
+   - **Priority**: optional button selection: `High`, `Medium`, or `Low`.
+   - **Assigned To**: required by backend validation; opens a checkbox dropdown of assignable users.
+   - **Description**: optional; placeholder **Describe the task**.
+   - **Subtasks**: optional; type into **Type a subtask and press enter...** and press Enter or click **Add**.
+5. Click **Create Task**. To exit without saving, click **Cancel** or the **X** icon.
+
+Important behavior:
+
+- New tasks always start with status `Not Started`.
+- The current user may assign tasks only to themselves and users in their reporting tree (direct and indirect reports). Existing assignees can remain during edits even if they are outside the current assignable set.
+- At least one assignee is required when creating or updating a task.
+- Creating a task can send **Task assignments** notifications to selected assignees, depending on each recipient's settings.
+
+### Task Details: Editing, Completing, Deleting
+
+Click a task card to open **Task Details**.
+
+Controls and fields:
+
+- **Edit Task**: enables editing.
+- **Task Name**: task title.
+- **Description**
+- **Subtasks**: checkboxes, editable titles in edit mode, drag handles in edit mode, and delete controls.
+- **Task Status**: `Not Started`, `Upcoming`, `Review`, `In Progress`, `Ongoing`, `On Hold`, `Cancelled`, or `Complete`.
+- **Associated Project**: project dropdown available while editing.
+- **Priority**: dropdown with `None`, `High`, `Medium`, `Low`.
+- **Date Created**: display-only.
+- **Date Due**: editable date picker in edit mode.
+- **Completed By** and **Completed At**: populated when the task is completed.
+- **Assigned To**: assignee dropdown plus selected assignee rows.
+
+Footer buttons:
+
+- **Complete Task**: sets the task status to `Complete`, records `Completed_By`, and records `Completed_At`.
+- **Complete**: displayed in the same button position when the task is already complete.
+- **Delete Task**: deletes the task and related assignments.
+- **Save Changes**: saves edits.
+- **Cancel**: cancels edit mode.
+- **Close**: closes the modal when not editing.
+
+Completed-task behavior:
+
+- Completed tasks assigned to you appear in **Past Assignments**.
+- Completed tasks with due dates in the past can be purged by `purgeCompletedTasksPastDue()`.
+- Managers can receive task-completion notifications for work completed by reports.
+
+### Subtasks
+
+Subtasks belong to tasks and have their own IDs (`S-00000001`, etc.).
+
+In **Add Task**:
+
+- Use the **Subtasks** input with placeholder **Type a subtask and press enter...**.
+- Press Enter or click **Add** to stage a subtask before clicking **Create Task**.
+
+In **Task Details**:
+
+- Click **Edit Task** to edit subtask titles, add new subtasks, delete subtasks, or drag to reorder subtasks.
+- A subtask checkbox toggles status between `Incomplete` and `Complete`.
+
+### Comments and Mentions
+
+Comments are currently task comments. Despite legacy data-model support for `Topic_Type`, the active UI/backend flow validates comments against tasks and writes `Topic_Type = Task`.
+
+How to comment:
+
+1. On a task card, click the speech-bubble comments icon.
+2. The **Comments** modal opens.
+3. Type in **Write a comment...**.
+4. Type `@` to show mention suggestions. Suggestions use handles derived from each user's email local-part, or a sanitized display-name fallback.
+5. Click **Post Comment**.
+
+Comment controls:
+
+- **Resolve**: marks the comment resolved; resolved comments no longer appear in the active comments list.
+- **Delete**: permanently deletes the comment row.
+
+Mention behavior:
+
+- Mentions are recognized with handles like `@first.last` or `@jane`, not display names with spaces.
+- Mention notifications use the **Comments and mentions** notification preference.
+
+### Supervisor Tools
+
+**Supervisor Tools** is visible only if the current user has direct reports in the `Users` sheet (`Manager_ID` points to the current user's `User_ID`).
+
+How it works:
+
+1. Click **Supervisor Tools** in the sidebar.
+2. Use the header selector, default text **Select team members**.
+3. Check one or more direct reports.
+4. SOAR shows open tasks assigned to selected users and projects containing those tasks.
+
+Notes:
+
+- The selector lists direct reports, not the full indirect reporting tree.
+- The board itself can still show tasks in project columns, and the **+ Add Task** button remains visible.
+
+### Calendar
+
+The **Calendar** tab is a month view.
+
+Header controls:
+
+- left arrow: previous month;
+- **Today**: return to the current month;
+- month label: current displayed month and year;
+- right arrow: next month.
+
+Calendar entries:
+
+- Project due dates appear as **Project Due:** entries with a folder icon.
+- Task due dates appear as task-title entries.
+- Click a project-due entry to open **Project Details**.
+- Click a task entry to open **Task Details**.
+
+### Past Assignments
+
+The **Past Assignments** tab shows completed tasks assigned to the current user.
+
+- If there are none, SOAR displays **No past assignments yet.** and **Completed tasks will appear here automatically.**
+- Each completed task card shows task title, project title, a `Completed` badge, due date, and **Delete Permanently**.
+- Click a card to open **Task Details**.
+- Click **Delete Permanently** to delete the completed task and related assignments.
+
+### Meeting Agendas
+
+The **Meeting Agendas** tab has two sections:
+
+- **My Agendas**: agendas created by the current user.
+- **Shared With Me**: agendas shared with the current user.
+
+Creating an agenda:
+
+1. Go to **Meeting Agendas**.
+2. Click **New Agenda**.
+3. SOAR creates an agenda titled `Untitled Agenda` and opens the agenda editor.
+4. Edit the title in the title input at the top of the modal.
+5. Click **+ Add Header** to create a section.
+6. Inside a section:
+   - click **+ Text Item** to add a free-text agenda item;
+   - use **+ Link Task** dropdown to embed a task from a visible project;
+   - click **View Task** on a linked task to open **Task Details**.
+7. Drag agenda items to reorder them within sections.
+8. Click **Save Agenda**.
+
+Sharing an agenda:
+
+1. In the agenda editor, click **Share**.
+2. The **Share Agenda** pop-up opens.
+3. Use **Add people (Type name or email)...** to search users.
+4. Click a suggestion to add access.
+5. The creator appears as `{Name} (You)` and cannot be removed from their own agenda.
+6. Click the **X** beside a shared user to **Remove access**.
+7. Click **Save Agenda** to persist content and sharing changes.
+
+Sharing behavior:
+
+- Sharing rows are stored in the `Sharing` tab.
+- New shares can trigger **Agenda shares** email notifications.
+- Shared agendas appear in the recipient's **Shared With Me** section.
+
+### Profile, Settings, and Dark Mode
+
+#### My Profile
+
+Open the lower-left user menu and click **Profile**.
+
+- The modal title is **My Profile**.
+- It shows avatar/profile image, **Name**, and **Email**.
+- Click **Edit Profile** to edit the form.
+- Click **Save Changes** to persist the display name and refresh profile-photo URL if needed. The current backend does not update the login email even though the email input appears in the form.
+- Click **Cancel** while editing, or **Close** when not editing.
+
+#### Settings
+
+Open the lower-left user menu and click **Settings**.
+
+**Font Size** controls:
+
+- **Decrease** button reduces font scale by 5%.
+- Range slider supports 85% to 130% in 5% increments.
+- **Increase** button increases font scale by 5%.
+- Label shows the percent and a friendly label such as `Smaller`, `Default`, or `Larger`.
+
+**Notifications** toggles:
+
+- **Task assignments**
+- **Comments and mentions**
+- **Due-date reminders**
+- **Weekly digest**
+- **Agenda shares**
+
+Footer buttons:
+
+- **Cancel** closes without saving the modal state.
+- **Save Settings** persists notification and font-size settings.
+
+#### Dark Mode
+
+- Open the lower-left user menu.
+- Click **Dark Mode** to toggle between light and dark UI.
+- The current menu status displays `On` or `Off`.
+- Dark mode is a local UI state in the current browser session; user settings persistence is used for font size and notifications.
+
+---
+
+## Features
+
+### Project Management
+
+✅ **Create & Track Projects**
+- Required title plus optional description and due date.
+- Status options: `Not Started`, `In Progress`, `Completed`, `Delayed`.
+- Project color schemes: `red`, `blue`, `green`, `purple`, `amber`, `teal`.
+- Auto-populated creation date and creator tracking.
+- Project creator is automatically assigned to the project.
+- Project columns can be reordered on the board.
+
+✅ **Organize Work with Tasks**
+- Create tasks inside projects with the **+ Add Task** button.
+- Task status options: `Not Started`, `Upcoming`, `Review`, `In Progress`, `Ongoing`, `On Hold`, `Cancelled`, `Complete`.
+- New tasks always begin as `Not Started`.
+- Set optional priority: `High`, `Medium`, `Low`, or no priority.
+- Due date management with visual indicators and due-tomorrow emphasis.
+- Multiple assignees per task; at least one assignee is required by backend validation.
+- Task cards can be dragged between projects.
+- Auto-track completion timestamp and completing user when marked `Complete`.
+
+✅ **Subtasks**
+- Add subtasks while creating a task or later from **Task Details**.
+- Toggle each subtask between `Incomplete` and `Complete`.
+- Edit, delete, and reorder subtasks in task edit mode.
+
+### Meeting Agendas
+
+✅ **Dynamic Meeting Agendas**
+- Create agendas from **Meeting Agendas** with **New Agenda**.
+- Organize agenda content with headers.
+- Add free-text items with **+ Text Item**.
+- Embed linked task references with **+ Link Task**.
+- Open linked tasks using **View Task**.
+
+✅ **Secure Sharing**
+- Share agendas with specific SOAR users through **Share** → **Share Agenda**.
+- Recipients see agendas in **Shared With Me**.
+- Opt-in email notifications are sent when a new agenda is shared.
+
+### Collaboration
+
+✅ **Task Comments & Mentions**
+- Add comments to task cards.
+- Type `@` to select mention suggestions.
+- Resolve comments to hide them from the active list.
+- Delete comments permanently.
+- View comment timestamps and authorship.
+
+✅ **Smart Notifications**
+1. **Task assignments**: users can be notified when assigned to a task.
+2. **Comments and mentions**: users can be notified when mentioned in task comments.
+3. **Task completion**: managers can be notified when assigned tasks are completed by their reports.
+4. **Due-date reminders**: users can be alerted for open tasks due today or tomorrow.
+5. **Weekly digest**: weekly summary of open assigned tasks.
+6. **Agenda shares**: users can be notified when a teammate shares a meeting agenda.
+7. **Account-created manager notice**: a manager can be notified when a report creates an account.
+
+### User Management
+
+✅ **Team Hierarchy**
+- Onboard users with email, display name, and optional manager.
+- Manager relationships use `Manager_ID`.
+- Task assignment permissions allow self and reporting-tree users.
+- Supervisor Tools visibility depends on direct reports.
+
+✅ **User Profiles**
+- Sync profile photos from Google account when possible.
+- View email and edit display name in **My Profile**. The active backend identifies the user by signed-in Google email and does not persist profile email changes.
+- Manage notification preferences per user.
+
+### Accessibility & Personalization
+
+✅ **Dark/Light Mode**
+- Toggle from the lower-left user menu using **Dark Mode**.
+- Displays current state as `On` or `Off`.
+
+✅ **Font Scaling**
+- Adjust font size from 85% to 130% in 5% increments.
+- Use **Decrease**, slider, or **Increase** in **Settings**.
+
+✅ **Notification Control**
+- Toggle each notification type in **Settings**.
+- Stored per user by email in Script Properties.
+
+### Views & Navigation
+
+✅ **Project Board**
+- Visual project columns with task cards.
+- Drag-and-drop project reorder and task move.
+- Status dropdown on each task card.
+- Color-coded project card styling.
+- Assignee avatars on task cards.
+- Comment button and unresolved-comment count.
+
+✅ **Supervisor Tools**
+- Select direct reports and view their open assigned tasks grouped by project.
+
+✅ **Calendar**
+- Month view for project due dates and task due dates.
+- Click entries to open details.
+
+✅ **Past Assignments**
+- Completed assigned tasks.
+- Permanent deletion for completed tasks.
+
+✅ **Detail Modals**
+- **Task Details**: full task editing, subtask management, assignee picker, completion, deletion.
+- **Project Details**: project fields, creator display, color scheme, edit/delete actions.
+- **Add Task**: task creation form.
+- **New Project**: project creation form.
+- **Comments**: task comment form and active comment list.
+- **My Profile**: account profile viewer/editor. The UI shows **Name** and **Email**; the current backend persists the name and profile-photo refresh, but does not change the login email.
+- **Settings**: font size and notification preferences.
+
+✅ **SOAR Assistant**
+- Optional Gemini-backed chat assistant in the bottom-right corner.
+- Uses `Tutorial.html` plus current tab/direct-report context.

@@ -34,6 +34,47 @@
         }
       });
 
+      const isChatOpen = ref(false);
+      const isChatLoading = ref(false);
+      const chatInput = ref('');
+      const chatMessages = ref([
+        { role: 'assistant', content: 'Hi there! I am your SOAR AI Assistant. How can I help you use SOAR today?' }
+      ]);
+      const chatScrollContainer = ref(null);
+
+      const chatOffsetX = ref(0);
+      const chatOffsetY = ref(0);
+      const isDraggingChat = ref(false);
+      let dragStartX = 0;
+      let dragStartY = 0;
+      let initialOffsetX = 0;
+      let initialOffsetY = 0;
+
+      const startChatDrag = (event) => {
+        isDraggingChat.value = true;
+        dragStartX = event.clientX;
+        dragStartY = event.clientY;
+        initialOffsetX = chatOffsetX.value;
+        initialOffsetY = chatOffsetY.value;
+        
+        document.addEventListener('pointermove', onChatDrag);
+        document.addEventListener('pointerup', stopChatDrag);
+        document.body.style.userSelect = 'none';
+      };
+
+      const onChatDrag = (event) => {
+        if (!isDraggingChat.value) return;
+        chatOffsetX.value = initialOffsetX + (event.clientX - dragStartX);
+        chatOffsetY.value = initialOffsetY + (event.clientY - dragStartY);
+      };
+
+      const stopChatDrag = () => {
+        isDraggingChat.value = false;
+        document.removeEventListener('pointermove', onChatDrag);
+        document.removeEventListener('pointerup', stopChatDrag);
+        document.body.style.userSelect = ''; // Restore text highlighting
+      };
+
       const users = ref([]);
       const projects = ref([]);
       const tasks = ref([]);
@@ -518,11 +559,11 @@
         }
       };
 
-      const makeLogoTransparent = () => {
-        const logo = document.querySelector('.soar-logo');
+      const makeImageTransparent = (selector, cacheKey) => {
+        const logo = document.querySelector(selector);
         if (!logo) return;
 
-        const cachedLogo = readSessionStorage(LOGO_CACHE_KEY);
+        const cachedLogo = readSessionStorage(cacheKey);
         if (cachedLogo) {
           logo.src = cachedLogo;
           return;
@@ -601,9 +642,9 @@
             ctx.putImageData(imageData, 0, 0);
             const processedLogo = canvas.toDataURL('image/png');
             logo.src = processedLogo;
-            writeSessionStorage(LOGO_CACHE_KEY, processedLogo);
+            writeSessionStorage(cacheKey, processedLogo);
           } catch (error) {
-            console.warn('Unable to process logo transparency:', error);
+            console.warn(`Unable to process transparency for ${selector}:`, error);
           }
         };
 
@@ -1107,6 +1148,26 @@
       const isTaskDueTomorrowAndOpen = (task) => {
         if (!task || isCompleteStatus(task?.Status)) return false;
         return getDaysUntilDueDate(task?.Due_Date) === 1;
+      };
+
+      const dueDateColorClass = (dueDateValue) => {
+        const days = getDaysUntilDueDate(dueDateValue);
+        if (days === null) return isDarkMode.value ? 'text-gray-400' : 'text-gray-500';
+        if (days < 0) return isDarkMode.value ? 'text-red-400' : 'text-red-600';
+        if (days <= 1) return isDarkMode.value ? 'text-orange-400' : 'text-orange-500';
+        if (days <= 7) return isDarkMode.value ? 'text-yellow-400' : 'text-yellow-600';
+        return isDarkMode.value ? 'text-gray-400' : 'text-gray-500';
+      };
+
+      const getProjectDueDateClass = (project) => {
+        if (!project?.Due_Date) return '';
+        return dueDateColorClass(project.Due_Date);
+      };
+
+      const getTaskDueDateClass = (task) => {
+        if (!task?.Due_Date) return isDarkMode.value ? 'text-gray-400' : 'text-gray-500';
+        if (isCompleteStatus(task?.Status)) return isDarkMode.value ? 'text-gray-400' : 'text-gray-500';
+        return dueDateColorClass(task.Due_Date);
       };
 
       const getDueDateTooltip = (task) => {
@@ -2694,11 +2755,67 @@
         }
       };
 
+      const toggleChat = () => {
+        isChatOpen.value = !isChatOpen.value;
+        if (isChatOpen.value) {
+          scrollToChatBottom();
+        }
+      };
+
+      const scrollToChatBottom = () => {
+        nextTick(() => {
+          if (chatScrollContainer.value) {
+            chatScrollContainer.value.scrollTop = chatScrollContainer.value.scrollHeight;
+          }
+        });
+      };
+
+      const renderMarkdown = (text) => {
+        if (!text) return '';
+        return typeof marked !== 'undefined' ? marked.parse(text) : text;
+      };
+
+      const sendChatMessage = () => {
+        const text = chatInput.value.trim();
+        if (!text || isChatLoading.value) return;
+
+        chatMessages.value.push({ role: 'user', content: text });
+        chatInput.value = '';
+        isChatLoading.value = true;
+        scrollToChatBottom();
+
+        const context = `The user is currently viewing the '${currentTab.value}' tab. They currently have ${directReportUsers.value.length} direct reports (meaning they ${directReportUsers.value.length > 0 ? 'CAN' : 'CANNOT'} use Supervisor Tools).`;
+
+        google.script.run
+          .withSuccessHandler((response) => {
+            isChatLoading.value = false;
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            
+            if (result && result.success) {
+              chatMessages.value.push({ role: 'assistant', content: result.text });
+              
+              if (result.debugPayload) {
+                console.log('=== DEBUG: Last API Payload ===', result.debugPayload);
+              }
+            } else {
+              chatMessages.value.push({ role: 'assistant', content: `Error: ${result?.error || 'Could not connect to AI.'}` });
+            }
+            scrollToChatBottom();
+          })
+          .withFailureHandler((error) => {
+            isChatLoading.value = false;
+            chatMessages.value.push({ role: 'assistant', content: 'Network error connecting to the assistant.' });
+            scrollToChatBottom();
+          })
+          .askGeminiAssistant(chatMessages.value.slice(-10), context);
+      };
+
       onMounted(() => {
         applyFontScale(settingsForm.value.fontScale);
         loadSettings();
         fetchData();
-        makeLogoTransparent();
+        makeImageTransparent('.soar-logo', LOGO_CACHE_KEY);
+        makeImageTransparent('.chat-logo', 'soar_chat_logo_v1');
       });
 
       return {
@@ -2809,6 +2926,8 @@
         shouldStrikeTask,
         isTaskDueTomorrowAndOpen,
         getDueDateTooltip,
+        getProjectDueDateClass,
+        getTaskDueDateClass,
         priorityIconClass,
         getPriorityLabel,
         hasPriority,
@@ -2918,7 +3037,19 @@
         closeAgendaShareDropdown,
         addAgendaShare,
         removeAgendaShare,
-        handleAgendaShareKeyDown
+        handleAgendaShareKeyDown,
+        isChatOpen,
+        isChatLoading,
+        chatInput,
+        chatMessages,
+        chatScrollContainer,
+        toggleChat,
+        sendChatMessage,
+        renderMarkdown,
+        chatOffsetX,
+        chatOffsetY,
+        isDraggingChat,
+        startChatDrag
       };
     }
   });

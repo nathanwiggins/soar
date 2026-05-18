@@ -1,21 +1,22 @@
 # Soar — Project Management for Google Workspace
 
-**Soar** is a lightweight, Google-native project management system built on **Google Apps Script** and **Google Sheets**. It provides team collaboration features including project tracking, task management, comments with mentions, and intelligent email notifications—all without external infrastructure.
+**Soar** is a lightweight, Google-native project management system built on **Google Apps Script** and **Google Sheets**. It provides project tracking, task management, subtasks, task comments with mentions, meeting agendas with sharing, team-supervisor views, calendar views, configurable email notifications, and an optional in-app SOAR AI Assistant—all without a custom server or external database.
 
-**Perfect for**: Small to mid-sized teams already using Google Workspace who want project management without complex setup or external dependencies.
+**Perfect for**: Small to mid-sized teams already using Google Workspace who want project management without complex setup or external infrastructure.
 
 ---
 
 ## Table of Contents
 
 1. [Quick Start](#quick-start)
-2. [Features](#features)
-3. [Architecture](#architecture)
-4. [Data Model](#data-model)
-5. [Configuration](#configuration)
-6. [API Reference](#api-reference)
-7. [Development](#development)
-8. [Troubleshooting](#troubleshooting)
+2. [SOAR Tutorial and UI Playbook](#soar-tutorial-and-ui-playbook)
+3. [Features](#features)
+4. [Architecture](#architecture)
+5. [Data Model](#data-model)
+6. [Configuration](#configuration)
+7. [API Reference](#api-reference)
+8. [Development](#development)
+9. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -26,17 +27,18 @@
 - Google account with Apps Script access (part of Google Workspace)
 - Permission to create a new Google Sheet
 - Permission to deploy Apps Script web apps
+- Optional, only for the in-app AI Assistant: a Gemini API key saved in Script Properties as `GEMINI_API_KEY`
 
 ### Deployment (5 minutes)
 
 1. **Create a new Google Sheet**
    - Go to [sheets.google.com](https://sheets.google.com)
    - Click **New** → **Blank spreadsheet**
-   - Name it "Soar" (or your preferred name)
-   - Note the Sheet ID from the URL: `https://docs.google.com/spreadsheets/d/{SHEET_ID}/...`
+   - Name it `Soar` (or your preferred name)
+   - Keep this spreadsheet as the active spreadsheet for the Apps Script project.
 
 2. **Create the data structure**
-   - Create 8 new sheet tabs with these exact names (right-click sheet tab → Insert sheet):
+   - Create 8 sheet tabs with these exact names (right-click a sheet tab → **Insert sheet**):
      - `Users`
      - `Projects`
      - `Tasks`
@@ -45,15 +47,15 @@
      - `Assignments`
      - `Agendas`
      - `Sharing`
-   - Add header rows to each tab (see [Data Model](#data-model) section for column names)
+   - Add the exact header rows shown in [Spreadsheet Setup](#spreadsheet-setup). Column names must match exactly.
 
 3. **Create Apps Script project**
-   - In your Google Sheet, go to **Extensions** → **Apps Script**
-   - A new Apps Script project will open
-   - Delete any default content in `Code.gs`
+   - In your Google Sheet, go to **Extensions** → **Apps Script**.
+   - A new Apps Script project will open.
+   - Delete any default content in `Code.gs`.
 
 4. **Add the source code**
-   - Copy all files from this repository (in order):
+   - Create Apps Script script files (`.gs`) for each `.js` file in this repository, and paste the content into them:
      - [Utilities.js](Utilities.js)
      - [DataStore.js](DataStore.js)
      - [Users.js](Users.js)
@@ -65,32 +67,391 @@
      - [Notifications.js](Notifications.js)
      - [Settings.js](Settings.js)
      - [Bootstrap.js](Bootstrap.js)
-     - [Code.js](Code.js) (paste into existing `Code.gs`)
-     - [Index.html](Index.html) → Create as HTML file in Apps Script editor
-     - [App.js.html](App.js.html) → Create as HTML file in Apps Script editor
-   - Update `appsscript.json` with settings (see [Configuration](#configuration))
+     - [Chat.js](Chat.js)
+     - [Code.js](Code.js) — paste this into the existing `Code.gs` file if you did not create a separate `Code` script file.
+   - Create Apps Script HTML files for:
+     - [Index.html](Index.html)
+     - [App.js.html](App.js.html)
+     - [Tutorial.html](Tutorial.html)
+   - Update `appsscript.json` with the manifest in [Configuration](#configuration).
 
-5. **Deploy as web app**
-   - Click **Deploy** → **New deployment**
-   - Type: Select **Web app**
-   - Execute as: Your Google account
-   - Who has access: **Anyone**
-   - Click **Deploy**
-   - You'll get a URL like `https://script.google.com/macros/d/{DEPLOYMENT_ID}/userweb`
+5. **Optional: configure the SOAR AI Assistant**
+   - In Apps Script, open **Project Settings** → **Script Properties**.
+   - Add a property named `GEMINI_API_KEY` with your Gemini API key.
+   - If this property is missing, the red chat bubble still appears, but assistant requests return: `AI Assistant is not configured (Missing API Key).`
 
-6. **Initialize the first user**
-   - Open the deployment URL in a browser
-   - System will prompt you to create a user account
-   - Enter your email, name, and (optionally) manager
-   - ✅ You're ready to go!
+6. **Deploy as web app**
+   - Click **Deploy** → **New deployment**.
+   - Type: select **Web app**.
+   - Execute as: **User accessing the web app** (matches `executeAs: USER_ACCESSING` in the manifest).
+   - Who has access: **Anyone** (matches `access: ANYONE` in the manifest).
+   - Click **Deploy** and authorize requested scopes.
+   - Open the deployment URL.
+
+7. **Initialize your account**
+   - On first load, SOAR checks whether the signed-in Google email exists in the `Users` tab.
+   - If not, the **Create Account** modal appears.
+   - Your **Email** field is prefilled and disabled.
+   - Enter **Name** and optionally choose **Manager (Optional)** from existing users.
+   - Click **Create Account**.
 
 ### First Steps in the App
 
-- **Create a project**: Click "New Project" button, fill details, choose status
-- **Create tasks**: Within a project, add tasks with priority, assignees, and optional subtasks
-- **Assign tasks**: Select team members from your manager hierarchy
-- **Collaborate**: Add comments to tasks/projects using `@username` mentions
-- **Customize**: Adjust font size and notification preferences in Settings
+- **Create a project**: On **Project Board**, click **New Project**, fill **Project Title**, optional **Due Date**, **Status**, **Color Scheme**, and optional **Description**, then click **Create Project**.
+- **Create a task**: Inside a project column, click **+ Add Task** (not “New Task”), fill the **Add Task** modal, select at least one user under **Assigned To**, then click **Create Task**.
+- **Update a task quickly**: Use the status pill/dropdown on a task card to choose `Not Started`, `Upcoming`, `Review`, `In Progress`, `Ongoing`, `On Hold`, `Cancelled`, or `Complete`.
+- **Open details**: Click a project title to open **Project Details**. Click a task card to open **Task Details**.
+- **Comment on tasks**: Click the speech-bubble icon on a task card to open **Comments**, type in **Write a comment...**, optionally use `@` mentions, then click **Post Comment**.
+- **Create an agenda**: Go to **Meeting Agendas**, click **New Agenda**, add headers/items/tasks, optionally click **Share**, then click **Save Agenda**.
+- **Customize**: Open the user menu at the lower-left, then use **Profile**, **Settings**, or **Dark Mode**.
+
+---
+
+## SOAR Tutorial and UI Playbook
+
+This section is written as a practical, non-technical guide. It uses the exact in-app names for tabs, buttons, fields, modals, and actions so it can be safely used as context for an AI Assistant.
+
+### Main Layout
+
+SOAR has a left sidebar, a top header, a main work area, a lower-left user menu, and a lower-right chat bubble.
+
+#### Left sidebar tabs
+
+- **Project Board**: The default work board. Shows project columns and task cards.
+- **Supervisor Tools**: Only available to users who have direct reports. Shows selected direct reports' assigned work.
+- **Calendar**: Month view of project due dates and task due dates.
+- **Past Assignments**: Completed tasks assigned to the current user.
+- **Meeting Agendas**: Agenda cards under **My Agendas** and **Shared With Me**.
+
+#### Top header actions
+
+- On **Project Board**, the primary red button is **New Project**.
+- On **Meeting Agendas**, the primary red button is **New Agenda**.
+- On **Supervisor Tools**, the header has a team-member selector whose default text is **Select team members**.
+- On **Calendar**, the header has previous-month and next-month arrow buttons, a **Today** button, and the current month label.
+
+#### Lower-left user menu
+
+Click your name/avatar at the bottom of the sidebar to open:
+
+- **Profile**: Opens **My Profile**.
+- **Settings**: Opens **Settings**.
+- **Dark Mode**: Toggles dark mode. The menu displays `On` or `Off`.
+
+#### Lower-right SOAR Assistant
+
+- Click the red circular message button to open **SOAR Assistant**.
+- Type in the **Ask a question...** box and submit with the paper-plane button.
+- The assistant sends recent chat history and a small current-page context to `askGeminiAssistant()`.
+- The assistant needs Script Property `GEMINI_API_KEY`; otherwise, it responds with a configuration error.
+
+### Onboarding: Create Account
+
+When the signed-in Google user is not in the `Users` sheet, SOAR opens the **Create Account** modal.
+
+Fields and controls:
+
+- **Email**: Prefilled from the signed-in Google account and disabled.
+- **Name**: Required; placeholder is **Enter your full name**.
+- **Manager (Optional)**: Dropdown; default option is **No manager selected**.
+- **Create Account**: Creates the user.
+
+Important behavior:
+
+- The manager dropdown only contains users already in SOAR.
+- The app can automatically sync a Google profile photo URL into `Profile_Pic_Url` when possible.
+- If the selected manager has notifications enabled, SOAR can notify them that the account was created.
+
+### Project Board: Everyday Task and Project Work
+
+The **Project Board** displays each visible project as a column. Within each column, task cards are sorted by priority and due date.
+
+#### Visibility on Project Board
+
+By default, a user sees:
+
+- projects directly assigned to them, and
+- projects containing open tasks assigned to them.
+
+Completed tasks are not shown on the main **Project Board** after they are complete; they appear in **Past Assignments** for assigned users. Project visibility can expand when the app's internal `showAllWorkItems` state is enabled, but there is no visible button in the current UI for end users to toggle that state.
+
+#### Project columns
+
+Each project column shows:
+
+- a colored dot using the project's **Color Scheme**;
+- the project title as a clickable button that opens **Project Details**;
+- the project due date (when set), color-coded: yellow if due within 7 days, orange if due within 1 day, red if overdue;
+- the number of visible tasks in that project;
+- draggable task cards;
+- a dashed **+ Add Task** button at the bottom.
+
+Projects can be reordered by dragging the project header area. The app saves the new order with `reorderProjects()`.
+
+#### Task cards
+
+Each task card shows:
+
+- status dropdown/pill with title **Update task status**;
+- speech-bubble comments button with the number of unresolved comments;
+- task title;
+- assignee avatars or initials;
+- priority icon/label when priority is set;
+- due date when set, color-coded: yellow if due within 7 days, orange if due within 1 day, red if overdue (gray for completed tasks).
+
+Task cards can be dragged between project columns. Dragging a task to another project changes its `Project_ID` and persists the task order with `updateTaskProjectAndOrder()`.
+
+### Creating a Project
+
+1. Go to **Project Board**.
+2. Click **New Project** in the top header.
+3. The **New Project** modal opens.
+4. Complete fields:
+   - **Project Title**: required; placeholder **Enter project title**.
+   - **Due Date**: optional date picker.
+   - **Status**: `Not Started`, `In Progress`, `Completed`, or `Delayed`.
+   - **Color Scheme**: `Red`, `Blue`, `Green`, `Purple`, `Amber`, or `Teal`.
+   - **Description**: optional; placeholder **Describe the project**.
+5. Click **Create Project**. To exit without saving, click **Cancel** or the **X** icon.
+
+What SOAR records:
+
+- `Project_ID` generated as `P-00000001`, etc.
+- `Project_Title`, `Description`, `Status`, `Created_Date`, `Due_Date`, `Creator_ID`, and `Color_Scheme`.
+- An assignment row assigning the project to the creator.
+
+### Editing or Deleting a Project
+
+1. On **Project Board**, click a project title.
+2. The **Project Details** modal opens.
+3. Click **Edit Project**.
+4. Edit fields:
+   - **Project Title**
+   - **Date Due**
+   - **Status**
+   - **Color Scheme**
+   - **Created By** (display-only)
+   - **Description**
+5. Click **Save Changes**.
+
+Other buttons:
+
+- **Delete Project**: Deletes the project row, tasks in that project, and assignment rows for those deleted tasks. It does not currently remove the project creator assignment row from `Assignments`.
+- **Cancel**: Cancels edit mode.
+- **Close**: Closes the modal when not editing.
+
+### Creating a Task
+
+1. On **Project Board**, find the target project column.
+2. Click **+ Add Task** at the bottom of that project column.
+3. The **Add Task** modal opens and shows `Project: {Project_Title}` below the heading.
+4. Complete fields:
+   - **Task Title**: required; placeholder **Enter task title**.
+   - **Due Date**: optional date picker.
+   - **Priority**: optional button selection: `High`, `Medium`, or `Low`.
+   - **Assigned To**: required by backend validation; opens a checkbox dropdown of assignable users.
+   - **Description**: optional; placeholder **Describe the task**.
+   - **Subtasks**: optional; type into **Type a subtask and press enter...** and press Enter or click **Add**.
+5. Click **Create Task**. To exit without saving, click **Cancel** or the **X** icon.
+
+Important behavior:
+
+- New tasks always start with status `Not Started`.
+- The current user may assign tasks only to themselves and users in their reporting tree (direct and indirect reports). Existing assignees can remain during edits even if they are outside the current assignable set.
+- At least one assignee is required when creating or updating a task.
+- Creating a task can send **Task assignments** notifications to selected assignees, depending on each recipient's settings.
+
+### Task Details: Editing, Completing, Deleting
+
+Click a task card to open **Task Details**.
+
+Controls and fields:
+
+- **Edit Task**: enables editing.
+- **Task Name**: task title.
+- **Description**
+- **Subtasks**: checkboxes, editable titles in edit mode, drag handles in edit mode, and delete controls.
+- **Task Status**: `Not Started`, `Upcoming`, `Review`, `In Progress`, `Ongoing`, `On Hold`, `Cancelled`, or `Complete`.
+- **Associated Project**: project dropdown available while editing.
+- **Priority**: dropdown with `None`, `High`, `Medium`, `Low`.
+- **Date Created**: display-only.
+- **Date Due**: editable date picker in edit mode.
+- **Completed By** and **Completed At**: populated when the task is completed.
+- **Assigned To**: assignee dropdown plus selected assignee rows.
+
+Footer buttons:
+
+- **Complete Task**: sets the task status to `Complete`, records `Completed_By`, and records `Completed_At`.
+- **Complete**: displayed in the same button position when the task is already complete.
+- **Delete Task**: deletes the task and related assignments.
+- **Save Changes**: saves edits.
+- **Cancel**: cancels edit mode.
+- **Close**: closes the modal when not editing.
+
+Completed-task behavior:
+
+- Completed tasks assigned to you appear in **Past Assignments**.
+- Completed tasks with due dates in the past can be purged by `purgeCompletedTasksPastDue()`.
+- Managers can receive task-completion notifications for work completed by reports.
+
+### Subtasks
+
+Subtasks belong to tasks and have their own IDs (`S-00000001`, etc.).
+
+In **Add Task**:
+
+- Use the **Subtasks** input with placeholder **Type a subtask and press enter...**.
+- Press Enter or click **Add** to stage a subtask before clicking **Create Task**.
+
+In **Task Details**:
+
+- Click **Edit Task** to edit subtask titles, add new subtasks, delete subtasks, or drag to reorder subtasks.
+- A subtask checkbox toggles status between `Incomplete` and `Complete`.
+
+### Comments and Mentions
+
+Comments are currently task comments. Despite legacy data-model support for `Topic_Type`, the active UI/backend flow validates comments against tasks and writes `Topic_Type = Task`.
+
+How to comment:
+
+1. On a task card, click the speech-bubble comments icon.
+2. The **Comments** modal opens.
+3. Type in **Write a comment...**.
+4. Type `@` to show mention suggestions. Suggestions use handles derived from each user's email local-part, or a sanitized display-name fallback.
+5. Click **Post Comment**.
+
+Comment controls:
+
+- **Resolve**: marks the comment resolved; resolved comments no longer appear in the active comments list.
+- **Delete**: permanently deletes the comment row.
+
+Mention behavior:
+
+- Mentions are recognized with handles like `@first.last` or `@jane`, not display names with spaces.
+- Mention notifications use the **Comments and mentions** notification preference.
+
+### Supervisor Tools
+
+**Supervisor Tools** is visible only if the current user has direct reports in the `Users` sheet (`Manager_ID` points to the current user's `User_ID`).
+
+How it works:
+
+1. Click **Supervisor Tools** in the sidebar.
+2. Use the header selector, default text **Select team members**.
+3. Check one or more direct reports.
+4. SOAR shows open tasks assigned to selected users and projects containing those tasks.
+
+Notes:
+
+- The selector lists direct reports, not the full indirect reporting tree.
+- The board itself can still show tasks in project columns, and the **+ Add Task** button remains visible.
+
+### Calendar
+
+The **Calendar** tab is a month view.
+
+Header controls:
+
+- left arrow: previous month;
+- **Today**: return to the current month;
+- month label: current displayed month and year;
+- right arrow: next month.
+
+Calendar entries:
+
+- Project due dates appear as **Project Due:** entries with a folder icon.
+- Task due dates appear as task-title entries.
+- Click a project-due entry to open **Project Details**.
+- Click a task entry to open **Task Details**.
+
+### Past Assignments
+
+The **Past Assignments** tab shows completed tasks assigned to the current user.
+
+- If there are none, SOAR displays **No past assignments yet.** and **Completed tasks will appear here automatically.**
+- Each completed task card shows task title, project title, a `Completed` badge, due date, and **Delete Permanently**.
+- Click a card to open **Task Details**.
+- Click **Delete Permanently** to delete the completed task and related assignments.
+
+### Meeting Agendas
+
+The **Meeting Agendas** tab has two sections:
+
+- **My Agendas**: agendas created by the current user.
+- **Shared With Me**: agendas shared with the current user.
+
+Creating an agenda:
+
+1. Go to **Meeting Agendas**.
+2. Click **New Agenda**.
+3. SOAR creates an agenda titled `Untitled Agenda` and opens the agenda editor.
+4. Edit the title in the title input at the top of the modal.
+5. Click **+ Add Header** to create a section.
+6. Inside a section:
+   - click **+ Text Item** to add a free-text agenda item;
+   - use **+ Link Task** dropdown to embed a task from a visible project;
+   - click **View Task** on a linked task to open **Task Details**.
+7. Drag agenda items to reorder them within sections.
+8. Click **Save Agenda**.
+
+Sharing an agenda:
+
+1. In the agenda editor, click **Share**.
+2. The **Share Agenda** pop-up opens.
+3. Use **Add people (Type name or email)...** to search users.
+4. Click a suggestion to add access.
+5. The creator appears as `{Name} (You)` and cannot be removed from their own agenda.
+6. Click the **X** beside a shared user to **Remove access**.
+7. Click **Save Agenda** to persist content and sharing changes.
+
+Sharing behavior:
+
+- Sharing rows are stored in the `Sharing` tab.
+- New shares can trigger **Agenda shares** email notifications.
+- Shared agendas appear in the recipient's **Shared With Me** section.
+
+### Profile, Settings, and Dark Mode
+
+#### My Profile
+
+Open the lower-left user menu and click **Profile**.
+
+- The modal title is **My Profile**.
+- It shows avatar/profile image, **Name**, and **Email**.
+- Click **Edit Profile** to edit the form.
+- Click **Save Changes** to persist the display name and refresh profile-photo URL if needed. The current backend does not update the login email even though the email input appears in the form.
+- Click **Cancel** while editing, or **Close** when not editing.
+
+#### Settings
+
+Open the lower-left user menu and click **Settings**.
+
+**Font Size** controls:
+
+- **Decrease** button reduces font scale by 5%.
+- Range slider supports 85% to 130% in 5% increments.
+- **Increase** button increases font scale by 5%.
+- Label shows the percent and a friendly label such as `Smaller`, `Default`, or `Larger`.
+
+**Notifications** toggles:
+
+- **Task assignments**
+- **Comments and mentions**
+- **Due-date reminders**
+- **Weekly digest**
+- **Agenda shares**
+
+Footer buttons:
+
+- **Cancel** closes without saving the modal state.
+- **Save Settings** persists notification and font-size settings.
+
+#### Dark Mode
+
+- Open the lower-left user menu.
+- Click **Dark Mode** to toggle between light and dark UI.
+- The current menu status displays `On` or `Off`.
+- Dark mode is a local UI state in the current browser session; user settings persistence is used for font size and notifications.
 
 ---
 
@@ -99,96 +460,120 @@
 ### Project Management
 
 ✅ **Create & Track Projects**
-- Title, description, status, and due date
-- Status workflow: `Not Started` → `In Progress` → `Completed` or `Delayed`
-- Auto-populated creation date and creator tracking
-- Assign team members to projects
+- Required title plus optional description and due date.
+- Status options: `Not Started`, `In Progress`, `Completed`, `Delayed`.
+- Project color schemes: `red`, `blue`, `green`, `purple`, `amber`, `teal`.
+- Auto-populated creation date and creator tracking.
+- Project creator is automatically assigned to the project.
+- Project columns can be reordered on the board.
 
 ✅ **Organize Work with Tasks**
-- Create tasks within projects
-- Choose task status from `Not Started`, `Upcoming`, `Review`, `In Progress`, `Ongoing`, `On Hold`, `Cancelled`, `Complete`
-- Add nested subtasks for any task
-- Set priority: `High`, `Medium`, `Low`
-- Track status independently from parent project
-- Due date management with visual indicators
-- Auto-track completion timestamp and completing user
-- Multiple assignees per task
+- Create tasks inside projects with the **+ Add Task** button.
+- Task status options: `Not Started`, `Upcoming`, `Review`, `In Progress`, `Ongoing`, `On Hold`, `Cancelled`, `Complete`.
+- New tasks always begin as `Not Started`.
+- Set optional priority: `High`, `Medium`, `Low`, or no priority.
+- Due date management with visual indicators and due-tomorrow emphasis.
+- Multiple assignees per task; at least one assignee is required by backend validation.
+- Task cards can be dragged between projects.
+- Auto-track completion timestamp and completing user when marked `Complete`.
+
+✅ **Subtasks**
+- Add subtasks while creating a task or later from **Task Details**.
+- Toggle each subtask between `Incomplete` and `Complete`.
+- Edit, delete, and reorder subtasks in task edit mode.
 
 ### Meeting Agendas
 
-✅ **Recurring Meeting Agendas**
-- Create dynamic agendas for recurring meetings
-- Add headers, text items, and seamlessly embed interactive task links directly into the agenda
-- Organize your talking points and project status updates in one view
+✅ **Dynamic Meeting Agendas**
+- Create agendas from **Meeting Agendas** with **New Agenda**.
+- Organize agenda content with headers.
+- Add free-text items with **+ Text Item**.
+- Embed linked task references with **+ Link Task**.
+- Open linked tasks using **View Task**.
 
 ✅ **Secure Sharing**
-- Share agendas with specific team members via a Google Drive-style sharing pop-up
-- View agendas shared with you in a dedicated "Shared With Me" space
-- Opt-in email notifications sent to users when a new agenda is shared with them
+- Share agendas with specific SOAR users through **Share** → **Share Agenda**.
+- Recipients see agendas in **Shared With Me**.
+- Opt-in email notifications are sent when a new agenda is shared.
 
 ### Collaboration
 
-✅ **Comments & Mentions**
-- Add comments to any task or project
-- `@mention` users to notify them directly
-- Resolve comments to keep threads organized
-- View comment history and authorship
+✅ **Task Comments & Mentions**
+- Add comments to task cards.
+- Type `@` to select mention suggestions.
+- Resolve comments to hide them from the active list.
+- Delete comments permanently.
+- View comment timestamps and authorship.
 
-✅ **Smart Notifications** (6 types)
-1. **Task Assignment**: Notified when assigned to a task
-2. **Mentions**: Tagged when mentioned in comments
-3. **Task Completion**: Managers notified when assigned tasks are completed
-4. **Due Date Reminders**: Alerts for tasks due today or tomorrow
-5. **Weekly Digest**: Sunday email summary of open assigned tasks
-6. **Agenda Shares**: Notified when a teammate shares a meeting agenda with you
+✅ **Smart Notifications**
+1. **Task assignments**: users can be notified when assigned to a task.
+2. **Comments and mentions**: users can be notified when mentioned in task comments.
+3. **Task completion**: managers can be notified when assigned tasks are completed by their reports.
+4. **Due-date reminders**: users can be alerted for open tasks due today or tomorrow.
+5. **Weekly digest**: weekly summary of open assigned tasks.
+6. **Agenda shares**: users can be notified when a teammate shares a meeting agenda.
+7. **Account-created manager notice**: a manager can be notified when a report creates an account.
 
 ### User Management
 
 ✅ **Team Hierarchy**
-- Onboard users with email and display name
-- Manager relationships for permission enforcement
-- Role-based task assignment (assign only to subordinates or self)
+- Onboard users with email, display name, and optional manager.
+- Manager relationships use `Manager_ID`.
+- Task assignment permissions allow self and reporting-tree users.
+- Supervisor Tools visibility depends on direct reports.
 
 ✅ **User Profiles**
-- Sync profile photos from Google account
-- Edit display name
-- Manage notification preferences per user
+- Sync profile photos from Google account when possible.
+- View email and edit display name in **My Profile**. The active backend identifies the user by signed-in Google email and does not persist profile email changes.
+- Manage notification preferences per user.
 
 ### Accessibility & Personalization
 
 ✅ **Dark/Light Mode**
-- Toggle between dark and light themes
-- Preference saved per user
+- Toggle from the lower-left user menu using **Dark Mode**.
+- Displays current state as `On` or `Off`.
 
 ✅ **Font Scaling**
-- Adjust font size from 85% to 130% in 5% increments
-- Improves readability for all users
+- Adjust font size from 85% to 130% in 5% increments.
+- Use **Decrease**, slider, or **Increase** in **Settings**.
 
 ✅ **Notification Control**
-- Toggle each notification type (assignments, mentions, due dates, weekly digest)
-- User-controlled preference per notification type
+- Toggle each notification type in **Settings**.
+- Stored per user by email in Script Properties.
 
 ### Views & Navigation
 
-✅ **Kanban Board**
-- Visual task management by status columns
-- Drag-and-drop to change task status
-- Color-coded priority indicators
-- Assignee avatars on task cards
-- Quick action buttons (complete, comment)
+✅ **Project Board**
+- Visual project columns with task cards.
+- Drag-and-drop project reorder and task move.
+- Status dropdown on each task card.
+- Color-coded project card styling.
+- Assignee avatars on task cards.
+- Comment button and unresolved-comment count.
 
-✅ **All Work Items List**
-- Table view of tasks and projects
-- Sortable columns
-- Inline edit and delete actions
-- Filter by project
+✅ **Supervisor Tools**
+- Select direct reports and view their open assigned tasks grouped by project.
+
+✅ **Calendar**
+- Month view for project due dates and task due dates.
+- Click entries to open details.
+
+✅ **Past Assignments**
+- Completed assigned tasks.
+- Permanent deletion for completed tasks.
 
 ✅ **Detail Modals**
-- **Task Details**: Full task editing, assignee picker, embedded comments
-- **Project Details**: Project info, member assignments, task list
-- **Create Modals**: Quick forms for new tasks and projects
-- **User Profile**: Edit name, view email, see profile photo
-- **Settings**: Font size, theme, notification preferences
+- **Task Details**: full task editing, subtask management, assignee picker, completion, deletion.
+- **Project Details**: project fields, creator display, color scheme, edit/delete actions.
+- **Add Task**: task creation form.
+- **New Project**: project creation form.
+- **Comments**: task comment form and active comment list.
+- **My Profile**: account profile viewer/editor. The UI shows **Name** and **Email**; the current backend persists the name and profile-photo refresh, but does not change the login email.
+- **Settings**: font size and notification preferences.
+
+✅ **SOAR Assistant**
+- Optional Gemini-backed chat assistant in the bottom-right corner.
+- Uses `Tutorial.html` plus current tab/direct-report context.
 
 ---
 
@@ -199,105 +584,95 @@
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                 Browser (Client Layer)                  │
-│  Vue 3 SPA (3000+ lines of interactive UI code)         │
-│  • Kanban board, modals, forms, settings                │
-│  • Real-time data sync via version hashing              │
-│  • State management (users, projects, tasks, comments)  │
+│  Vue 3 SPA                                              │
+│  • Project board, supervisor tools, calendar, agendas   │
+│  • Modals, forms, settings, comments, assistant chat    │
+│  • State management for users, projects, tasks, etc.    │
+│  • Data sync via global version hashing + local cache   │
 └────────────────────┬────────────────────────────────────┘
-                     │ AJAX/Fetch (JSON over HTTPS)
+                     │ google.script.run calls
 ┌────────────────────┴────────────────────────────────────┐
 │         Google Apps Script V8 Runtime                   │
-│        (Backend Logic Layer - 8 modules)                │
 │                                                         │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │ Web App Layer (Code.js)                          │   │
-│  │ • doGet() serves HTML shell                      │   │
-│  │ • getInitialPayload() loads app state            │   │
-│  └──────────────────────────────────────────────────┘   │
+│  Web App Layer                                          │
+│  • Code.js → doGet(), include()                         │
+│  • Bootstrap.js → getInitialPayload()                   │
 │                                                         │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │ Business Logic Services                          │   │
-│  │ • Users.js → User CRUD + profiles                │   │
-│  │ • Projects.js → Project lifecycle                │   │
-│  │ • Tasks.js → Task operations + status flow       │   │
-│  │ • Subtasks.js → Subtask creation, updates, etc.  │   │
-│  │ • Comments.js → Comments + mention extraction    │   │
-│  │ • Agendas.js → Agenda CRUD + sharing logic       │   │
-│  │ • Notifications.js → 6 email notification types  │   │
-│  │ • Settings.js → User preference persistence      │   │
-│  └──────────────────────────────────────────────────┘   │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │ Data Access Layer (DataStore.js)                 │   │
-│  │ • Row-level CRUD (append, update, delete)        │   │
-│  │ • ID generation with auto-increment locking      │   │
-│  │ • 3-level caching strategy                       │   │
-│  │ • Cache invalidation on mutations                │   │
-│  └──────────────────────────────────────────────────┘   │
+│  Business Logic Services                                │
+│  • Users.js → User CRUD + profile updates               │
+│  • Projects.js → Project lifecycle + ordering           │
+│  • Tasks.js → Task operations + status/order changes    │
+│  • Subtasks.js → Subtask CRUD + ordering                │
+│  • Comments.js → Task comments + mention extraction     │
+│  • Agendas.js → Agenda CRUD + sharing logic             │
+│  • Notifications.js → email notification types          │
+│  • Settings.js → User preference persistence            │
+│  • Chat.js → Optional Gemini assistant bridge           │
 │                                                         │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │ Utilities Layer (Utilities.js)                   │   │
-│  │ • Email validation, date parsing                 │   │
-│  │ • Header mapping, safe mail sending              │   │
-│  └──────────────────────────────────────────────────┘   │
+│  Data Access Layer                                      │
+│  • DataStore.js → sheet reads/writes, IDs, cache, hash   │
+│                                                         │
+│  Utilities Layer                                        │
+│  • Utilities.js → email, dates, profile photos, mail    │
 └────────────────────┬────────────────────────────────────┘
-                     │ Google Sheets API
+                     │ SpreadsheetApp / DriveApp / MailApp
 ┌────────────────────┴────────────────────────────────────┐
 │        Google Sheets (Data Persistence Layer)           │
-│                                                         │
-│  Tabs: Users | Projects | Tasks | Subtasks | Comments | Assignments
-│  (One tab per entity, human-readable ID columns)        │
+│  Tabs: Users | Projects | Tasks | Subtasks | Comments   │
+│        Assignments | Agendas | Sharing                  │
 └─────────────────────────────────────────────────────────┘
 ```
 
 ### Frontend Architecture (Vue 3)
 
-- **Reactive Data**: Refs for `users`, `projects`, `tasks`, `subtasks`, `assignments`, `comments`
-- **State Management**: Computed properties for derived state (current user, assignee summaries)
-- **Component Structure**: Modular views (Kanban, All Items, Modals) with reusable logic
-- **Data Sync**: Version hashing to detect stale data; memoization to prevent unnecessary re-renders
-- **UI Framework**: Tailwind CSS for responsive design, Font Awesome icons
+- **Reactive Data**: Refs for `users`, `projects`, `tasks`, `subtasks`, `assignments`, `comments`, `agendas`, and `agendaShares`.
+- **State Management**: Computed properties for current user, visibility, assignee summaries, project summaries, calendar entries, agenda ownership, shared agendas, and supervisor selections.
+- **Data Sync**: `getGlobalVersionHash()` checks whether cached payload data is still current; if not, `getInitialPayload()` reloads app data.
+- **UI Framework**: Tailwind CSS, Font Awesome icons, SortableJS/Vue Draggable, and Marked for assistant markdown rendering.
 
 ### Backend Communication
 
-- **Web App Access**: `ANYONE` access, executes as `USER_ACCESSING`
-- **Request/Response**: Functions return JSON strings for client parsing
-- **Error Handling**: All responses include success flag and error messages
-- **Locking**: `LockService` prevents race conditions during ID generation
+- **Web App Access**: Manifest uses `ANYONE` access and `USER_ACCESSING` execution.
+- **Transport**: Client code calls server functions with `google.script.run`.
+- **Response Shape**: Most mutation functions return JSON strings with `success` and optional `error`.
+- **Locking**: `LockService` prevents race conditions during ID generation.
 
-### Caching Strategy (3 Levels)
+### Caching Strategy
 
 | Level | Scope | TTL | Purpose |
 |-------|-------|-----|---------|
-| **REQUEST_CACHE** | Per request | ~500ms | In-memory storage during single function call |
-| **CacheService** | Script-level | 300s (5 min) | Users table cache (most frequently accessed) |
-| **ScriptProperties** | Persistent | ∞ | ID counters, user settings, data version |
+| `REQUEST_CACHE` | Single Apps Script execution | Execution lifetime | Avoid repeated sheet reads in one request |
+| `CacheService` | Script cache | 300 seconds | Cache `Users` table |
+| `ScriptProperties` | Persistent | No TTL | ID counters, user settings, app data version |
+| Browser storage | Current browser | Session/local storage | Logo processing and initial payload cache |
 
-**Invalidation**: Every write operation bumps `soar_data_version:last_updated` timestamp, forcing clients to refresh.
+**Invalidation**: Every table write should call `invalidateTableCache(tableName)`, which clears request cache, removes the user cache when needed, and bumps `soar_data_version:last_updated`.
 
 ### Permission Model
 
-- **Manager Hierarchy**: Users have optional `Manager_ID` (creates reporting chain)
-- **Assignment Permissions**: Can assign tasks only to:
-  - Self
-  - Direct subordinates (where `Manager_ID = current_user`)
-- **Visibility**: All users can see projects/tasks assigned to them
-- **Admin**: Project creator can always modify project settings
+- **Identity**: Current user is determined from the signed-in Google account email.
+- **Manager Hierarchy**: Users have optional `Manager_ID`.
+- **Task Assignment Permissions**: A user can assign tasks to themselves and users in their reporting tree. Supervisor selection UI lists direct reports.
+- **Project Visibility**: Users see assigned projects and projects containing open tasks assigned to them.
+- **Creator Ownership**: Project creators are automatically assigned to their projects.
 
 ### Data Flow Example: Creating a Task
 
 ```
-1. User clicks "New Task" in Kanban → Vue modal opens
-2. User fills form (title, description, priority, assignees, due date)
-3. User clicks "Create" → Vue calls GAS function createTask()
-4. GAS validates inputs (required fields, valid assignee IDs, date format)
-5. GAS generates next Task_ID (T-00000042) with LockService
-6. GAS appends row to Tasks sheet
-7. GAS appends Assignment rows (one per assignee)
-8. GAS invalidates cache (bumps data_version timestamp)
-9. GAS sends notification emails to all assignees (async via Notifications.js)
-10. GAS returns JSON with new task object
-11. Vue updates local state and re-renders Kanban board
-12. Other browsers detect version change on next poll, refresh data
+1. User clicks "+ Add Task" at the bottom of a project column.
+2. Vue opens the "Add Task" modal for that project.
+3. User fills Task Title, Due Date, Priority, Assigned To, Description, and optional Subtasks.
+4. User clicks "Create Task".
+5. Vue calls createTask(projectId, taskInput) with assignee User_IDs and subtask titles.
+6. Apps Script validates project, title, assignees, assignee permissions, priority, and date.
+7. Apps Script generates Task_ID (T-00000001 style) with LockService.
+8. Apps Script appends a row to Tasks.
+9. Apps Script appends one Assignments row per assignee.
+10. Apps Script optionally appends Subtasks rows with S- IDs and Incomplete status.
+11. Apps Script invalidates table caches and bumps the global data version.
+12. Apps Script sends task-assignment notifications according to recipient settings.
+13. Apps Script returns the created task, assignments, and subtasks.
+14. Vue updates local state, closes the modal, and re-renders the board.
 ```
 
 ---
@@ -308,56 +683,71 @@
 
 ```
 User (U-00000001)
-├── manages → User[] (recursion via Manager_ID)
-├── creates → Project[] (Projects.Creator_ID)
-├── completes → Task[] (Tasks.Completed_By)
-└── comments on → Comment[] (Comments.Commenter_ID)
+├── manages → User[] via Users.Manager_ID
+├── creates → Project[] via Projects.Creator_ID
+├── creates → Agenda[] via Agendas.Creator_ID
+├── completes → Task[] via Tasks.Completed_By
+└── comments on → Task comments via Comments.Commenter_ID
 
 Project (P-00000001)
-├── contains → Task[] (Tasks.Project_ID)
-├── assigned to → User[] (via Assignments table)
-└── receives → Comment[] (Comments.Topic_ID)
+├── contains → Task[] via Tasks.Project_ID
+├── assigned to → User[] via Assignments.Assignment_ID = Project_ID
+└── has visual color via Projects.Color_Scheme
 
 Task (T-00000001)
-├── belongs to → Project (Tasks.Project_ID)
-├── assigned to → User[] (via Assignments table)
-├── receives → Comment[] (Comments.Topic_ID)
-└── completed by → User (Tasks.Completed_By, optional)
+├── belongs to → Project via Tasks.Project_ID
+├── assigned to → User[] via Assignments.Assignment_ID = Task_ID
+├── contains → Subtask[] via Subtasks.Task_ID
+├── receives → Comment[] via Comments.Topic_ID
+└── completed by → User via Tasks.Completed_By
+
+Subtask (S-00000001)
+├── belongs to → Task via Subtasks.Task_ID
+└── has Status = Incomplete or Complete
 
 Comment (C-00000001)
-├── on → Task or Project (Comments.Topic_ID)
-├── by → User (Comments.Commenter_ID)
-└── mentions → User[] (extracted from content)
+├── on → Task via Comments.Topic_ID
+├── by → User via Comments.Commenter_ID
+└── mentions → User[] extracted from content handles
 
-Assignment (Task_ID or Project_ID)
-├── connects → Task / Project (Assignment_ID)
-└── to → User (Assignments.Assignee_ID)
+Agenda (A-00000001)
+├── created by → User via Agendas.Creator_ID
+├── stores editor content as Content_JSON
+└── shared with → User[] via Sharing
+
+Assignment
+├── Assignment_ID = Task_ID or Project_ID
+└── Assignee_ID = User_ID
 ```
 
 ### ID Generation Pattern
 
-All primary keys are human-readable, auto-incrementing, zero-padded:
-- **Users**: `U-00000001`, `U-00000002`, ... `U-99999999`
-- **Projects**: `P-00000001`, `P-00000002`, ... `P-99999999`
-- **Tasks**: `T-00000001`, `T-00000002`, ... `T-99999999`
-- **Comments**: `C-00000001`, `C-00000002`, ... `C-99999999`
+Primary keys are human-readable, auto-incrementing, and zero-padded:
+
+- **Users**: `U-00000001`, `U-00000002`, ...
+- **Projects**: `P-00000001`, `P-00000002`, ...
+- **Tasks**: `T-00000001`, `T-00000002`, ...
+- **Subtasks**: `S-00000001`, `S-00000002`, ...
+- **Comments**: `C-00000001`, `C-00000002`, ...
+- **Agendas**: `A-00000001`, `A-00000002`, ...
 
 Generated by Apps Script with synchronized locking to prevent race conditions.
 
 ### Data Dictionary
 
 > **Notes**
-> - **"Can Be Null = No"** means the field is required at creation time unless auto-filled by the system.
-> - **Foreign Keys**: References implemented at application layer (not database foreign keys).
+> - **Can Be Null = No** means the field is required at creation time unless auto-filled by the system.
+> - Foreign-key relationships are enforced by application logic, not by Google Sheets.
+> - Dates are stored as Sheets date/datetime values and serialized for the client.
 
 #### Users
 
 | Field | Type | Description | Can Be Null |
 |---|---|---|---|
 | `User_ID` | String, auto-increment | Format: `U-00000000` | No |
-| `Email` | Email address | Unique key, used for user login | No |
-| `Name` | String | User display name | No |
-| `Manager_ID` | String, User_ID reference | Manager's User_ID (for permissions) | Yes |
+| `Email` | Email address | Unique login identifier | No |
+| `Name` | String | Display name | No |
+| `Manager_ID` | String, User_ID reference | Manager's `User_ID` | Yes |
 | `Profile_Pic_Url` | URL | Google Account profile photo | Yes |
 
 #### Projects
@@ -367,38 +757,47 @@ Generated by Apps Script with synchronized locking to prevent race conditions.
 | `Project_ID` | String, auto-increment | Format: `P-00000000` | No |
 | `Project_Title` | String | Display title | No |
 | `Description` | String | Goals and scope | Yes |
-| `Status` | String | One of: `Not Started`, `In Progress`, `Completed`, `Delayed` | No |
-| `Created_Date` | Date | Auto-populated at creation | No |
+| `Status` | String | `Not Started`, `In Progress`, `Completed`, `Delayed` | No |
+| `Created_Date` | DateTime | Auto-populated at creation | No |
 | `Due_Date` | Date | Planned completion date | Yes |
 | `Creator_ID` | String, User_ID reference | Project creator | No |
-| `Color_Scheme` | String | One of: `red`, `blue`, `green`, `purple`, `amber`, `teal`; controls board dot and task card hues | Yes (defaults to `red`) |
+| `Color_Scheme` | String | `red`, `blue`, `green`, `purple`, `amber`, or `teal`; defaults to `red` | Yes |
 
 #### Tasks
 
 | Field | Type | Description | Can Be Null |
 |---|---|---|---|
 | `Task_ID` | String, auto-increment | Format: `T-00000000` | No |
-| `Project_ID` | String | Parent project (Projects.Project_ID) | No |
+| `Project_ID` | String, Project_ID reference | Parent project | No |
 | `Task_Title` | String | Display title | No |
 | `Description` | String | Task details | Yes |
-| `Status` | String | One of: `Not Started`, `Upcoming`, `Review`, `In Progress`, `Ongoing`, `On Hold`, `Cancelled`, `Complete` | No |
-| `Priority` | String | One of: `High`, `Medium`, `Low` | Yes |
-| `Created_Date` | Date | Auto-populated at creation | No |
+| `Status` | String | `Not Started`, `Upcoming`, `Review`, `In Progress`, `Ongoing`, `On Hold`, `Cancelled`, `Complete` | No |
+| `Priority` | String | `High`, `Medium`, `Low`, or blank | Yes |
+| `Created_Date` | DateTime | Auto-populated at creation | No |
 | `Due_Date` | Date | Planned completion date | Yes |
-| `Completed_By` | String, User_ID reference | User who completed (Tasks.Completed_By) | Yes |
-| `Completed_At` | DateTime | Timestamp of completion | Yes |
+| `Completed_By` | String, User_ID reference | User who completed the task | Yes |
+| `Completed_At` | DateTime | Completion timestamp | Yes |
+
+#### Subtasks
+
+| Field | Type | Description | Can Be Null |
+|---|---|---|---|
+| `Subtask_ID` | String, auto-increment | Format: `S-00000000` | No |
+| `Task_ID` | String, Task_ID reference | Parent task | No |
+| `Subtask_Title` | String | Display title | No |
+| `Status` | String | `Incomplete` or `Complete` | No |
 
 #### Comments
 
 | Field | Type | Description | Can Be Null |
 |---|---|---|---|
 | `Comment_ID` | String, auto-increment | Format: `C-00000000` | No |
-| `Topic_ID` | String | Task_ID or Project_ID (polymorphic) | No |
-| `Topic_Type` | String | One of: `Task`, `Project` | No |
+| `Topic_ID` | String | Active UI uses `Task_ID` | No |
+| `Topic_Type` | String | Active UI writes `Task` | No |
 | `Commenter_ID` | String, User_ID reference | Comment author | No |
-| `Content` | String | Comment text (may contain @mentions) | No |
+| `Content` | String | Comment text with optional `@handle` mentions | No |
 | `Timestamp` | DateTime | Auto-populated at creation | No |
-| `Is_Resolved` | Boolean | Whether comment is marked resolved | No |
+| `Is_Resolved` | Boolean | Whether comment is hidden from active list | No |
 
 #### Assignments
 
@@ -407,13 +806,28 @@ Generated by Apps Script with synchronized locking to prevent race conditions.
 | `Assignment_ID` | String | Task_ID or Project_ID | No |
 | `Assignee_ID` | String | User_ID of assigned user | No |
 
+#### Agendas
+
+| Field | Type | Description | Can Be Null |
+|---|---|---|---|
+| `Agenda_ID` | String, auto-increment | Format: `A-00000000` | No |
+| `Title` | String | Agenda title | No |
+| `Creator_ID` | String, User_ID reference | Agenda creator | No |
+| `Created_Date` | DateTime | Auto-populated at creation | No |
+| `Content_JSON` | JSON string | Array of headers containing text items and linked task items | Yes |
+
+#### Sharing
+
+| Field | Type | Description | Can Be Null |
+|---|---|---|---|
+| `Agenda_ID` | String, Agenda_ID reference | Shared agenda | No |
+| `User_ID` | String, User_ID reference | User with access | No |
+
 ---
 
 ## Configuration
 
-### Environment Setup
-
-#### appsscript.json
+### appsscript.json
 
 The manifest file defines permissions, runtime, and deployment settings:
 
@@ -439,27 +853,29 @@ The manifest file defines permissions, runtime, and deployment settings:
 ```
 
 **Key settings**:
-- **timeZone**: Used for due date handling and weekly digest scheduling (adjust to your region)
-- **oauthScopes**: Permissions for reading sheets, sending emails, fetching profile photos
-- **webapp.access**: `ANYONE` allows public access (authentication via Google Account is implicit)
-- **webapp.executeAs**: `USER_ACCESSING` runs script with deployer's permissions (recommended for safety)
-- **runtimeVersion**: `V8` required (old Rhino runtime not supported)
 
-#### Configuration Constants
+- **timeZone**: Used for due date handling and digest/reminder scheduling.
+- **script.external_request**: Needed by the optional Gemini assistant.
+- **spreadsheets**: Needed for all Google Sheets storage.
+- **userinfo.email/profile**: Needed to identify users and fetch profile info.
+- **script.send_mail**: Needed for notification emails.
+- **drive.metadata.readonly**: Used to read spreadsheet last-updated metadata for version hashing.
+- **webapp.access**: `ANYONE` allows the deployed URL to load; users still identify through Google account email.
+- **webapp.executeAs**: `USER_ACCESSING` runs as the accessing user.
+- **runtimeVersion**: `V8` required.
 
-In [DataStore.js](DataStore.js), update these if needed:
+### Script Properties
 
-| Constant | Default | Purpose |
-|----------|---------|---------|
-| `REQUEST_CACHE` | `{}` | Per-request in-memory cache |
-| `USER_LIST_CACHE_SECONDS` | `300` | Cache TTL for Users table (5 min) |
-| `DATA_VERSION_PROPERTY_KEY` | `soar_data_version:last_updated` | ScriptProperties key for cache invalidation |
-| `ID_COUNTER_PROPERTY_PREFIX` | `soar_next_id:` | Prefix for auto-increment counters |
-| `USER_SETTINGS_PROPERTY_PREFIX` | `soar_user_settings:` | Prefix for per-user settings |
+| Property | Required | Purpose |
+|---|---:|---|
+| `GEMINI_API_KEY` | Optional | Enables SOAR Assistant calls to Gemini. |
+| `soar_data_version:last_updated` | Auto-created | App data version for cache invalidation. |
+| `soar_next_id:{Sheet}:{Prefix}` | Auto-created | ID counters for generated IDs. |
+| `soar_user_settings:{email}` | Auto-created | User font size and notification settings. |
 
-#### Spreadsheet Setup
+### Spreadsheet Setup
 
-Each sheet tab requires specific column headers (exact order matters):
+Each sheet tab requires specific column headers. Keep these names exact.
 
 **Users**:
 ```
@@ -476,14 +892,14 @@ Project_ID | Project_Title | Description | Status | Created_Date | Due_Date | Cr
 Task_ID | Project_ID | Task_Title | Description | Status | Priority | Created_Date | Due_Date | Completed_By | Completed_At
 ```
 
-**Comments**:
-```
-Comment_ID | Topic_ID | Topic_Type | Commenter_ID | Content | Timestamp | Is_Resolved
-```
-
 **Subtasks**:
 ```
 Subtask_ID | Task_ID | Subtask_Title | Status
+```
+
+**Comments**:
+```
+Comment_ID | Topic_ID | Topic_Type | Commenter_ID | Content | Timestamp | Is_Resolved
 ```
 
 **Assignments**:
@@ -496,7 +912,7 @@ Assignment_ID | Assignee_ID
 Agenda_ID | Title | Creator_ID | Created_Date | Content_JSON
 ```
 
-**Sharing**
+**Sharing**:
 ```
 Agenda_ID | User_ID
 ```
@@ -505,266 +921,213 @@ Agenda_ID | User_ID
 
 ## API Reference
 
+Most server functions return a JSON string. The client parses the response with `parseRunResponse()`.
+
 ### User Functions
 
-#### `addUser(email, name, managerEmail)`
-Creates a new user and returns JSON response.
+#### `addUser(userInput)`
+Creates a user record. The onboarding **Create Account** modal calls this function with the signed-in email.
 
 **Parameters**:
-- `email` (string): User email (must be unique)
-- `name` (string): User display name
-- `managerEmail` (string, optional): Email of user's manager
+- `userInput.email` (string): required user email.
+- `userInput.name` (string): required display name.
+- `userInput.managerId` (string, optional): selected manager `User_ID`.
 
-**Returns**: `{success: true, user_id: "U-00000001"}` or `{success: false, error: "..."}`
+**Returns**: `{success: true, user: {...}, created: true}` for a new user, `{success: true, user: {...}, created: false}` for an existing user, or `{success: false, error: "..."}`
 
-**Called by**: Bootstrap on first app load, Settings modal
-
----
-
-#### `updateCurrentUserProfile(name, managerEmail)`
-Updates logged-in user's name and manager.
+#### `updateCurrentUserProfile(profileInput)`
+Updates the logged-in user's profile.
 
 **Parameters**:
-- `name` (string): New display name
-- `managerEmail` (string, optional): New manager email
+- `profileInput.name` (string): display name.
+- `profileInput.email` (string): email value from profile form.
 
-**Returns**: `{success: true}` or `{success: false, error: "..."}`
-
----
+**Returns**: `{success: true, user: {...}}`
 
 ### Project Functions
 
-#### `createProject(title, description, status, dueDate)`
-Creates a new project.
+#### `createProject(projectInput)`
+Creates a new project and assigns it to the creator.
 
 **Parameters**:
-- `title` (string): Project title
-- `description` (string, optional): Project description
-- `status` (string): One of `Not Started`, `In Progress`, `Completed`, `Delayed`
-- `dueDate` (string, optional): Date in `YYYY-MM-DD` format
+- `projectInput.projectTitle` (string): required project title.
+- `projectInput.description` (string, optional): project description.
+- `projectInput.status` (string): `Not Started`, `In Progress`, `Completed`, or `Delayed`.
+- `projectInput.dueDate` (string, optional): `YYYY-MM-DD`.
+- `projectInput.colorScheme` (string, optional): `red`, `blue`, `green`, `purple`, `amber`, or `teal`.
 
-**Returns**: `{success: true, project_id: "P-00000001", project: {...}}`
+**Returns**: `{success: true, project: {...}, assignment: {...}}`
 
----
-
-#### `updateProject(projectId, title, description, status, dueDate)`
+#### `updateProject(projectId, projectInput)`
 Updates project metadata.
 
 **Parameters**:
-- `projectId` (string): Project_ID to update
-- `title` (string): New title
-- `description` (string): New description
-- `status` (string): New status
-- `dueDate` (string, optional): New due date
+- `projectId` (string): Project_ID to update.
+- `projectInput.projectTitle`, `description`, `status`, `dueDate`, `colorScheme`.
 
 **Returns**: `{success: true, project: {...}}`
 
----
-
 #### `deleteProject(projectId)`
-Deletes a project and all cascading tasks/assignments.
+Deletes the project row, tasks in that project, and assignment rows for those deleted tasks. It does not currently remove the project creator assignment row from `Assignments`.
 
-**Parameters**:
-- `projectId` (string): Project_ID to delete
+**Returns**: `{success: true, projectId: "P-00000001"}`
 
-**Returns**: `{success: true}`
-
----
+#### `reorderProjects(orderedProjectIds)`
+Persists project display order by rewriting project rows in the supplied order.
 
 ### Task Functions
 
-#### `createTask(projectId, title, description, priority, dueDate, assigneeEmails)`
-Creates a new task with optional assignees.
+#### `createTask(projectId, taskInput)`
+Creates a new task inside a project.
 
 **Parameters**:
-- `projectId` (string): Parent Project_ID
-- `title` (string): Task title
-- `description` (string, optional): Task description
-- `priority` (string, optional): One of `High`, `Medium`, `Low`
-- `dueDate` (string, optional): Date in `YYYY-MM-DD` format
-- `assigneeEmails` (array, optional): List of email addresses to assign
+- `projectId` (string): parent Project_ID.
+- `taskInput.taskTitle` (string): required task title.
+- `taskInput.description` (string, optional): task description.
+- `taskInput.priority` (string, optional): `High`, `Medium`, or `Low`.
+- `taskInput.dueDate` (string, optional): `YYYY-MM-DD`.
+- `taskInput.assigneeIds` (array): required list of `User_ID` values.
+- `taskInput.subtasks` (array, optional): list of subtask title strings.
 
-**Returns**: `{success: true, task_id: "T-00000001", task: {...}}`
+**Returns**: `{success: true, task: {...}, assignments: [...], subtasks: [...]}`
 
----
-
-#### `updateTask(taskId, title, description, status, priority, dueDate, assigneeEmails)`
-Updates task metadata and assignees.
+#### `updateTask(taskId, taskInput)`
+Updates task metadata, project, assignees, and newly added subtasks.
 
 **Parameters**:
-- `taskId` (string): Task_ID to update
-- `title` (string): New title
-- `description` (string): New description
-- `status` (string): New task status (triggers completion logic if `Complete`)
-- `priority` (string): New priority
-- `dueDate` (string, optional): New due date
-- `assigneeEmails` (array): List of assignee emails (replaces existing)
+- `taskId` (string): Task_ID to update.
+- `taskInput.taskTitle`, `description`, `status`, `priority`, `dueDate`, `projectId`, `assigneeIds`, `newSubtasks`.
 
-**Returns**: `{success: true, task: {...}}`
+**Returns**: `{success: true, task: {...}, assignments: [...], newSubtasks: [...]}`
 
----
+#### `updateTaskStatus(taskId, newStatus)`
+Updates only a task's status. Completion fields are populated when the new status is `Complete`.
 
 #### `completeTask(taskId)`
 Marks a task as completed and records completion timestamp and completing user.
 
-**Parameters**:
-- `taskId` (string): Task_ID to complete
-
-**Returns**: `{success: true}`
-
-**Net Effect**: Sets `Status = "Complete"`, `Completed_By = current_user`, `Completed_At = now()`
-
----
+**Net Effect**: Sets `Status = "Complete"`, `Completed_By = current_user`, `Completed_At = now()`.
 
 #### `deleteTask(taskId)`
-Deletes a task and cascading assignments.
+Deletes a task and related assignment rows.
 
-**Parameters**:
-- `taskId` (string): Task_ID to delete
+#### `deleteTask(taskId)` from **Past Assignments**
+The **Delete Permanently** button in **Past Assignments** calls the same backend `deleteTask(taskId)` function after a stronger confirmation message.
 
-**Returns**: `{success: true}`
+#### `updateTaskProjectAndOrder(taskId, newProjectId, orderedTaskIdsInProject)`
+Moves a task to another project and persists ordering for the destination project.
 
----
+#### `purgeCompletedTasksPastDue()`
+Deletes completed tasks whose due dates have passed, plus their assignment rows.
 
 ### Subtask Functions
 
 #### `addSubtask(taskId, subtaskTitle)`
-Adds a subtask to an existing task.
-
-**Parameters**:
-- `taskId` (string): Parent Task_ID
-- `subtaskTitle` (string): Subtask title
-
-**Returns**: `{success: true, subtask: {...}}`
-
----
+Adds an `Incomplete` subtask to an existing task.
 
 #### `updateSubtaskStatus(subtaskId, isComplete)`
 Sets a subtask status to `Complete` or `Incomplete`.
 
-**Parameters**:
-- `subtaskId` (string): Subtask_ID to update
-- `isComplete` (boolean): `true` for complete, `false` for incomplete
-
-**Returns**: `{success: true}`
-
----
+#### `updateSubtaskTitle(subtaskId, title)`
+Updates an existing subtask title.
 
 #### `deleteSubtask(subtaskId)`
 Deletes a subtask from a task.
 
-**Parameters**:
-- `subtaskId` (string): Subtask_ID to delete
-
-**Returns**: `{success: true}`
-
----
+#### `reorderSubtasks(taskId, orderedSubtaskIds)`
+Persists subtask display order for a task.
 
 ### Comment Functions
 
-#### `addComment(topicId, topicType, content)`
-Creates a new comment with automatic mention extraction.
+#### `getCommentsByTopic(topicId)`
+Returns unresolved comments for a task topic.
+
+#### `addComment(topicId, commentInput)`
+Creates a task comment and sends mention notifications.
 
 **Parameters**:
-- `topicId` (string): Task_ID or Project_ID to comment on
-- `topicType` (string): Either `Task` or `Project`
-- `content` (string): Comment text (can include @mention usernames)
+- `topicId` (string): active UI uses Task_ID.
+- `commentInput.content` (string): comment text with optional `@handle` mentions.
 
-**Returns**: `{success: true, comment_id: "C-00000001"}`
-
-**Side Effects**: Extracts mentions from `content` and triggers notification emails.
-
----
+**Returns**: `{success: true, comment: {...}}`
 
 #### `deleteComment(commentId)`
 Deletes a comment.
 
-**Parameters**:
-- `commentId` (string): Comment_ID to delete
-
-**Returns**: `{success: true}`
-
----
-
 #### `resolveComment(commentId)`
-Marks a comment as resolved (does not delete).
-
-**Parameters**:
-- `commentId` (string): Comment_ID to resolve
-
-**Returns**: `{success: true}`
-
----
+Marks a comment as resolved.
 
 ### Agenda Functions
 
 #### `createAgenda(title)`
 Creates a new blank agenda.
 
-**Parameters**:
-- `title` (string): Agenda title
-
 **Returns**: `{success: true, agenda: {...}}`
 
----
-
 #### `updateAgenda(agendaId, title, contentJson, sharedUserIds)`
-Updates an agenda's title, JSON content structure, and sharing permissions.
+Updates an agenda's title, JSON content, and sharing permissions.
 
 **Parameters**:
-- `agendaId` (string): Agenda_ID to update
-- `title` (string): New title
-- `contentJson` (string): Stringified JSON array containing headers, text items, and linked tasks
-- `sharedUserIds` (array): Array of User_IDs who have access
+- `agendaId` (string): Agenda_ID.
+- `title` (string): agenda title.
+- `contentJson` (string): stringified JSON array of agenda sections/items.
+- `sharedUserIds` (array): `User_ID` values with access.
 
 **Returns**: `{success: true, agenda: {...}, shares: [...]}`
 
----
-
 #### `deleteAgenda(agendaId)`
-Deletes an agenda and its associated sharing permissions.
+Deletes an agenda and associated sharing permissions.
 
-**Parameters**:
-- `agendaId` (string): Agenda_ID to delete
+### Settings Functions
 
-**Returns**: `{success: true, agendaId: "A-00000001"}`
+#### `persistCurrentUserSettings(settingsInput)`
+Persists current user's font scale and notification settings.
 
----
+#### `getUserSettingsByEmail(email)`
+Loads stored settings or defaults.
 
 ### Notification Functions
 
-#### `notifyAssignment(userEmail, taskId, taskTitle)`
-Sends email when user is assigned to a task (internal use).
+These functions are normally called internally:
 
----
+- `sendTaskAssignmentNotifications(task, assigneeIds, assignedByUserId)`
+- `sendMentionNotifications(comment, topicId, commenter, mentionedUsers)`
+- `sendManagerTaskCompletedNotifications(task, assigneeIds, completedByUserId)`
+- `sendManagerAccountCreatedNotification(createdUser)`
+- `sendDueDateReminderNotifications()`
+- `sendWeeklyDigestNotifications()`
+- `sendAgendaShareNotifications(agenda, sharedUserIds, sharedByUserId)`
 
-#### `notifyMention(mentionedEmail, commenterName, topicId, topicType)`
-Sends email when user is mentioned in a comment (internal use).
-
----
-
-#### `sendWeeklyDigest()`
-Sends weekly summary of assigned tasks to all users (scheduled).
-
----
-
-### Bootstrap & Initialization
+### Bootstrap, Versioning, and Chat
 
 #### `getInitialPayload()`
-Called on app load to fetch all user data for cache warming.
+Fetches initial app state.
 
-**Returns**: JSON object containing:
+**Returns**:
 ```json
 {
-  "current_user": {...},
-  "users": [...],
-  "projects": [...],
-  "tasks": [...],
-  "assignments": [...],
-  "comments": [...],
-  "settings": {...}
+  "currentUserEmail": "user@example.com",
+  "currentUserExists": true,
+  "requiresAccountSetup": false,
+  "users": [],
+  "projects": [],
+  "tasks": [],
+  "subtasks": [],
+  "assignments": [],
+  "agendas": [],
+  "agendaShares": [],
+  "comments": [],
+  "currentUserSettings": {},
+  "versionHash": "...",
+  "lastUpdated": "..."
 }
 ```
+
+#### `getGlobalVersionHash()`
+Returns a version hash based on spreadsheet metadata and app data version.
+
+#### `askGeminiAssistant(conversationHistory, userContext)`
+Calls Gemini with SOAR assistant instructions, `Tutorial.html`, recent conversation history, and current UI context. Requires Script Property `GEMINI_API_KEY`.
 
 ---
 
@@ -775,221 +1138,258 @@ Called on app load to fetch all user data for cache warming.
 #### 1. Extend the Data Model
 
 If your feature requires new data:
-1. Create a new sheet tab for the entity
-2. Define the column headers (update [Configuration](#configuration) section)
-3. Add CRUD functions to a new service file (e.g., `YourFeature.js`)
+1. Create a new sheet tab for the entity.
+2. Define column headers and update [Spreadsheet Setup](#spreadsheet-setup).
+3. Add CRUD functions to a new service file, or extend the relevant existing service file.
 
 #### 2. Add Backend Logic
 
-Create a new file (e.g., `YourFeature.js`) following the service pattern:
+Use the existing service pattern:
 
 ```javascript
-function createNewThing(name, description) {
-  // Input validation
-  if (!name || name.trim() === '') {
-    return {success: false, error: 'Name is required'};
+function createNewThing(input) {
+  try {
+    const title = input && input.title ? input.title.toString().trim() : '';
+    if (!title) throw new Error('Title is required.');
+
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('NewThings');
+    if (!sheet) throw new Error('NewThings sheet was not found.');
+
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const headerIndex = getHeaderIndex(headers);
+    const row = new Array(headers.length).fill('');
+
+    if (headerIndex.NewThing_ID !== undefined) row[headerIndex.NewThing_ID] = generateNextId('NewThings', 'N');
+    if (headerIndex.Title !== undefined) row[headerIndex.Title] = title;
+    if (headerIndex.Created_Date !== undefined) row[headerIndex.Created_Date] = new Date();
+
+    appendRows(sheet, [row]);
+    invalidateTableCache('NewThings');
+
+    return JSON.stringify({ success: true });
+  } catch (error) {
+    return JSON.stringify({ success: false, error: error.message || 'Failed to create item.' });
   }
-  
-  // Generate ID
-  const newId = DataStore.getNextId('YourFeature');
-  
-  // Write to sheet
-  const sheet = DataStore.getOrCreateSheet('YourFeature');
-  sheet.appendRow([
-    newId,
-    name,
-    description,
-    new Date()  // created_date auto-fill
-  ]);
-  
-  // Invalidate cache
-  DataStore.invalidateTableCache('YourFeature');
-  
-  // Return success response
-  return {success: true, thing_id: newId};
 }
 ```
 
 #### 3. Extend Frontend UI
 
-In [App.js.html](App.js.html), add Vue components as needed:
-- New data refs in the initial state
-- Fetch functions to call your backend GAS functions
-- New view sections or modals
-- Update navigation to expose the feature
+In [App.js.html](App.js.html), add Vue state and methods as needed:
+
+- new `ref()` data collections;
+- computed properties for derived state;
+- `google.script.run` calls;
+- new view sections or modals in [Index.html](Index.html);
+- navigation updates if the feature needs a new tab.
 
 #### 4. Add Email Notifications (if applicable)
 
-In [Notifications.js](Notifications.js), add a new notification function:
-
-```javascript
-function notifyYourEvent(userEmail, eventDetails) {
-  if (!getUserSetting(userEmail, 'notify_your_event')) {
-    return;  // User opted out
-  }
-  
-  MailApp.sendEmail(
-    userEmail,
-    'Subject',
-    'Email body'
-  );
-}
-```
+In [Notifications.js](Notifications.js), add notification helpers and check user preferences with `isNotificationEnabledForUser()` or `isNotificationEnabledForEmail()`.
 
 #### 5. Test & Document
 
-- Test in the Apps Script editor using `Test Deployments`
-- Verify frontend calls your new function correctly
-- Document your API in the [API Reference](#api-reference) section
-- Update [Data Model](#data-model) if you added entities
+- Test with an Apps Script test deployment.
+- Verify frontend calls and sheet writes.
+- Check browser console and Apps Script **Executions** logs.
+- Update this README and, if assistant behavior changes, [Tutorial.html](Tutorial.html).
 
 ### Code Organization
 
-- **Utilities.js**: Shared helpers (validation, formatting)
-- **DataStore.js**: Data access layer (all sheet I/O happens here)
-- **[Feature].js**: Business logic services (one file per domain feature)
-- **Code.js**: Web app entry point (`doGet()`)
-- **Bootstrap.js**: Initial data loading
-- **App.js.html**: Vue.js frontend (UI rendering + client-side state)
+- **Utilities.js**: Shared helpers for identity, profile photos, email validation, date parsing, mail sending, and client serialization.
+- **DataStore.js**: Data access layer, cache invalidation, version hashing, ID generation, row writes/deletes.
+- **Users.js**: User creation, onboarding, profile updates, and user lookup.
+- **Projects.js**: Project CRUD, color schemes, creator assignment, project ordering.
+- **Tasks.js**: Task CRUD, status flow, assignment validation, task moving/order, completed-task purge.
+- **Subtasks.js**: Subtask CRUD and ordering.
+- **Comments.js**: Task comments, resolved state, mention extraction.
+- **Agendas.js**: Agenda CRUD and sharing rows.
+- **Notifications.js**: Email notification workflows.
+- **Settings.js**: Per-user notification and font-scale settings.
+- **Bootstrap.js**: Initial app payload.
+- **Chat.js**: Optional Gemini assistant bridge.
+- **Code.js**: Web app entry point (`doGet()`) and HTML include helper.
+- **Index.html**: HTML template and UI markup.
+- **App.js.html**: Vue app logic.
+- **Tutorial.html**: Assistant tutorial content loaded by `Chat.js`.
 
 ### Running Tests
 
 Currently, Apps Script testing is manual:
-1. Deploy as test deployment: **Deploy** → **Test deployments**
-2. Open the URL in browser
-3. Verify features work end-to-end
-4. Check browser console for errors
-5. Review Apps Script logs: **Executions** tab
+
+1. Deploy as test deployment: **Deploy** → **Test deployments**.
+2. Open the URL in a browser.
+3. Verify features end-to-end.
+4. Check browser console for errors.
+5. Review Apps Script logs in the **Executions** tab.
+
+For repository-level validation, run a syntax-oriented check such as:
+
+```bash
+node --check /tmp/combined-soar-js.js
+```
+
+where `/tmp/combined-soar-js.js` is a temporary file built from the `.js` files after stripping Apps Script HTML wrappers if needed.
 
 ### Code Style & Conventions
 
-- **Functions**: camelCase (e.g., `createTask()`, `getInitialPayload()`)
-- **Variables**: camelCase for local, UPPER_CASE for constants
-- **Error Handling**: Always return `{success: false, error: "message"}` on failure
-- **Comments**: Use JSDoc-style for exported functions
-- **Validation**: Validate all inputs at function entry point
-- **Caching**: Always call `DataStore.invalidateTableCache(tableName)` after writes
+- **Functions**: camelCase (for example, `createTask()`, `getInitialPayload()`).
+- **Variables**: camelCase for locals; UPPER_CASE for constants.
+- **Responses**: Return JSON strings with `{success: false, error: "message"}` on failures.
+- **Validation**: Validate all inputs at function entry points.
+- **Caching**: Call `invalidateTableCache(tableName)` after writes.
+- **Imports**: Do not wrap imports in try/catch blocks.
 
 ---
 
 ## Troubleshooting
 
-### App won't load / Blank screen
+### App won't load / blank screen
 
 **Causes & Solutions**:
-1. **Deployment URL is wrong**: Verify you deployed as "Web app" (not just saving), and access the correct URL
-2. **Apps Script hasn't mounted Vue**: Check browser console for JavaScript errors
-3. **Sheet tabs missing**: Verify all 5 sheet tabs exist with correct names: `Users`, `Projects`, `Tasks`, `Comments`, `Assignments`
-4. **Apps Script permissions not granted**: Refresh page and re-authenticate
+1. **Deployment URL is wrong**: Verify you deployed as **Web app** and are using the current deployment URL.
+2. **Apps Script hasn't mounted Vue**: Check browser console for JavaScript errors.
+3. **Sheet tabs missing**: Verify all 8 tabs exist: `Users`, `Projects`, `Tasks`, `Subtasks`, `Comments`, `Assignments`, `Agendas`, `Sharing`.
+4. **Sheet headers are wrong**: Verify exact headers in [Spreadsheet Setup](#spreadsheet-setup).
+5. **Apps Script permissions not granted**: Refresh page and authorize requested scopes.
 
 **Debug steps**:
-- Open browser DevTools (F12)
-- Check **Console** tab for errors
-- Check **Network** tab for failed requests
-- Open Apps Script editor and check **Executions** log for runtime errors
+- Open browser DevTools (F12).
+- Check **Console** for JavaScript errors.
+- Check **Network** for failed calls.
+- Open Apps Script editor and check **Executions** logs.
 
----
-
-### Tasks/Projects not appearing
+### Create Account modal keeps appearing
 
 **Possible Causes**:
-1. **Data not saved yet**: Click "Create Project" and wait—might take a few seconds
-2. **Sheet columns are wrong order**: Verify exact column headers match [Configuration](#configuration)
-3. **Cache is stale**: On rare occasions, version hash polling may be delayed—refresh browser
+1. The signed-in email is not in `Users.Email`.
+2. Email has extra spaces or different casing in the sheet.
+3. The web app is executing under a context that cannot read the current user's email.
 
-**Solution**:
-- Check the Google Sheet directly: open sheet tabs and verify data is there
-- Check Apps Script logs for errors: **Executions** tab
-- Refresh browser to force data reload
+**Solutions**:
+- Confirm `Users` has an exact email for the signed-in account.
+- Use the **Create Account** modal and click **Create Account**.
+- Confirm manifest scopes include `userinfo.email`.
 
----
+### Tasks or projects not appearing
+
+**Possible Causes**:
+1. You are seeing only assigned work by default.
+2. The project is not assigned to you and contains no open tasks assigned to you.
+3. The task is complete and moved to **Past Assignments**.
+4. Sheet columns are wrong or missing.
+5. Cache is stale.
+
+**Solutions**:
+- Check `Assignments` rows for your `User_ID`.
+- Check whether the task status is `Complete`.
+- Refresh the browser.
+- Check Apps Script logs for errors.
+
+### Cannot create a task
+
+**Possible Causes**:
+1. **Task Title** is blank.
+2. No assignee was selected under **Assigned To**.
+3. You selected a user outside your permitted reporting tree.
+4. The target project was deleted or the `Project_ID` is invalid.
+
+**Solutions**:
+- Add a title.
+- Select yourself or an allowed report as assignee.
+- Ask a manager/admin to adjust `Manager_ID` values if permissions are wrong.
 
 ### Email notifications not sending
 
 **Possible Causes**:
-1. **Gmail API not authorized**: Script needs permission—accept the first time
-2. **User has notifications disabled**: Check [Settings](#accessibility--personalization) modal for this notification type
-3. **Email invalid**: Verify recipient email address is in correct format
+1. `script.send_mail` scope was not authorized.
+2. User disabled the relevant notification in **Settings**.
+3. Recipient email is invalid.
+4. Apps Script daily email quotas were reached.
 
 **Debug**:
-- Check Apps Script **Execution log** for email send errors
-- Verify sender email address is authorized Gmail account
-- Test manually: Call `notifyAssignment()` directly in Apps Script editor
+- Check Apps Script **Executions** logs.
+- Confirm notification settings.
+- Confirm `Users.Email` values are valid.
 
----
+### SOAR Assistant says it is not configured
+
+**Cause**: Script Property `GEMINI_API_KEY` is missing.
+
+**Solution**:
+1. Open Apps Script **Project Settings**.
+2. Add Script Property `GEMINI_API_KEY`.
+3. Save and retry the chat.
 
 ### "You do not have permission to access this file"
 
-**Cause**: You're trying to access a deployment URL that you don't own or Apps Script project was deleted.
+**Cause**: Wrong deployment URL, deleted Apps Script project, or missing access to the spreadsheet/script.
 
 **Solution**:
-1. Verify you have edit access to the Google Sheet
-2. Go to **Extensions** → **Apps Script** to open the correct project
-3. Deploy a fresh web app: **Deploy** → **New deployment**
-4. Use the new URL
+1. Verify you have edit access to the Google Sheet.
+2. Open **Extensions** → **Apps Script** from the correct sheet.
+3. Deploy a fresh web app.
+4. Use the new URL.
 
----
-
-### Slow performance / High latency
+### Slow performance / high latency
 
 **Causes**:
-1. **Google Sheets is slow**: Large sheets (1000+ rows) slow down queries
-2. **Too many concurrent users**: Apps Script has quota limits (~1000 reads/sec across all projects)
-3. **Cache invalidation storm**: Rapid mutations clear cache, forcing full reloads
+1. Large Google Sheets data volume.
+2. Many concurrent users.
+3. Rapid writes causing frequent cache invalidation.
+4. Apps Script quotas or cold starts.
 
 **Solutions**:
-1. Archive old completed projects/tasks (move to separate "Archive" sheet)
-2. Batch operations when possible (multiple updates in one function call)
-3. Review [Caching Strategy](#caching-strategy--3-levels) to tune TTLs
+1. Archive old completed projects/tasks if sheets grow large.
+2. Batch operations when possible.
+3. Avoid unnecessary full reloads.
+4. Review [Caching Strategy](#caching-strategy).
 
----
+### Mention extraction not working
 
-### Mention extraction not working in comments
-
-**Problem**: `@username` mentions are not being recognized / notified.
+**Problem**: A typed mention is not recognized or notified.
 
 **Causes**:
-1. **Typo in username**: The @mention must match exact display name (case-sensitive)
-2. **User not in Users table yet**: Only onboarded users can be mentioned
-3. **Regex bug in mention extraction**: Unlikely, but check [Comments.js](Comments.js)
+1. Mentions must use handles like `@jane` or `@first.last`; display names with spaces are not the backend mention format.
+2. The user is not in the `Users` sheet.
+3. The mentioned user disabled **Comments and mentions**.
 
 **Solution**:
-- Copy exact username (with spaces if present): `@John Smith` not `@johnsmith`
-- Ensure user is already in the system (check Users sheet)
-- Manually test mention regex: Open Apps Script editor, paste code in console
-
----
+- Use the `@` suggestion dropdown when writing the comment.
+- Ensure the user exists in SOAR.
+- Check notification settings.
 
 ### Permissions error: "Cannot assign task to this user"
 
-**Cause**: You're trying to assign a task to someone outside your reporting chain.
+**Cause**: You selected an assignee outside your reporting tree.
 
-**Why**: Permission model restricts assignments to:
-- Yourself
-- Your direct subordinates (users where `Manager_ID = your_user_id`)
+**Why**: Task assignment permissions allow:
+- yourself;
+- your direct reports;
+- indirect reports below your direct reports.
 
 **Solution**:
-- Assign tasks to teammates in your group
-- Have manager create cross-team task and assign to you
-- Contact system admin to adjust manager hierarchy in Users sheet
+- Assign the task to yourself or someone in your reporting tree.
+- Ask an admin to update `Manager_ID` values.
+- Have the appropriate manager create or edit the task.
 
----
+### Generated IDs reset or duplicated IDs
 
-### "Generated IDs reset / duplicated IDs"
-
-**Cause**: ScriptProperties counter corrupted (rare).
+**Cause**: Script Properties counter corruption or manual sheet edits.
 
 **Workaround**:
-1. Open Apps Script editor
-2. Go to **Services** → **Execution log**
-3. Run this in the console:
+1. Open Apps Script editor.
+2. Open a temporary function or console context.
+3. Delete affected ID counter properties, for example:
    ```javascript
-   PropertiesService.getScriptProperties().deleteProperty('soar_next_id:Users');
-   PropertiesService.getScriptProperties().deleteProperty('soar_next_id:Projects');
-   PropertiesService.getScriptProperties().deleteProperty('soar_next_id:Tasks');
-   PropertiesService.getScriptProperties().deleteProperty('soar_next_id:Comments');
+   PropertiesService.getScriptProperties().deleteProperty('soar_next_id:Users:U');
+   PropertiesService.getScriptProperties().deleteProperty('soar_next_id:Projects:P');
+   PropertiesService.getScriptProperties().deleteProperty('soar_next_id:Tasks:T');
+   PropertiesService.getScriptProperties().deleteProperty('soar_next_id:Subtasks:S');
+   PropertiesService.getScriptProperties().deleteProperty('soar_next_id:Comments:C');
+   PropertiesService.getScriptProperties().deleteProperty('soar_next_id:Agendas:A');
    ```
-4. Refresh the app—counters will re-seed from sheet data on next mutation
+4. The next mutation re-seeds from existing sheet IDs.
 
 ---
 
@@ -998,19 +1398,20 @@ Currently, Apps Script testing is manual:
 ### Reporting Issues
 
 Found a bug? Have a feature request?
-1. Check [Troubleshooting](#troubleshooting) section first
-2. Open an issue on [GitHub](https://github.com/nathanwiggins/soar/issues)
-3. Include: steps to reproduce, expected vs actual, browser/OS, error logs
+1. Check [Troubleshooting](#troubleshooting) first.
+2. Open an issue on [GitHub](https://github.com/nathanwiggins/soar/issues).
+3. Include steps to reproduce, expected vs actual behavior, browser/OS, and relevant logs.
 
 ### Contributing
 
-We welcome contributions! To add a feature or fix a bug:
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/my-feature`
-3. Make changes following [Code Style](#code-style--conventions)
-4. Test thoroughly (end-to-end in deployed app)
-5. **Update README** if you add features or change behavior
-6. Submit a pull request with description of changes
+To add a feature or fix a bug:
+1. Fork the repository.
+2. Create a feature branch: `git checkout -b feature/my-feature`.
+3. Make changes following [Code Style & Conventions](#code-style-conventions).
+4. Test end-to-end in a deployed Apps Script app.
+5. Update this README if behavior changes.
+6. Update [Tutorial.html](Tutorial.html) if assistant-facing guidance changes.
+7. Submit a pull request with a description of changes.
 
 ### Roadmap
 
@@ -1018,10 +1419,9 @@ Potential future enhancements:
 - [ ] File attachments on tasks/comments
 - [ ] Recurring tasks
 - [ ] Time tracking / Kanban burn-down charts
-- [ ] Mobile app (React Native)
+- [ ] Mobile app
 - [ ] Slack integration for notifications
-- [ ] Calendar view of due dates
-- [ ] Advanced filters and saved views
+- [ ] Saved filters
 - [ ] Bulk import from CSV
 
 ---
