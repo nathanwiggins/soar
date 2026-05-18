@@ -1,7 +1,7 @@
 function doGet() {
   return HtmlService.createTemplateFromFile('Index')
     .evaluate()
-    .setTitle('Soar - Project Hub')
+    .setTitle('SOAR - Project Management')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setFaviconUrl('https://drive.google.com/uc?id=1hGM6qVNuhjNcFbuB4eWyOwYbKDIOO66Y&export=download&format=png');
 }
