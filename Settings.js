@@ -3,6 +3,7 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
   taskAssignments: true,
   commentsAndMentions: true,
   dueDateReminders: true,
+  taskCompletion: true,
   weeklyDigest: false,
   agendaShares: true
 };
