@@ -107,6 +107,7 @@
       const quickCommentTextarea = ref(null);
       const showAllWorkItems = ref(false);
       const currentTab = ref('project-board');
+      const isSidebarVisible = ref(true);
       const kanbanScrollContainer = ref(null);
       const showSupervisorUserDropdown = ref(false);
       const selectedSupervisorUserIds = ref([]);
@@ -152,14 +153,20 @@
         if (taskStatusOptions.includes(normalizedStatus)) return normalizedStatus;
         return taskDefaultStatus;
       };
-      const defaultProjectColorScheme = 'red';
+      const buildProjectColorScheme = (label, deep, light, darkLight, border) => ({ label, deep, light, darkLight, border });
+      const defaultProjectColorScheme = 'suu_red';
       const projectColorSchemes = {
-        red: { label: 'Red', deep: '#DB0000', light: '#FEE2E2', darkLight: 'rgba(127, 29, 29, 0.28)', border: '#FECACA' },
-        blue: { label: 'Blue', deep: '#1D4ED8', light: '#DBEAFE', darkLight: 'rgba(30, 64, 175, 0.28)', border: '#BFDBFE' },
-        green: { label: 'Green', deep: '#047857', light: '#D1FAE5', darkLight: 'rgba(6, 95, 70, 0.28)', border: '#A7F3D0' },
-        purple: { label: 'Purple', deep: '#6D28D9', light: '#EDE9FE', darkLight: 'rgba(91, 33, 182, 0.28)', border: '#DDD6FE' },
-        amber: { label: 'Amber', deep: '#B45309', light: '#FEF3C7', darkLight: 'rgba(146, 64, 14, 0.28)', border: '#FDE68A' },
-        teal: { label: 'Teal', deep: '#0F766E', light: '#CCFBF1', darkLight: 'rgba(17, 94, 89, 0.28)', border: '#99F6E4' }
+        suu_red: buildProjectColorScheme('SUU Red (Default)', '#DB0000', '#FEE2E2', 'rgba(127, 29, 29, 0.28)', '#FECACA'),
+        sunset_orange: buildProjectColorScheme('Sunset Orange', '#F97316', '#FFEDD5', 'rgba(124, 45, 18, 0.28)', '#FED7AA'),
+        amber_gold: buildProjectColorScheme('Amber Gold', '#F59E0B', '#FEF3C7', 'rgba(146, 64, 14, 0.28)', '#FDE68A'),
+        emerald_green: buildProjectColorScheme('Emerald Green', '#10B981', '#D1FAE5', 'rgba(6, 95, 70, 0.28)', '#A7F3D0'),
+        ocean_teal: buildProjectColorScheme('Ocean Teal', '#14B8A6', '#CCFBF1', 'rgba(15, 118, 110, 0.28)', '#99F6E4'),
+        sky_blue: buildProjectColorScheme('Sky Blue', '#0EA5E9', '#E0F2FE', 'rgba(3, 105, 161, 0.28)', '#BAE6FD'),
+        deep_indigo: buildProjectColorScheme('Deep Indigo', '#4F46E5', '#E0E7FF', 'rgba(67, 56, 202, 0.28)', '#C7D2FE'),
+        soft_violet: buildProjectColorScheme('Soft Violet', '#7C3AED', '#EDE9FE', 'rgba(91, 33, 182, 0.28)', '#DDD6FE'),
+        rose_pink: buildProjectColorScheme('Rose Pink', '#EC4899', '#FCE7F3', 'rgba(157, 23, 77, 0.28)', '#FBCFE8'),
+        slate_gray: buildProjectColorScheme('Slate Gray', '#475569', '#E2E8F0', 'rgba(51, 65, 85, 0.28)', '#94A3B8'),
+        pearl_white: buildProjectColorScheme('Pearl White', '#6B7280', '#FFFFFF', 'rgba(75, 85, 99, 0.28)', '#E5E7EB')
       };
       const projectColorSchemeOptions = Object.entries(projectColorSchemes).map(([value, scheme]) => ({
         value,
@@ -1198,8 +1205,13 @@
         return projectColorSchemes[normalizedScheme] ? normalizedScheme : defaultProjectColorScheme;
       };
 
+      const getRawProjectColorScheme = (project) => {
+        if (!project || typeof project !== 'object') return '';
+        return project.Color_Scheme || project.ColorScheme || project['Color Scheme'] || '';
+      };
+
       const getProjectColorScheme = (project) => {
-        return projectColorSchemes[normalizeProjectColorScheme(project?.Color_Scheme)] || projectColorSchemes[defaultProjectColorScheme];
+        return projectColorSchemes[normalizeProjectColorScheme(getRawProjectColorScheme(project))] || projectColorSchemes[defaultProjectColorScheme];
       };
 
       const getProjectDotStyle = (project) => ({
@@ -1375,7 +1387,7 @@
           status: project.Status || 'Not Started',
           createdDate: project.Created_Date || '',
           dueDate: formatDateForInput(project.Due_Date),
-          colorScheme: normalizeProjectColorScheme(project.Color_Scheme),
+          colorScheme: normalizeProjectColorScheme(getRawProjectColorScheme(project)),
           creatorId: project.Creator_ID || ''
         };
       };
@@ -2810,6 +2822,7 @@
         loading,
         isDarkMode,
         currentTab,
+        isSidebarVisible,
         kanbanScrollContainer,
         isUserMenuOpen,
         showCreateAccountModal,
