@@ -323,7 +323,7 @@
             :class="isDarkMode ? 'bg-gray-800 text-gray-100 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
             class="h-9 w-9 rounded-lg inline-flex items-center justify-center transition-colors"
             :title="isSidebarVisible ? 'Hide side pane' : 'Show side pane'">
-            <i :class="isSidebarVisible ? 'fa-solid fa-sidebar' : 'fa-solid fa-bars'"></i>
+            <i :class="isSidebarVisible ? 'fa-solid fa-angles-left' : 'fa-solid fa-bars'"></i>
           </button>
           <h2 :class="isDarkMode ? 'text-gray-100' : 'text-black'" class="text-xl font-semibold">
             {{ currentTab === 'supervisor-view' ? 'Supervisor Tools' : (currentTab === 'calendar' ? 'Calendar' : (currentTab === 'past-assignments' ? 'Past Assignments' : (currentTab === 'agendas' ? 'Meeting Agendas' : 'Project Board'))) }}
