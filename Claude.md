@@ -4,3 +4,5 @@ Welcome! You are an AI agent assisting with **SOAR**, a lightweight, Google-nati
 - Ensure that `README.md` sections are perfectly aligned with the backend code.
 - Ensure that `Tutorial.html` receives any updates related to the user experience so that the AI Assistant can answer the user's questions accurately.
 - Ensure that common sections between `README.md` and `Tutorial.html` are synced with each other.
+
+After making changes, be sure to do `clasp push` to send the changes to the dev environment so the user can view them.
