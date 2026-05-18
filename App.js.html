@@ -1142,6 +1142,26 @@
         return getDaysUntilDueDate(task?.Due_Date) === 1;
       };
 
+      const dueDateColorClass = (dueDateValue) => {
+        const days = getDaysUntilDueDate(dueDateValue);
+        if (days === null) return isDarkMode.value ? 'text-gray-400' : 'text-gray-500';
+        if (days < 0) return isDarkMode.value ? 'text-red-400' : 'text-red-600';
+        if (days <= 1) return isDarkMode.value ? 'text-orange-400' : 'text-orange-500';
+        if (days <= 7) return isDarkMode.value ? 'text-yellow-400' : 'text-yellow-600';
+        return isDarkMode.value ? 'text-gray-400' : 'text-gray-500';
+      };
+
+      const getProjectDueDateClass = (project) => {
+        if (!project?.Due_Date) return '';
+        return dueDateColorClass(project.Due_Date);
+      };
+
+      const getTaskDueDateClass = (task) => {
+        if (!task?.Due_Date) return isDarkMode.value ? 'text-gray-400' : 'text-gray-500';
+        if (isCompleteStatus(task?.Status)) return isDarkMode.value ? 'text-gray-400' : 'text-gray-500';
+        return dueDateColorClass(task.Due_Date);
+      };
+
       const getDueDateTooltip = (task) => {
         const daysLeft = getDaysUntilDueDate(task?.Due_Date);
         if (daysLeft === null) return '';
@@ -2892,6 +2912,8 @@
         shouldStrikeTask,
         isTaskDueTomorrowAndOpen,
         getDueDateTooltip,
+        getProjectDueDateClass,
+        getTaskDueDateClass,
         priorityIconClass,
         getPriorityLabel,
         hasPriority,
