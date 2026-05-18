@@ -181,6 +181,7 @@ Each project column shows:
 
 - a colored dot using the project's **Color Scheme**;
 - the project title as a clickable button that opens **Project Details**;
+- the project due date (when set), color-coded: yellow if due within 7 days, orange if due within 1 day, red if overdue;
 - the number of visible tasks in that project;
 - draggable task cards;
 - a dashed **+ Add Task** button at the bottom.
@@ -196,7 +197,7 @@ Each task card shows:
 - task title;
 - assignee avatars or initials;
 - priority icon/label when priority is set;
-- due date when set.
+- due date when set, color-coded: yellow if due within 7 days, orange if due within 1 day, red if overdue (gray for completed tasks).
 
 Task cards can be dragged between project columns. Dragging a task to another project changes its `Project_ID` and persists the task order with `updateTaskProjectAndOrder()`.
 
