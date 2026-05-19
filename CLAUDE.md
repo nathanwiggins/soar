@@ -70,13 +70,13 @@ The version hash (`buildGlobalVersionHash`) combines the spreadsheet's Drive las
 
 Eight Google Sheets tabs act as tables. Column headers are the field names — they must match exactly:
 
-- **Users** — `User_ID`, `Name`, `Email`, `Manager_ID`, `Role`, `Profile_Pic_Url`
-- **Projects** — `Project_ID`, `Title`, `Description`, `Status`, `Due_Date`, `Creator_ID`, `Color_Scheme`, `Sort_Order`
-- **Tasks** — `Task_ID`, `Project_ID`, `Title`, `Description`, `Status`, `Priority`, `Due_Date`, `Creator_ID`, `Sort_Order`
-- **Subtasks** — `Subtask_ID`, `Task_ID`, `Title`, `Is_Complete`, `Sort_Order`
-- **Assignments** — `Task_ID`, `User_ID`
-- **Comments** — `Comment_ID`, `Topic_ID`, `Author_ID`, `Content`, `Created_At`, `Is_Resolved`
-- **Agendas** — `Agenda_ID`, `Title`, `Description`, `Agenda_Date`, `Content_JSON`, `Creator_ID`
+- **Users** — `User_ID`, `Name`, `Email`, `Manager_ID`, `Profile_Pic_Url`
+- **Projects** — `Project_ID`, `Project_Title`, `Description`, `Status`, `Due_Date`, `Creator_ID`, `Color_Scheme`, `Sort_Order`
+- **Tasks** — `Task_ID`, `Project_ID`, `Task_Title`, `Description`, `Status`, `Priority`, `Due_Date`, `Creator_ID`, `Sort_Order`
+- **Subtasks** — `Subtask_ID`, `Task_ID`, `Subtask_Title`, `Status`, `Sort_Order`
+- **Assignments** — `Assignment_ID`, `Assignee_ID`
+- **Comments** — `Comment_ID`, `Topic_ID`, `Topic_Type`, `Commenter_ID`, `Content`, `Timestamp`, `Is_Resolved`
+- **Agendas** — `Agenda_ID`, `Title`, `Description`, `Agenda_Date`, `Content_JSON`, `Creator_ID`, `Created_Date`
 - **Sharing** — `Agenda_ID`, `User_ID`
 
 IDs are generated via `generateNextId(sheetName, prefix)` (e.g., `TASK-00000042`), using a script-property counter with a script lock to prevent races.
