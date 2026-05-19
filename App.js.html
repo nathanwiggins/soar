@@ -82,10 +82,15 @@
       const subtasks = ref([]);
       const agendas = ref([]);
       const agendaShares = ref([]);
+      const agendaSessions = ref([]);
+      const activeSession = ref(null);
+      const activeSessionIndex = ref(0);
+      const savingSession = ref(false);
       const showAgendaModal = ref(false);
       const activeAgenda = ref(null);
       const activeAgendaShares = ref([]);
       const savingAgenda = ref(false);
+      const showNewSessionPrompt = ref(false);
       const newSubtaskTitle = ref('');
       const creatingSubtask = ref(false);
       const assignments = ref([]);
@@ -742,6 +747,7 @@
               assignments: payload.assignments || [],
               agendas: payload.agendas || [],
               agendaShares: payload.agendaShares || [],
+              agendaSessions: payload.agendaSessions || [],
               comments: payload.comments || [],
               currentUserSettings: payload.currentUserSettings || {},
               versionHash: payload.versionHash,
@@ -764,6 +770,7 @@
         assignments.value = Array.isArray(payload.assignments) ? payload.assignments : [];
         agendas.value = Array.isArray(payload.agendas) ? payload.agendas : [];
         agendaShares.value = Array.isArray(payload.agendaShares) ? payload.agendaShares : [];
+        agendaSessions.value = Array.isArray(payload.agendaSessions) ? payload.agendaSessions : [];
         comments.value = Array.isArray(payload.comments) ? payload.comments : [];
         loadedCommentTopicIds.value = [
           ...new Set([
@@ -2921,56 +2928,218 @@
           .createAgenda(title);
       };
 
+      const getSessionsForAgenda = (agendaId) => {
+        return agendaSessions.value
+          .filter(s => idsMatch(s.Agenda_ID, agendaId))
+          .slice()
+          .sort((a, b) => {
+            const aDate = new Date(a.Session_Date || 0).getTime();
+            const bDate = new Date(b.Session_Date || 0).getTime();
+            return bDate - aDate;
+          });
+      };
+
+      const getLatestSessionForAgenda = (agendaId) => {
+        return getSessionsForAgenda(agendaId)[0] || null;
+      };
+
       const openAgendaModal = (agenda) => {
-        let parsedContent = [];
-        try {
-          parsedContent = JSON.parse(agenda.Content_JSON || '[]');
-        } catch (e) { parsedContent = []; }
-        
+        const sessions = getSessionsForAgenda(agenda.Agenda_ID);
+        let headers = [];
+        let agendaDate = '';
+
+        if (sessions.length > 0) {
+          const latest = sessions[0];
+          try { headers = JSON.parse(latest.Content_JSON || '[]'); } catch (e) { headers = []; }
+          agendaDate = formatDateForInput(latest.Session_Date || '');
+          activeSession.value = latest;
+        } else {
+          activeSession.value = null;
+          headers = [];
+          agendaDate = '';
+        }
+
+        activeSessionIndex.value = 0;
         activeAgenda.value = {
           ...agenda,
-          headers: parsedContent,
-          agendaDate: formatDateForInput(agenda.Agenda_Date || '')
+          headers,
+          agendaDate
         };
         activeAgendaShares.value = agendaShares.value
           .filter(s => idsMatch(s.Agenda_ID, agenda.Agenda_ID))
           .map(s => s.User_ID);
-          
+
         showAgendaModal.value = true;
       };
 
       const closeAgendaModal = () => {
         showAgendaModal.value = false;
         activeAgenda.value = null;
+        activeSession.value = null;
+        activeSessionIndex.value = 0;
+        showNewSessionPrompt.value = false;
       };
 
-      const saveAgenda = () => {
+      const navigateSession = (direction) => {
         if (!activeAgenda.value) return;
-        savingAgenda.value = true;
-        
+        const sessions = getSessionsForAgenda(activeAgenda.value.Agenda_ID);
+        if (sessions.length === 0) return;
+        const currentIndex = activeSessionIndex.value === -1 ? -1 : activeSessionIndex.value;
+        let newIndex = currentIndex + direction;
+        if (newIndex < 0) newIndex = 0;
+        if (newIndex >= sessions.length) newIndex = sessions.length - 1;
+        const session = sessions[newIndex];
+        let headers = [];
+        try { headers = JSON.parse(session.Content_JSON || '[]'); } catch (e) { headers = []; }
+        activeSession.value = session;
+        activeSessionIndex.value = newIndex;
+        activeAgenda.value.headers = headers;
+        activeAgenda.value.agendaDate = formatDateForInput(session.Session_Date || '');
+      };
+
+      const createNewSession = (prefill) => {
+        if (!activeAgenda.value) return;
+        if (!idsMatch(activeAgenda.value.Creator_ID, currentUserId.value)) return;
+        const sessions = getSessionsForAgenda(activeAgenda.value.Agenda_ID);
+        let headers = [];
+        if (prefill && sessions.length > 0) {
+          try { headers = JSON.parse(sessions[0].Content_JSON || '[]'); } catch (e) { headers = []; }
+          headers = JSON.parse(JSON.stringify(headers));
+        }
+        const now = new Date();
+        const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+        activeSession.value = null;
+        activeSessionIndex.value = -1;
+        activeAgenda.value.headers = headers;
+        activeAgenda.value.agendaDate = todayStr;
+        showNewSessionPrompt.value = false;
+      };
+
+      const saveSession = () => {
+        if (!activeAgenda.value) return;
+        savingSession.value = true;
+
+        const agendaId = activeAgenda.value.Agenda_ID;
+        const sessionDate = activeAgenda.value.agendaDate || '';
         const contentStr = JSON.stringify(activeAgenda.value.headers);
-        
+        const title = activeAgenda.value.Title;
+        const description = activeAgenda.value.Description || '';
+
+        const finishAgendaUpdate = (callback) => {
+          google.script.run
+            .withSuccessHandler((res) => {
+              const result = parseRunResponse(res);
+              if (result && result.success) {
+                const idx = agendas.value.findIndex(a => idsMatch(a.Agenda_ID, result.agenda.Agenda_ID));
+                if (idx >= 0) agendas.value.splice(idx, 1, result.agenda);
+                agendaShares.value = agendaShares.value.filter(s => !idsMatch(s.Agenda_ID, result.agenda.Agenda_ID));
+                agendaShares.value.push(...(result.shares || []));
+              }
+              if (callback) callback(result);
+            })
+            .withFailureHandler(() => {
+              savingSession.value = false;
+              alert('Error saving agenda details.');
+            })
+            .updateAgenda(agendaId, title, description, activeAgendaShares.value);
+        };
+
+        if (activeSessionIndex.value === -1) {
+          google.script.run
+            .withSuccessHandler((res) => {
+              const result = parseRunResponse(res);
+              if (!result || !result.success) {
+                savingSession.value = false;
+                alert(result?.error || 'Failed to create session.');
+                return;
+              }
+              agendaSessions.value.push(result.session);
+              activeSession.value = result.session;
+              finishAgendaUpdate(() => {
+                savingSession.value = false;
+                const sessions = getSessionsForAgenda(agendaId);
+                activeSessionIndex.value = sessions.findIndex(s => idsMatch(s.Session_ID, result.session.Session_ID));
+                if (activeSessionIndex.value < 0) activeSessionIndex.value = 0;
+                closeAgendaModal();
+              });
+            })
+            .withFailureHandler(() => {
+              savingSession.value = false;
+              alert('Error creating session.');
+            })
+            .createAgendaSession(agendaId, sessionDate, contentStr);
+        } else {
+          const sessionId = activeSession.value?.Session_ID;
+          if (!sessionId) {
+            savingSession.value = false;
+            return;
+          }
+          google.script.run
+            .withSuccessHandler((res) => {
+              const result = parseRunResponse(res);
+              if (!result || !result.success) {
+                savingSession.value = false;
+                alert(result?.error || 'Failed to update session.');
+                return;
+              }
+              const idx = agendaSessions.value.findIndex(s => idsMatch(s.Session_ID, sessionId));
+              if (idx >= 0) agendaSessions.value.splice(idx, 1, result.session);
+              activeSession.value = result.session;
+              finishAgendaUpdate(() => {
+                savingSession.value = false;
+                closeAgendaModal();
+              });
+            })
+            .withFailureHandler(() => {
+              savingSession.value = false;
+              alert('Error updating session.');
+            })
+            .updateAgendaSession(sessionId, sessionDate, contentStr);
+        }
+      };
+
+      const saveAgenda = saveSession;
+
+      const deleteActiveSession = () => {
+        if (!activeSession.value?.Session_ID) return;
+        if (!confirm('Are you sure you want to delete this session?')) return;
+        const sessionId = activeSession.value.Session_ID;
         google.script.run
           .withSuccessHandler((res) => {
-            savingAgenda.value = false;
             const result = parseRunResponse(res);
-            if (result.success) {
-              const idx = agendas.value.findIndex(a => idsMatch(a.Agenda_ID, result.agenda.Agenda_ID));
-              if (idx >= 0) agendas.value.splice(idx, 1, result.agenda);
-              
-              agendaShares.value = agendaShares.value.filter(s => !idsMatch(s.Agenda_ID, result.agenda.Agenda_ID));
-              agendaShares.value.push(...result.shares);
-              closeAgendaModal();
+            if (!result || !result.success) {
+              alert(result?.error || 'Failed to delete session.');
+              return;
+            }
+            agendaSessions.value = agendaSessions.value.filter(s => !idsMatch(s.Session_ID, sessionId));
+            const remaining = getSessionsForAgenda(activeAgenda.value?.Agenda_ID);
+            if (remaining.length > 0) {
+              const next = remaining[0];
+              let headers = [];
+              try { headers = JSON.parse(next.Content_JSON || '[]'); } catch (e) { headers = []; }
+              activeSession.value = next;
+              activeSessionIndex.value = 0;
+              activeAgenda.value.headers = headers;
+              activeAgenda.value.agendaDate = formatDateForInput(next.Session_Date || '');
+            } else {
+              activeSession.value = null;
+              activeSessionIndex.value = 0;
+              activeAgenda.value.headers = [];
+              activeAgenda.value.agendaDate = '';
             }
           })
-          .updateAgenda(activeAgenda.value.Agenda_ID, activeAgenda.value.Title, activeAgenda.value.Description || '', activeAgenda.value.agendaDate || '', contentStr, activeAgendaShares.value);
+          .withFailureHandler(() => {
+            alert('Error deleting session.');
+          })
+          .deleteAgendaSession(sessionId);
       };
 
       const deleteAgenda = (id) => {
-        if (!confirm("Are you sure you want to delete this agenda?")) return;
+        if (!confirm("Are you sure you want to delete this agenda? All sessions will also be deleted.")) return;
         google.script.run
           .withSuccessHandler(() => {
             agendas.value = agendas.value.filter(a => !idsMatch(a.Agenda_ID, id));
+            agendaSessions.value = agendaSessions.value.filter(s => !idsMatch(s.Agenda_ID, id));
             if (activeAgenda.value && idsMatch(activeAgenda.value.Agenda_ID, id)) closeAgendaModal();
           })
           .deleteAgenda(id);
@@ -3060,7 +3229,9 @@
 
       const getAgendaContentPreview = (agenda) => {
         try {
-          const parsed = JSON.parse(agenda.Content_JSON || '[]');
+          const latest = getLatestSessionForAgenda(agenda.Agenda_ID);
+          const src = latest ? (latest.Content_JSON || '[]') : '[]';
+          const parsed = JSON.parse(src);
           return Array.isArray(parsed) ? parsed.slice(0, 3) : [];
         } catch (e) {
           return [];
@@ -3069,7 +3240,9 @@
 
       const getAgendaSectionCount = (agenda) => {
         try {
-          return JSON.parse(agenda.Content_JSON || '[]').length;
+          const latest = getLatestSessionForAgenda(agenda.Agenda_ID);
+          const src = latest ? (latest.Content_JSON || '[]') : '[]';
+          return JSON.parse(src).length;
         } catch (e) {
           return 0;
         }
@@ -3077,7 +3250,9 @@
 
       const getAgendaTextPreview = (agenda) => {
         try {
-          const sections = JSON.parse(agenda.Content_JSON || '[]');
+          const latest = getLatestSessionForAgenda(agenda.Agenda_ID);
+          const src = latest ? (latest.Content_JSON || '[]') : '[]';
+          const sections = JSON.parse(src);
           const textParts = [];
           for (const section of sections) {
             for (const item of (section.items || [])) {
@@ -3175,6 +3350,7 @@
         creatingAccount,
         managerOptions,
         currentUser,
+        currentUserId,
         users,
         projects,
         tasks,
@@ -3373,6 +3549,11 @@
         agendas,
         myAgendas,
         sharedAgendas,
+        agendaSessions,
+        activeSession,
+        activeSessionIndex,
+        savingSession,
+        showNewSessionPrompt,
         showAgendaModal,
         activeAgenda,
         activeAgendaShares,
@@ -3380,8 +3561,14 @@
         openNewAgenda,
         openAgendaModal,
         closeAgendaModal,
+        saveSession,
         saveAgenda,
         deleteAgenda,
+        deleteActiveSession,
+        navigateSession,
+        createNewSession,
+        getSessionsForAgenda,
+        getLatestSessionForAgenda,
         addAgendaHeader,
         addAgendaTextItem,
         addAgendaTaskItem,

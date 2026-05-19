@@ -561,7 +561,7 @@
                 </div>
               </div>
               <span :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'" class="text-xs font-medium">
-                <i class="fa-regular fa-calendar mr-1"></i>{{ formatDate(agenda.Agenda_Date || agenda.Created_Date) }}
+                <i class="fa-regular fa-calendar mr-1"></i>{{ getLatestSessionForAgenda(agenda.Agenda_ID) ? formatDate(getLatestSessionForAgenda(agenda.Agenda_ID).Session_Date) : 'No sessions yet' }}
               </span>
             </div>
           </div>
@@ -601,7 +601,7 @@
                 </div>
               </div>
               <span :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'" class="text-xs font-medium">
-                <i class="fa-regular fa-calendar mr-1"></i>{{ formatDate(agenda.Agenda_Date || agenda.Created_Date) }}
+                <i class="fa-regular fa-calendar mr-1"></i>{{ getLatestSessionForAgenda(agenda.Agenda_ID) ? formatDate(getLatestSessionForAgenda(agenda.Agenda_ID).Session_Date) : 'No sessions yet' }}
               </span>
             </div>
           </div>
@@ -1696,17 +1696,43 @@
       </div>
     </div>
     <div v-if="showAgendaModal && activeAgenda" class="fixed inset-0 bg-gray-900/50 flex items-center justify-center z-50 px-4" @click.self="closeAgendaModal">
-      <div :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-100'" class="w-full max-w-4xl rounded-2xl shadow-2xl border max-h-[90vh] flex flex-col">
+      <div :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-100'" class="w-full max-w-4xl rounded-2xl shadow-2xl border max-h-[90vh] flex flex-col" @click="showNewSessionPrompt = false">
         
         <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="px-6 pt-4 pb-3 border-b shrink-0">
           <div class="flex justify-between items-start">
             <div class="flex-1 mr-4">
               <input v-model="activeAgenda.Title" type="text" :class="isDarkMode ? 'bg-transparent text-gray-100 focus:ring-gray-700' : 'bg-transparent text-gray-800 focus:ring-gray-200'" class="text-lg font-bold border-none focus:ring-2 rounded px-2 w-full mb-2">
-              <div class="flex items-center gap-4 px-2">
-                <label :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-xs font-semibold uppercase tracking-wider flex items-center gap-1 shrink-0">
-                  <i class="fa-regular fa-calendar"></i> Date
-                </label>
-                <input v-model="activeAgenda.agendaDate" type="date" :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-200 focus:ring-gray-500' : 'bg-gray-50 border-gray-200 text-gray-800 focus:ring-gray-300'" class="text-sm border rounded-lg px-2 py-1 focus:outline-none focus:ring-2">
+              <div class="flex items-center gap-3 px-2">
+                <button
+                  @click="navigateSession(1)"
+                  :disabled="activeSessionIndex === -1 || activeSessionIndex >= getSessionsForAgenda(activeAgenda.Agenda_ID).length - 1"
+                  class="text-xs px-2 py-1 rounded border transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  :class="isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-600 hover:bg-gray-100'"
+                  title="Older session">
+                  Older &rarr;
+                </button>
+                <span class="text-xs font-medium shrink-0" :class="isDarkMode ? 'text-gray-300' : 'text-gray-600'">
+                  <template v-if="activeSessionIndex === -1">
+                    New Session &middot;
+                    <input v-model="activeAgenda.agendaDate" type="date" :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-200 focus:ring-gray-500' : 'bg-gray-50 border-gray-200 text-gray-800 focus:ring-gray-300'" class="text-sm border rounded-lg px-2 py-1 focus:outline-none focus:ring-2 ml-1">
+                  </template>
+                  <template v-else-if="getSessionsForAgenda(activeAgenda.Agenda_ID).length === 0">
+                    No sessions yet
+                  </template>
+                  <template v-else>
+                    Session {{ activeSessionIndex + 1 }} of {{ getSessionsForAgenda(activeAgenda.Agenda_ID).length }}
+                    <span class="mx-1">&middot;</span>
+                    <input v-model="activeAgenda.agendaDate" type="date" :disabled="activeSessionIndex !== 0 && !idsMatch(activeAgenda.Creator_ID, currentUserId)" :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-200 focus:ring-gray-500 disabled:opacity-50' : 'bg-gray-50 border-gray-200 text-gray-800 focus:ring-gray-300 disabled:opacity-50'" class="text-sm border rounded-lg px-2 py-1 focus:outline-none focus:ring-2">
+                  </template>
+                </span>
+                <button
+                  @click="navigateSession(-1)"
+                  :disabled="activeSessionIndex <= 0"
+                  class="text-xs px-2 py-1 rounded border transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  :class="isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-600 hover:bg-gray-100'"
+                  title="Newer session">
+                  &larr; Newer
+                </button>
               </div>
             </div>
           
@@ -1783,10 +1809,13 @@
 
         <div class="flex-1 overflow-y-auto p-6 space-y-6">
           <textarea v-model="activeAgenda.Description" rows="2" :class="isDarkMode ? 'bg-gray-800 border-gray-700 text-gray-300 placeholder-gray-600 focus:ring-gray-600' : 'bg-gray-50 border-gray-200 text-gray-700 placeholder-gray-400 focus:ring-gray-300'" class="w-full text-sm border rounded-xl px-4 py-3 focus:outline-none focus:ring-2 resize-none" placeholder="Add a description for this agenda..."></textarea>
+          <div v-if="activeSessionIndex > 0" class="text-xs px-3 py-2 rounded-lg font-medium" :class="isDarkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-500'">
+            <i class="fa-solid fa-lock mr-1"></i> This is a past session and is read-only.
+          </div>
           <div v-for="(header, hIndex) in activeAgenda.headers" :key="header.id" :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'" class="p-4 rounded-xl border">
             <div class="flex justify-between items-center mb-3">
-              <input v-model="header.title" type="text" :class="isDarkMode ? 'bg-gray-900 text-gray-200 border-gray-600' : 'bg-white text-gray-800 border-gray-300'" class="font-bold border rounded px-2 py-1 w-1/2">
-              <button @click="activeAgenda.headers.splice(hIndex, 1)" class="text-red-500 hover:text-red-700"><i class="fa-solid fa-trash"></i></button>
+              <input v-model="header.title" type="text" :disabled="activeSessionIndex > 0" :class="isDarkMode ? 'bg-gray-900 text-gray-200 border-gray-600 disabled:opacity-60' : 'bg-white text-gray-800 border-gray-300 disabled:opacity-60'" class="font-bold border rounded px-2 py-1 w-1/2">
+              <button v-if="activeSessionIndex <= 0 || activeSessionIndex === -1" @click="activeAgenda.headers.splice(hIndex, 1)" class="text-red-500 hover:text-red-700"><i class="fa-solid fa-trash"></i></button>
             </div>
 
             <draggable :list="header.items" item-key="id" handle=".agenda-drag-handle" class="space-y-2 mb-3">
@@ -1795,7 +1824,7 @@
                   <i class="fa-solid fa-grip-vertical mt-2 agenda-drag-handle cursor-grab" :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'"></i>
                   
                   <template v-if="item.type === 'text'">
-                    <textarea v-model="item.content" rows="1" :class="isDarkMode ? 'bg-gray-900 text-gray-200 border-gray-600' : 'bg-white text-gray-800 border-gray-300'" class="flex-1 rounded p-2 text-sm border"></textarea>
+                    <textarea v-model="item.content" rows="1" :disabled="activeSessionIndex > 0" :class="isDarkMode ? 'bg-gray-900 text-gray-200 border-gray-600 disabled:opacity-60' : 'bg-white text-gray-800 border-gray-300 disabled:opacity-60'" class="flex-1 rounded p-2 text-sm border"></textarea>
                   </template>
                   
                   <template v-else-if="item.type === 'task'">
@@ -1839,14 +1868,14 @@
                     </div>
                   </template>
 
-                  <button @click="removeAgendaItem(hIndex, iIndex)" class="text-gray-400 hover:text-red-500 mt-2 opacity-0 group-hover:opacity-100 transition-opacity"><i class="fa-solid fa-xmark"></i></button>
+                  <button v-if="activeSessionIndex <= 0 || activeSessionIndex === -1" @click="removeAgendaItem(hIndex, iIndex)" class="text-gray-400 hover:text-red-500 mt-2 opacity-0 group-hover:opacity-100 transition-opacity"><i class="fa-solid fa-xmark"></i></button>
                 </div>
               </template>
             </draggable>
 
-            <div class="flex gap-2">
+            <div v-if="activeSessionIndex <= 0 || activeSessionIndex === -1" class="flex gap-2">
               <button @click="addAgendaTextItem(hIndex)" class="text-sm px-3 py-1 rounded border border-dashed transition-colors" :class="isDarkMode ? 'border-gray-600 text-gray-400 hover:text-gray-200' : 'border-gray-400 text-gray-500 hover:text-gray-700'">+ Text Item</button>
-              
+
               <select @change="addAgendaTaskItem(hIndex, $event.target.value); $event.target.value=''" :class="isDarkMode ? 'bg-gray-900 border-gray-600 text-gray-400' : 'bg-white border-gray-400 text-gray-500'" class="text-sm px-2 py-1 rounded border border-dashed w-40 cursor-pointer">
                 <option value="">+ Link Task</option>
                 <optgroup v-for="project in visibleProjects" :key="'ag-p-'+project.Project_ID" :label="project.Project_Title">
@@ -1856,15 +1885,41 @@
             </div>
           </div>
 
-          <button @click="addAgendaHeader" class="w-full py-3 border-2 border-dashed rounded-xl font-medium transition-colors" :class="isDarkMode ? 'border-gray-700 text-gray-500 hover:text-[#DB0000] hover:border-[#C41425]' : 'border-gray-300 text-gray-400 hover:text-[#DB0000] hover:border-[#C41425]'">
+          <button v-if="activeSessionIndex <= 0 || activeSessionIndex === -1" @click="addAgendaHeader" class="w-full py-3 border-2 border-dashed rounded-xl font-medium transition-colors" :class="isDarkMode ? 'border-gray-700 text-gray-500 hover:text-[#DB0000] hover:border-[#C41425]' : 'border-gray-300 text-gray-400 hover:text-[#DB0000] hover:border-[#C41425]'">
             + Add Header
           </button>
         </div>
 
-        <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="px-6 py-4 border-t flex justify-end shrink-0">
-          <button @click="saveAgenda" class="btn-action-red px-5 py-2 rounded-lg font-medium shadow" :disabled="savingAgenda">
-            {{ savingAgenda ? 'Saving...' : 'Save Agenda' }}
-          </button>
+        <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="px-6 py-4 border-t flex items-center justify-between shrink-0">
+          <div class="flex items-center gap-2">
+            <template v-if="idsMatch(activeAgenda.Creator_ID, currentUserId)">
+              <div class="relative">
+                <button @click="showNewSessionPrompt = !showNewSessionPrompt" :class="isDarkMode ? 'bg-gray-800 text-gray-200 hover:bg-gray-700 border-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border-gray-300'" class="px-3 py-2 rounded-lg text-sm border font-medium transition-colors">
+                  <i class="fa-solid fa-plus mr-1"></i> New Session
+                </button>
+                <div v-if="showNewSessionPrompt" @click.stop :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'" class="absolute bottom-full mb-2 left-0 w-56 rounded-xl shadow-xl border p-3 z-30 flex flex-col gap-2">
+                  <p class="text-xs font-semibold" :class="isDarkMode ? 'text-gray-300' : 'text-gray-700'">Start new session from:</p>
+                  <button @click="createNewSession(false)" class="text-left px-3 py-2 rounded-lg text-sm transition-colors" :class="isDarkMode ? 'hover:bg-gray-700 text-gray-200' : 'hover:bg-gray-100 text-gray-800'">Blank</button>
+                  <button @click="createNewSession(true)" :disabled="getSessionsForAgenda(activeAgenda.Agenda_ID).length === 0" class="text-left px-3 py-2 rounded-lg text-sm transition-colors disabled:opacity-40" :class="isDarkMode ? 'hover:bg-gray-700 text-gray-200' : 'hover:bg-gray-100 text-gray-800'">Copy from previous session</button>
+                </div>
+              </div>
+              <button
+                v-if="activeSession && getSessionsForAgenda(activeAgenda.Agenda_ID).length > 1"
+                @click="deleteActiveSession"
+                class="px-3 py-2 rounded-lg text-sm border font-medium transition-colors text-red-500 border-red-300 hover:bg-red-50"
+                :class="isDarkMode ? 'border-red-800 hover:bg-red-900/20' : ''">
+                <i class="fa-solid fa-trash mr-1"></i> Delete Session
+              </button>
+            </template>
+          </div>
+          <div class="flex items-center gap-2">
+            <button v-if="activeSessionIndex !== -1 && activeSessionIndex > 0" class="px-3 py-2 rounded-lg text-sm border font-medium transition-colors" :class="isDarkMode ? 'border-gray-600 text-gray-400' : 'border-gray-300 text-gray-500'" disabled>
+              Read-only
+            </button>
+            <button v-else @click="saveSession" class="btn-action-red px-5 py-2 rounded-lg font-medium shadow" :disabled="savingSession">
+              {{ savingSession ? 'Saving...' : 'Save Session' }}
+            </button>
+          </div>
         </div>
       </div>
     </div>

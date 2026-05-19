@@ -24,6 +24,7 @@ function getInitialPayload() {
   }
 
   const currentUserExists = users.some((user) => normalizeEmail(user.Email) === currentUserEmail);
+  migrateAgendaSessionsIfNeeded();
   const payload = {
     currentUserEmail: currentUserEmail,
     currentUserExists: currentUserExists,
@@ -35,6 +36,13 @@ function getInitialPayload() {
     assignments: getTableData('Assignments'),
     agendas: getTableData('Agendas'),
     agendaShares: getTableData('Sharing'),
+    agendaSessions: getTableData('Agenda_Sessions').map((session) => {
+      const normalized = {};
+      Object.keys(session).forEach((key) => {
+        normalized[key] = normalizeValueForClient(session[key]);
+      });
+      return normalized;
+    }),
     comments: getTableData('Comments').map((comment) => {
       const normalized = {};
       Object.keys(comment).forEach((key) => {

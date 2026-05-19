@@ -13,7 +13,7 @@
 - **Update a task quickly**: Use the status pill/dropdown on a task card to choose `Not Started`, `Upcoming`, `Review`, `In Progress`, `Ongoing`, `On Hold`, `Cancelled`, or `Complete`.
 - **Open details**: Click a project title to open **Project Details**. Click a task card to open **Task Details**.
 - **Comment on tasks**: Click the speech-bubble icon on a task card to open **Comments**, type in **Write a comment...**, optionally use `@` mentions, then click **Post Comment**.
-- **Create an agenda**: Go to **Meeting Agendas**, click **New Agenda**, add headers/items/tasks, optionally click **Share**, then click **Save Agenda**.
+- **Create an agenda**: Go to **Meeting Agendas**, click **New Agenda**. The editor opens with no sessions. Click **New Session**, choose blank or copy from previous, add headers/items/tasks, optionally click **Share**, then click **Save Session**.
 - **Customize**: Open the user menu at the lower-left, then use **Profile**, **Settings**, or **Dark Mode**.
 
 ---
@@ -278,28 +278,44 @@ The **Meeting Agendas** tab has two sections:
 
 Agenda cards display:
 
-- Section count badge.
+- Section count badge (from the latest session).
 - Title.
 - Description (if set).
 - Creator and shared-user avatars.
-- Meeting date (falls back to created date if no meeting date is set).
+- Latest session date (or "No sessions yet" if no sessions exist).
 
-Creating an agenda:
+Each agenda is a recurring **template**. Every time the team meets, the agenda creator adds a new **session** — a date-stamped instance containing the actual content for that meeting. Past sessions are read-only and browsable.
+
+Creating an agenda and first session:
 
 1. Go to **Meeting Agendas**.
 2. Click **New Agenda**.
-3. SOAR creates an agenda titled `Untitled Agenda` and opens the agenda editor.
+3. SOAR creates the agenda and opens the editor. No sessions exist yet.
 4. Edit the title in the title input at the top of the modal.
-5. Set the **Date** field in the header to specify the meeting date.
-6. Add a description in the description textarea at the top of the editor.
-7. Click **+ Add Header** to create a section.
-8. Inside a section:
+5. Add a description in the description textarea.
+6. Click **New Session** (visible to the agenda creator) and choose **Blank** or **Copy from previous session**.
+7. The session navigation bar shows "New Session · [date input]". Set the date.
+8. Click **+ Add Header** to create a section.
+9. Inside a section:
    - click **+ Text Item** to add a free-text agenda item;
    - use **+ Link Task** dropdown to embed a task from a visible project;
    - linked task cards display the task title, status badge, assignee avatars, priority, and due date;
    - click **View** on a linked task (visible on hover) to open **Task Details**.
-9. Drag agenda items to reorder them within sections.
-10. Click **Save Agenda**.
+10. Drag agenda items to reorder them within sections.
+11. Click **Save Session**.
+
+Navigating sessions:
+
+- The session navigation bar shows **Session N of M · [date]**.
+- Click **Older →** to view earlier sessions.
+- Click **← Newer** to return to more recent sessions.
+- Only the latest session is editable; all past sessions are read-only (shown with a lock notice).
+
+Managing sessions:
+
+- **New Session** button (owner only): creates a new session blank or copied from the previous one. The date defaults to today.
+- **Delete Session** button (owner only): deletes the currently viewed session. Only visible when more than one session exists.
+- Deleting an agenda deletes all its sessions.
 
 Sharing an agenda:
 
@@ -309,7 +325,7 @@ Sharing an agenda:
 4. Click a suggestion to add access.
 5. The creator appears as `{Name} (You)` and cannot be removed from their own agenda.
 6. Click the **X** beside a shared user to **Remove access**.
-7. Click **Save Agenda** to persist content and sharing changes.
+7. Click **Save Session** to persist content and sharing changes.
 
 Sharing behavior:
 
@@ -392,12 +408,14 @@ Footer buttons:
 
 ### Meeting Agendas
 
-✅ **Dynamic Meeting Agendas**
+✅ **Recurring Agenda Sessions**
 - Create agendas from **Meeting Agendas** with **New Agenda**.
-- Organize agenda content with headers.
-- Add free-text items with **+ Text Item**.
-- Embed linked task references with **+ Link Task**.
-- Open linked tasks using **View Task**.
+- Each agenda is a recurring template; add a new **session** each time the team meets.
+- The latest session date and section count appear on agenda cards.
+- Navigate past sessions with **Older →** / **← Newer** controls; past sessions are read-only.
+- Agenda creators can create new sessions (blank or copied from the previous session), delete sessions, and edit the current session.
+- Organize session content with headers; add free-text items with **+ Text Item**; embed task references with **+ Link Task**.
+- Open linked tasks using **View**.
 
 ✅ **Secure Sharing**
 - Share agendas with specific SOAR users through **Share** → **Share Agenda**.

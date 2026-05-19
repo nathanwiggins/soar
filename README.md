@@ -38,7 +38,7 @@
    - Keep this spreadsheet as the active spreadsheet for the Apps Script project.
 
 2. **Create the data structure**
-   - Create 8 sheet tabs with these exact names (right-click a sheet tab → **Insert sheet**):
+   - Create 9 sheet tabs with these exact names (right-click a sheet tab → **Insert sheet**):
      - `Users`
      - `Projects`
      - `Tasks`
@@ -47,6 +47,7 @@
      - `Assignments`
      - `Agendas`
      - `Sharing`
+     - `Agenda_Sessions`
    - Add the exact header rows shown in [Spreadsheet Setup](#spreadsheet-setup). Column names must match exactly.
 
 3. **Create Apps Script project**
@@ -102,7 +103,7 @@
 - **Update a task quickly**: Use the status pill/dropdown on a task card to choose `Not Started`, `Upcoming`, `Review`, `In Progress`, `Ongoing`, `On Hold`, `Cancelled`, or `Complete`.
 - **Open details**: Click a project title to open **Project Details**. Click a task card to open **Task Details**.
 - **Comment on tasks**: Click the speech-bubble icon on a task card to open **Comments**, type in **Write a comment...**, optionally use `@` mentions, then click **Post Comment**.
-- **Create an agenda**: Go to **Meeting Agendas**, click **New Agenda**, add headers/items/tasks, optionally click **Share**, then click **Save Agenda**.
+- **Create an agenda**: Go to **Meeting Agendas**, click **New Agenda**. The agenda editor opens with no sessions. Click **New Session** and choose blank or copy-from-previous, add headers/items/tasks, optionally click **Share**, then click **Save Session**.
 - **Customize**: Open the user menu at the lower-left, then use **Profile**, **Settings**, or **Dark Mode**.
 
 ---
@@ -386,28 +387,44 @@ The **Meeting Agendas** tab has two sections:
 
 Agenda cards display:
 
-- Section count badge.
+- Section count badge (from the latest session).
 - Title.
 - Description (if set).
 - Creator and shared-user avatars.
-- Meeting date (falls back to created date if no meeting date is set).
+- Latest session date (or "No sessions yet" if no sessions exist).
+
+Each agenda is a recurring **template**. Every time the team meets, the agenda creator adds a new **session** to the agenda. Sessions are date-stamped meeting instances that hold the actual agenda content (headers, items, linked tasks). Past sessions are read-only and browsable via the **Older →** / **← Newer** navigation bar at the top of the editor.
 
 Creating an agenda:
 
 1. Go to **Meeting Agendas**.
 2. Click **New Agenda**.
-3. SOAR creates an agenda titled `Untitled Agenda` and opens the agenda editor.
+3. SOAR creates the agenda and opens the editor. No sessions exist yet.
 4. Edit the title in the title input at the top of the modal.
-5. Set the **Date** field in the header to specify the meeting date.
-6. Add a description in the description textarea at the top of the editor.
-7. Click **+ Add Header** to create a section.
-8. Inside a section:
+5. Add a description in the description textarea.
+6. Click **New Session** (visible to the agenda creator) and choose **Blank** or **Copy from previous session**.
+7. Set the date shown in the session navigation bar.
+8. Click **+ Add Header** to create a section.
+9. Inside a section:
    - click **+ Text Item** to add a free-text agenda item;
    - use **+ Link Task** dropdown to embed a task from a visible project;
    - linked task cards display the task title, status badge, assignee avatars, priority, and due date;
    - click **View** on a linked task (visible on hover) to open **Task Details**.
-9. Drag agenda items to reorder them within sections.
-10. Click **Save Agenda**.
+10. Drag agenda items to reorder them within sections.
+11. Click **Save Session**.
+
+Navigating sessions:
+
+- The session navigation bar shows **Session N of M · [date]**.
+- Click **Older →** to browse earlier sessions (right → older).
+- Click **← Newer** to return to more recent sessions.
+- Only the **latest** session (index 0) is editable. All past sessions are read-only.
+
+Managing sessions:
+
+- **New Session** button (owner only): creates a new session, either blank or pre-filled from the previous session's content. The new session date defaults to today.
+- **Delete Session** button (owner only): deletes the currently viewed session. Only visible when more than one session exists.
+- Deleting an agenda deletes all its sessions.
 
 Sharing an agenda:
 
@@ -417,7 +434,7 @@ Sharing an agenda:
 4. Click a suggestion to add access.
 5. The creator appears as `{Name} (You)` and cannot be removed from their own agenda.
 6. Click the **X** beside a shared user to **Remove access**.
-7. Click **Save Agenda** to persist content and sharing changes.
+7. Click **Save Session** to persist content and sharing changes.
 
 Sharing behavior:
 
@@ -500,12 +517,14 @@ Footer buttons:
 
 ### Meeting Agendas
 
-✅ **Dynamic Meeting Agendas**
+✅ **Recurring Agenda Sessions**
 - Create agendas from **Meeting Agendas** with **New Agenda**.
-- Organize agenda content with headers.
-- Add free-text items with **+ Text Item**.
-- Embed linked task references with **+ Link Task**.
-- Open linked tasks using **View Task**.
+- Each agenda is a recurring template; add a new **session** each time the team meets.
+- The latest session date and section count are shown on agenda cards.
+- Navigate past sessions with **Older →** / **← Newer** controls; past sessions are read-only.
+- Agenda creators can create a new session (blank or copied from the previous session), delete sessions, and edit the current session's content.
+- Organize session content with headers; add free-text items with **+ Text Item**; embed task references with **+ Link Task**.
+- Open linked tasks using **View**.
 
 ✅ **Secure Sharing**
 - Share agendas with specific SOAR users through **Share** → **Share Agenda**.
@@ -620,7 +639,7 @@ Footer buttons:
 │  • Tasks.js → Task operations + status/order changes    │
 │  • Subtasks.js → Subtask CRUD + ordering                │
 │  • Comments.js → Task comments + mention extraction     │
-│  • Agendas.js → Agenda CRUD + sharing logic             │
+│  • Agendas.js → Agenda + session CRUD + sharing logic   │
 │  • Notifications.js → email notification types          │
 │  • Settings.js → User preference persistence            │
 │  • Chat.js → Optional Gemini assistant bridge           │
@@ -635,13 +654,13 @@ Footer buttons:
 ┌────────────────────┴────────────────────────────────────┐
 │        Google Sheets (Data Persistence Layer)           │
 │  Tabs: Users | Projects | Tasks | Subtasks | Comments   │
-│        Assignments | Agendas | Sharing                  │
+│        Assignments | Agendas | Sharing | Agenda_Sessions│
 └─────────────────────────────────────────────────────────┘
 ```
 
 ### Frontend Architecture (Vue 3)
 
-- **Reactive Data**: Refs for `users`, `projects`, `tasks`, `subtasks`, `assignments`, `comments`, `agendas`, and `agendaShares`.
+- **Reactive Data**: Refs for `users`, `projects`, `tasks`, `subtasks`, `assignments`, `comments`, `agendas`, `agendaShares`, and `agendaSessions`.
 - **State Management**: Computed properties for current user, visibility, assignee summaries, project summaries, calendar entries, agenda ownership, shared agendas, and supervisor selections.
 - **Data Sync**: `getGlobalVersionHash()` checks whether cached payload data is still current; if not, `getInitialPayload()` reloads app data.
 - **UI Framework**: Tailwind CSS, Font Awesome icons, SortableJS/Vue Draggable, and Marked for assistant markdown rendering.
@@ -728,8 +747,12 @@ Comment (C-00000001)
 
 Agenda (A-00000001)
 ├── created by → User via Agendas.Creator_ID
-├── stores editor content as Content_JSON
+├── contains → AgendaSession[] via Agenda_Sessions.Agenda_ID
 └── shared with → User[] via Sharing
+
+AgendaSession (AS-00000001)
+├── belongs to → Agenda via Agenda_Sessions.Agenda_ID
+└── stores session content as Content_JSON
 
 Assignment
 ├── Assignment_ID = Task_ID or Project_ID
@@ -746,6 +769,7 @@ Primary keys are human-readable, auto-incrementing, and zero-padded:
 - **Subtasks**: `S-00000001`, `S-00000002`, ...
 - **Comments**: `C-00000001`, `C-00000002`, ...
 - **Agendas**: `A-00000001`, `A-00000002`, ...
+- **Agenda Sessions**: `AS-00000001`, `AS-00000002`, ...
 
 Generated by Apps Script with synchronized locking to prevent race conditions.
 
@@ -830,9 +854,19 @@ Generated by Apps Script with synchronized locking to prevent race conditions.
 | `Title` | String | Agenda title | No |
 | `Creator_ID` | String, User_ID reference | Agenda creator | No |
 | `Created_Date` | DateTime | Auto-populated at creation | No |
+| `Description` | String | Optional description shown on the agenda card and editable in the editor | Yes |
+| `Content_JSON` | JSON string | Legacy field — retained for migration purposes; session content is now stored in `Agenda_Sessions` | Yes |
+| `Agenda_Date` | Date | Legacy field — retained for migration purposes; session dates are now stored in `Agenda_Sessions` | Yes |
+
+#### Agenda_Sessions
+
+| Field | Type | Description | Can Be Null |
+|---|---|---|---|
+| `Session_ID` | String, auto-increment | Format: `AS-00000000` | No |
+| `Agenda_ID` | String, Agenda_ID reference | Parent agenda | No |
+| `Session_Date` | Date | Date of this meeting session | Yes |
 | `Content_JSON` | JSON string | Array of headers containing text items and linked task items | Yes |
-| `Description` | String | Optional description shown on the agenda card and editable in the agenda editor | Yes |
-| `Agenda_Date` | Date | Optional meeting date; shown on agenda cards and editable in the agenda editor | Yes |
+| `Created_Date` | DateTime | Auto-populated at creation | No |
 
 #### Sharing
 
@@ -928,6 +962,11 @@ Assignment_ID | Assignee_ID
 **Agendas**:
 ```
 Agenda_ID | Title | Creator_ID | Created_Date | Content_JSON | Description | Agenda_Date
+```
+
+**Agenda_Sessions**:
+```
+Session_ID | Agenda_ID | Session_Date | Content_JSON | Created_Date
 ```
 
 **Sharing**:
@@ -1084,23 +1123,53 @@ Marks a comment as resolved.
 ### Agenda Functions
 
 #### `createAgenda(title)`
-Creates a new blank agenda.
+Creates a new blank agenda template (no sessions).
 
 **Returns**: `{success: true, agenda: {...}}`
 
-#### `updateAgenda(agendaId, title, contentJson, sharedUserIds)`
-Updates an agenda's title, JSON content, and sharing permissions.
+#### `updateAgenda(agendaId, title, description, sharedUserIds)`
+Updates an agenda's title, description, and sharing permissions.
 
 **Parameters**:
 - `agendaId` (string): Agenda_ID.
 - `title` (string): agenda title.
-- `contentJson` (string): stringified JSON array of agenda sections/items.
+- `description` (string): agenda description.
 - `sharedUserIds` (array): `User_ID` values with access.
 
 **Returns**: `{success: true, agenda: {...}, shares: [...]}`
 
 #### `deleteAgenda(agendaId)`
-Deletes an agenda and associated sharing permissions.
+Deletes an agenda, all its sessions, and associated sharing permissions.
+
+#### `createAgendaSession(agendaId, sessionDate, contentJson)`
+Creates a new session for the agenda. Only the agenda creator may call this.
+
+**Parameters**:
+- `agendaId` (string): Agenda_ID.
+- `sessionDate` (string): `YYYY-MM-DD` meeting date.
+- `contentJson` (string): stringified JSON array of agenda sections/items.
+
+**Returns**: `{success: true, session: {...}}`
+
+#### `updateAgendaSession(sessionId, sessionDate, contentJson)`
+Updates an existing session's date and content.
+
+**Parameters**:
+- `sessionId` (string): Session_ID.
+- `sessionDate` (string): `YYYY-MM-DD` meeting date.
+- `contentJson` (string): stringified JSON array of agenda sections/items.
+
+**Returns**: `{success: true, session: {...}}`
+
+#### `getAgendaSessions(agendaId)`
+Returns all sessions for an agenda sorted by date descending.
+
+**Returns**: `{success: true, sessions: [...]}`
+
+#### `deleteAgendaSession(sessionId)`
+Deletes a single agenda session.
+
+**Returns**: `{success: true, sessionId: "..."}`
 
 ### Settings Functions
 
@@ -1140,6 +1209,7 @@ Fetches initial app state.
   "assignments": [],
   "agendas": [],
   "agendaShares": [],
+  "agendaSessions": [],
   "comments": [],
   "currentUserSettings": {},
   "versionHash": "...",
