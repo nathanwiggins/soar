@@ -1123,6 +1123,138 @@
         calendarMonthOffset.value = 0;
       };
 
+      let calendarDueDateRequestCounter = 0;
+      const latestCalendarDueDateRequests = {
+        task: new Map(),
+        project: new Map()
+      };
+
+      const startCalendarDueDateRequest = (type, id) => {
+        const requestId = ++calendarDueDateRequestCounter;
+        latestCalendarDueDateRequests[type].set(id.toString(), requestId);
+        return requestId;
+      };
+
+      const isLatestCalendarDueDateRequest = (type, id, requestId) => {
+        return latestCalendarDueDateRequests[type].get(id.toString()) === requestId;
+      };
+
+      const finishCalendarDueDateRequest = (type, id, requestId) => {
+        const normalizedId = id.toString();
+        if (latestCalendarDueDateRequests[type].get(normalizedId) === requestId) {
+          latestCalendarDueDateRequests[type].delete(normalizedId);
+        }
+      };
+
+      const onCalendarTaskDragStart = (event, task) => {
+        if (!event?.dataTransfer || !task?.Task_ID) return;
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('application/json', JSON.stringify({ type: 'task', id: task.Task_ID }));
+      };
+
+      const onCalendarProjectDragStart = (event, project) => {
+        if (!event?.dataTransfer || !project?.Project_ID) return;
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('application/json', JSON.stringify({ type: 'project', id: project.Project_ID }));
+      };
+
+      const onCalendarDrop = (event, dateKey) => {
+        if (!event?.dataTransfer || !dateKey) return;
+        let dragData = null;
+        try {
+          dragData = JSON.parse(event.dataTransfer.getData('application/json') || '{}');
+        } catch (error) {
+          return;
+        }
+
+        if (!dragData?.type || !dragData?.id) return;
+
+        if (dragData.type === 'task') {
+          const taskIndex = tasks.value.findIndex((task) => idsMatch(task?.Task_ID, dragData.id));
+          if (taskIndex < 0) return;
+          const originalDueDate = tasks.value[taskIndex].Due_Date || '';
+          if (toCalendarDateKey(originalDueDate) === dateKey) return;
+
+          const requestId = startCalendarDueDateRequest('task', dragData.id);
+          tasks.value[taskIndex] = { ...tasks.value[taskIndex], Due_Date: dateKey };
+          google.script.run
+            .withSuccessHandler((response) => {
+              if (!isLatestCalendarDueDateRequest('task', dragData.id, requestId)) return;
+
+              const latestTaskIndex = tasks.value.findIndex((task) => idsMatch(task?.Task_ID, dragData.id));
+              if (latestTaskIndex < 0) {
+                finishCalendarDueDateRequest('task', dragData.id, requestId);
+                return;
+              }
+
+              const result = parseRunResponse(response);
+              if (!result.success || !result.task) {
+                tasks.value[latestTaskIndex] = { ...tasks.value[latestTaskIndex], Due_Date: originalDueDate };
+                finishCalendarDueDateRequest('task', dragData.id, requestId);
+                alert(result?.error || 'Failed to update task due date.');
+                return;
+              }
+              tasks.value[latestTaskIndex] = { ...tasks.value[latestTaskIndex], ...result.task };
+              finishCalendarDueDateRequest('task', dragData.id, requestId);
+            })
+            .withFailureHandler((error) => {
+              if (!isLatestCalendarDueDateRequest('task', dragData.id, requestId)) return;
+
+              const latestTaskIndex = tasks.value.findIndex((task) => idsMatch(task?.Task_ID, dragData.id));
+              if (latestTaskIndex >= 0) {
+                tasks.value[latestTaskIndex] = { ...tasks.value[latestTaskIndex], Due_Date: originalDueDate };
+              }
+              finishCalendarDueDateRequest('task', dragData.id, requestId);
+              console.error('Failed to update task due date:', error);
+              alert('Error updating task due date.');
+            })
+            .updateTaskDueDate(dragData.id, dateKey);
+          return;
+        }
+
+        if (dragData.type === 'project') {
+          const projectIndex = projects.value.findIndex((project) => idsMatch(project?.Project_ID, dragData.id));
+          if (projectIndex < 0) return;
+          const originalDueDate = projects.value[projectIndex].Due_Date || '';
+          if (toCalendarDateKey(originalDueDate) === dateKey) return;
+
+          const requestId = startCalendarDueDateRequest('project', dragData.id);
+          projects.value[projectIndex] = { ...projects.value[projectIndex], Due_Date: dateKey };
+          google.script.run
+            .withSuccessHandler((response) => {
+              if (!isLatestCalendarDueDateRequest('project', dragData.id, requestId)) return;
+
+              const latestProjectIndex = projects.value.findIndex((project) => idsMatch(project?.Project_ID, dragData.id));
+              if (latestProjectIndex < 0) {
+                finishCalendarDueDateRequest('project', dragData.id, requestId);
+                return;
+              }
+
+              const result = parseRunResponse(response);
+              if (!result.success || !result.project) {
+                projects.value[latestProjectIndex] = { ...projects.value[latestProjectIndex], Due_Date: originalDueDate };
+                finishCalendarDueDateRequest('project', dragData.id, requestId);
+                alert(result?.error || 'Failed to update project due date.');
+                return;
+              }
+              projects.value[latestProjectIndex] = { ...projects.value[latestProjectIndex], ...result.project };
+              finishCalendarDueDateRequest('project', dragData.id, requestId);
+            })
+            .withFailureHandler((error) => {
+              if (!isLatestCalendarDueDateRequest('project', dragData.id, requestId)) return;
+
+              const latestProjectIndex = projects.value.findIndex((project) => idsMatch(project?.Project_ID, dragData.id));
+              if (latestProjectIndex >= 0) {
+                projects.value[latestProjectIndex] = { ...projects.value[latestProjectIndex], Due_Date: originalDueDate };
+              }
+              finishCalendarDueDateRequest('project', dragData.id, requestId);
+              console.error('Failed to update project due date:', error);
+              alert('Error updating project due date.');
+            })
+            .updateProjectDueDate(dragData.id, dateKey);
+        }
+      };
+
       const isPastDueDate = (dueDateValue) => {
         if (!dueDateValue) return false;
         const dueDate = parseAsLocalDate(dueDateValue);
@@ -2972,6 +3104,9 @@
         goToPreviousCalendarMonth,
         goToNextCalendarMonth,
         goToCurrentCalendarMonth,
+        onCalendarTaskDragStart,
+        onCalendarProjectDragStart,
+        onCalendarDrop,
         shouldStrikeTask,
         isTaskDueTomorrowAndOpen,
         getDueDateTooltip,
