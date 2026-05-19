@@ -361,6 +361,24 @@
         });
       });
 
+      const projectsById = computed(() => {
+        const map = new Map();
+        projects.value.forEach((p) => {
+          const id = normalizeId(p?.Project_ID);
+          if (id) map.set(id, p);
+        });
+        return map;
+      });
+
+      const tasksById = computed(() => {
+        const map = new Map();
+        tasks.value.forEach((t) => {
+          const id = normalizeId(t?.Task_ID);
+          if (id) map.set(id, t);
+        });
+        return map;
+      });
+
       const assignedEntityIdsForCurrentUser = computed(() => {
         const userId = currentUserId.value;
         if (!userId) return new Set();
@@ -388,29 +406,44 @@
       const visibleTasks = filteredTasks;
 
       const pastAssignments = computed(() => {
-        const assignedIds = assignedEntityIdsForCurrentUser.value;
-        return tasks.value
-          .filter((task) => isCompleteStatus(task?.Status) && assignedIds.has(normalizeId(task?.Task_ID)))
-          .slice()
-          .sort((left, right) => {
-            const leftTime = parseAsLocalDate(left?.Due_Date || 0).getTime();
-            const rightTime = parseAsLocalDate(right?.Due_Date || 0).getTime();
-            return rightTime - leftTime;
-          });
+        const signature = [
+          getCollectionSignature(tasks.value, 'Task_ID', ['Status', 'Due_Date']),
+          currentUserId.value,
+          getCollectionSignature(assignments.value, 'Assignment_ID', ['Assignee_ID'])
+        ].join('::');
+        return memoizeBySignature('pastAssignments', signature, () => {
+          const assignedIds = assignedEntityIdsForCurrentUser.value;
+          return tasks.value
+            .filter((task) => isCompleteStatus(task?.Status) && assignedIds.has(normalizeId(task?.Task_ID)))
+            .slice()
+            .sort((left, right) => {
+              const leftTime = parseAsLocalDate(left?.Due_Date || 0).getTime();
+              const rightTime = parseAsLocalDate(right?.Due_Date || 0).getTime();
+              return rightTime - leftTime;
+            });
+        });
       });
 
       const visibleProjects = computed(() => {
-        if (showAllWorkItems.value) return projects.value;
-        const assignedIds = assignedEntityIdsForCurrentUser.value;
-        const visibleProjectIds = new Set(
-          visibleTasks.value
-            .map((task) => normalizeId(task?.Project_ID))
-            .filter(Boolean)
-        );
+        const signature = [
+          getCollectionSignature(projects.value, 'Project_ID', ['Project_ID']),
+          getCollectionSignature(visibleTasks.value, 'Task_ID', ['Project_ID']),
+          currentUserId.value,
+          showAllWorkItems.value ? '1' : '0'
+        ].join('::');
+        return memoizeBySignature('visibleProjects', signature, () => {
+          if (showAllWorkItems.value) return projects.value;
+          const assignedIds = assignedEntityIdsForCurrentUser.value;
+          const visibleProjectIds = new Set(
+            visibleTasks.value
+              .map((task) => normalizeId(task?.Project_ID))
+              .filter(Boolean)
+          );
 
-        return projects.value.filter((project) => {
-          const projectId = normalizeId(project?.Project_ID);
-          return assignedIds.has(projectId) || visibleProjectIds.has(projectId);
+          return projects.value.filter((project) => {
+            const projectId = normalizeId(project?.Project_ID);
+            return assignedIds.has(projectId) || visibleProjectIds.has(projectId);
+          });
         });
       });
 
@@ -434,27 +467,33 @@
       });
 
       const assignableUsers = computed(() => {
-        const normalizedCurrentUserId = normalizeId(currentUserId.value);
-        if (!normalizedCurrentUserId) return [];
+        const signature = [
+          currentUserId.value,
+          getCollectionSignature(users.value, 'User_ID', ['Manager_ID'])
+        ].join('::');
+        return memoizeBySignature('assignableUsers', signature, () => {
+          const normalizedCurrentUserId = normalizeId(currentUserId.value);
+          if (!normalizedCurrentUserId) return [];
 
-        const assignableIdSet = new Set([normalizedCurrentUserId]);
-        const queue = [normalizedCurrentUserId];
-        while (queue.length > 0) {
-          const managerId = queue.shift();
-          const directReports = userStats.value.directReportsByManagerId.get(managerId) || [];
-          directReports.forEach((reportUser) => {
-            const reportId = normalizeId(reportUser?.User_ID);
-            if (reportId && !assignableIdSet.has(reportId)) {
-              assignableIdSet.add(reportId);
-              queue.push(reportId);
-            }
-          });
-        }
+          const assignableIdSet = new Set([normalizedCurrentUserId]);
+          const queue = [normalizedCurrentUserId];
+          while (queue.length > 0) {
+            const managerId = queue.shift();
+            const directReports = userStats.value.directReportsByManagerId.get(managerId) || [];
+            directReports.forEach((reportUser) => {
+              const reportId = normalizeId(reportUser?.User_ID);
+              if (reportId && !assignableIdSet.has(reportId)) {
+                assignableIdSet.add(reportId);
+                queue.push(reportId);
+              }
+            });
+          }
 
-        return Array.from(assignableIdSet)
-          .map((userId) => userStats.value.usersById.get(userId))
-          .filter(Boolean)
-          .sort((a, b) => (a?.Name || '').localeCompare(b?.Name || ''));
+          return Array.from(assignableIdSet)
+            .map((userId) => userStats.value.usersById.get(userId))
+            .filter(Boolean)
+            .sort((a, b) => (a?.Name || '').localeCompare(b?.Name || ''));
+        });
       });
 
       const supervisorUserSummary = computed(() => {
@@ -480,10 +519,17 @@
       });
 
       const supervisorVisibleTasks = computed(() => {
-        const assignedIds = assignedEntityIdsForSelectedSupervisorUsers.value;
-        return tasks.value.filter((task) => {
-          if (isCompleteStatus(task?.Status)) return false;
-          return assignedIds.has(normalizeId(task?.Task_ID));
+        const signature = [
+          getCollectionSignature(tasks.value, 'Task_ID', ['Status', 'Project_ID']),
+          selectedSupervisorUserIds.value.slice().sort().join(','),
+          getCollectionSignature(assignments.value, 'Assignment_ID', ['Assignee_ID'])
+        ].join('::');
+        return memoizeBySignature('supervisorVisibleTasks', signature, () => {
+          const assignedIds = assignedEntityIdsForSelectedSupervisorUsers.value;
+          return tasks.value.filter((task) => {
+            if (isCompleteStatus(task?.Status)) return false;
+            return assignedIds.has(normalizeId(task?.Task_ID));
+          });
         });
       });
 
@@ -526,9 +572,6 @@
             const projectId = normalizeId(task?.Project_ID);
             if (!summaries.has(projectId)) summaries.set(projectId, { project: null, tasks: [], supervisorTasks: [] });
             summaries.get(projectId).supervisorTasks.push(task);
-          });
-
-          summaries.forEach((summary) => {
           });
 
           return summaries;
@@ -894,8 +937,8 @@
 
       const getAssigneesForTask = (taskId) => userStats.value.assigneesByTaskId.get(normalizeId(taskId)) || [];
 
-      const getProjectById = (projectId) => projects.value.find((p) => idsMatch(p.Project_ID, projectId)) || null;
-      const getTaskById = (taskId) => tasks.value.find((t) => idsMatch(t.Task_ID, taskId)) || null;
+      const getProjectById = (projectId) => projectsById.value.get(normalizeId(projectId)) || null;
+      const getTaskById = (taskId) => tasksById.value.get(normalizeId(taskId)) || null;
       const getUserById = (userId) => userStats.value.usersById.get(normalizeId(userId)) || null;
 
       function parseAsLocalDate(dateValue) {
@@ -1026,38 +1069,44 @@
       };
 
       const calendarTaskEntries = computed(() => {
-        return visibleTasks.value
-          .filter((task) => task?.Due_Date)
-          .map((task) => {
-            const dateKey = toCalendarDateKey(task.Due_Date);
-            if (!dateKey) return null;
+        const signature = getCollectionSignature(visibleTasks.value, 'Task_ID', ['Due_Date', 'Project_ID', 'Task_Title']);
+        return memoizeBySignature('calendarTaskEntries', signature, () => {
+          return visibleTasks.value
+            .filter((task) => task?.Due_Date)
+            .map((task) => {
+              const dateKey = toCalendarDateKey(task.Due_Date);
+              if (!dateKey) return null;
 
-            const project = getProjectById(task.Project_ID);
-            return {
-              dateKey,
-              taskTitle: task?.Task_Title || project?.Project_Title || 'Untitled Task',
-              task,
-              project
-            };
-          })
-          .filter(Boolean);
+              const project = getProjectById(task.Project_ID);
+              return {
+                dateKey,
+                taskTitle: task?.Task_Title || project?.Project_Title || 'Untitled Task',
+                task,
+                project
+              };
+            })
+            .filter(Boolean);
+        });
       });
 
       const calendarProjectEntries = computed(() => {
-        return visibleProjects.value
-          .filter((project) => project?.Due_Date)
-          .map((project) => {
-            const dateKey = toCalendarDateKey(project.Due_Date);
-            if (!dateKey) return null;
+        const signature = getCollectionSignature(visibleProjects.value, 'Project_ID', ['Due_Date', 'Project_Title']);
+        return memoizeBySignature('calendarProjectEntries', signature, () => {
+          return visibleProjects.value
+            .filter((project) => project?.Due_Date)
+            .map((project) => {
+              const dateKey = toCalendarDateKey(project.Due_Date);
+              if (!dateKey) return null;
 
-            return {
-              dateKey,
-              projectTitle: project?.Project_Title || 'Untitled Project',
-              project
-            };
-          })
-          .filter(Boolean)
-          .sort((left, right) => left.projectTitle.localeCompare(right.projectTitle));
+              return {
+                dateKey,
+                projectTitle: project?.Project_Title || 'Untitled Project',
+                project
+              };
+            })
+            .filter(Boolean)
+            .sort((left, right) => left.projectTitle.localeCompare(right.projectTitle));
+        });
       });
 
       const calendarTasksByDate = computed(() => {
@@ -3082,6 +3131,8 @@
         getTasksForProject,
         getSupervisorTasksForProject,
         getAssigneesForTask,
+        projectsById,
+        tasksById,
         getProjectById,
         getTaskById,
         getUserById,

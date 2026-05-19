@@ -1,10 +1,10 @@
 function getInitialPayload() {
   const currentUserEmail = normalizeEmail(getCurrentUser());
-  const usersSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Users');
+  const { sheet: usersSheet, data: usersSheetData } = getCachedSheetValues('Users');
   let users = [];
 
   if (usersSheet) {
-    const data = usersSheet.getDataRange().getValues();
+    const data = usersSheetData;
     const headers = data[0] || [];
     const headerIndex = getHeaderIndex(headers);
     const currentUserRow = currentUserEmail && headerIndex.Email !== undefined
