@@ -393,7 +393,7 @@ Agenda cards display:
 - Creator and shared-user avatars.
 - Latest session date (or "No sessions yet" if no sessions exist).
 
-Each agenda is a recurring **template**. Every time the team meets, the agenda creator adds a new **session** to the agenda. Sessions are date-stamped meeting instances that hold the actual agenda content (headers, items, linked tasks). Past sessions are read-only and browsable via the **Older →** / **← Newer** navigation bar at the top of the editor.
+Each agenda is a recurring **template**. Every time the team meets, the agenda creator adds a new **session** to the agenda. Sessions are date-stamped meeting instances that hold the actual agenda content (headers, items, linked tasks). Past sessions are read-only and browsable via the **← Older** / **Newer →** navigation bar at the top of the editor.
 
 Creating an agenda:
 
@@ -416,8 +416,8 @@ Creating an agenda:
 Navigating sessions:
 
 - The session navigation bar shows **Session N of M · [date]**.
-- Click **Older →** to browse earlier sessions (right → older).
-- Click **← Newer** to return to more recent sessions.
+- Click **← Older** to browse earlier sessions (right → older).
+- Click **Newer →** to return to more recent sessions.
 - Only the **latest** session (index 0) is editable. All past sessions are read-only.
 
 Managing sessions:
@@ -521,7 +521,7 @@ Footer buttons:
 - Create agendas from **Meeting Agendas** with **New Agenda**.
 - Each agenda is a recurring template; add a new **session** each time the team meets.
 - The latest session date and section count are shown on agenda cards.
-- Navigate past sessions with **Older →** / **← Newer** controls; past sessions are read-only.
+- Navigate past sessions with **← Older** / **Newer →** controls; past sessions are read-only.
 - Agenda creators can create a new session (blank or copied from the previous session), delete sessions, and edit the current session's content.
 - Organize session content with headers; add free-text items with **+ Text Item**; embed task references with **+ Link Task**.
 - Open linked tasks using **View**.

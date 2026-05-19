@@ -1709,7 +1709,7 @@
                   class="text-xs px-2 py-1 rounded border transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                   :class="isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-600 hover:bg-gray-100'"
                   title="Older session">
-                  Older &rarr;
+                  &larr; Older
                 </button>
                 <span class="text-xs font-medium shrink-0" :class="isDarkMode ? 'text-gray-300' : 'text-gray-600'">
                   <template v-if="activeSessionIndex === -1">
@@ -1731,7 +1731,7 @@
                   class="text-xs px-2 py-1 rounded border transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                   :class="isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-600 hover:bg-gray-100'"
                   title="Newer session">
-                  &larr; Newer
+                  Newer &rarr;
                 </button>
               </div>
             </div>
