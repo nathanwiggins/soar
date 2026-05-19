@@ -619,8 +619,8 @@
       @end="endKanbanAutoScroll">
       
       <template #item="{ element: project }">
-        <div class="w-80 flex-shrink-0 flex flex-col max-h-full">
-          
+        <div class="w-80 flex-shrink-0 flex flex-col max-h-full" @dragover="onDragEnterProject(project.Project_ID)">
+
           <div class="flex items-start justify-between mb-4 px-1 project-drag-handle cursor-grab active:cursor-grabbing">
             <div class="flex flex-col gap-1 min-w-0">
               <h3 :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="font-bold text-sm uppercase tracking-wide flex items-center">
@@ -644,15 +644,22 @@
           </div>
 
 <div class="flex-1 overflow-y-auto space-y-3 pb-4">
-            
+
+            <div
+              v-if="draggingOverProjectId && idsMatch(draggingOverProjectId, project.Project_ID) && draggingTaskSourceProjectId && !idsMatch(draggingTaskSourceProjectId, project.Project_ID)"
+              :class="isDarkMode ? 'bg-blue-900/50 text-blue-300 border-blue-600' : 'bg-blue-50 text-blue-600 border-blue-300'"
+              class="px-3 py-2 rounded-lg text-xs font-semibold text-center border pointer-events-none">
+              Move to: {{ project.Project_Title }}
+            </div>
+
             <draggable
               :list="currentTab === 'supervisor-view' ? getSupervisorTasksForProject(project.Project_ID) : getTasksForProject(project.Project_ID)"
               item-key="Task_ID"
               group="tasks"
               class="space-y-3 min-h-[50px] h-full"
               @change="onTaskChange($event, project.Project_ID)"
-              @start="startKanbanAutoScroll"
-              @end="endKanbanAutoScroll">
+              @start="onTaskDragStart($event, project.Project_ID)"
+              @end="onTaskDragEnd">
               
               <template #item="{ element: task }">
                 <div :class="isDarkMode ? 'bg-gray-900 border-gray-700 hover:shadow-gray-900' : 'bg-white border-gray-100'" class="p-4 rounded-xl shadow-sm border hover:shadow-md transition-shadow cursor-grab group"

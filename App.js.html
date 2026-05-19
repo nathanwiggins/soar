@@ -2624,6 +2624,10 @@
       let kanbanAutoScrollFrameId = null;
       let latestPointerX = null;
 
+      const draggingTaskSourceProjectId = ref(null);
+      const draggingOverProjectId = ref(null);
+      const taskMoveUndoStack = ref([]);
+
       const stopKanbanAutoScroll = () => {
         isKanbanAutoScrollActive.value = false;
         latestPointerX = null;
@@ -2665,6 +2669,23 @@
       const handleKanbanDragPointerMove = (event) => {
         if (!isKanbanAutoScrollActive.value) return;
         latestPointerX = event.clientX;
+      };
+
+      const onTaskDragStart = (evt, projectId) => {
+        draggingTaskSourceProjectId.value = projectId;
+        startKanbanAutoScroll();
+      };
+
+      const onTaskDragEnd = () => {
+        draggingTaskSourceProjectId.value = null;
+        draggingOverProjectId.value = null;
+        endKanbanAutoScroll();
+      };
+
+      const onDragEnterProject = (projectId) => {
+        if (draggingTaskSourceProjectId.value !== null) {
+          draggingOverProjectId.value = projectId;
+        }
       };
 
       const startKanbanAutoScroll = () => {
@@ -2714,7 +2735,15 @@
         if (evt.added || evt.moved) {
            const element = evt.added ? evt.added.element : evt.moved.element;
            const newIndex = evt.added ? evt.added.newIndex : evt.moved.newIndex;
-           
+
+           if (evt.added) {
+             const fromProjectId = draggingTaskSourceProjectId.value;
+             const fromProjectTaskIds = tasks.value
+               .filter(t => idsMatch(t.Project_ID, fromProjectId))
+               .map(t => t.Task_ID);
+             taskMoveUndoStack.value.push({ taskId: element.Task_ID, fromProjectId, fromProjectTaskIds });
+           }
+
            const globalTaskIndex = tasks.value.findIndex(t => idsMatch(t.Task_ID, element.Task_ID));
            const globalTask = tasks.value[globalTaskIndex];
            tasks.value.splice(globalTaskIndex, 1);
@@ -2740,6 +2769,55 @@
               .map(t => t.Task_ID);
               
            google.script.run.updateTaskProjectAndOrder(globalTask.Task_ID, targetProjectId, orderedTargetTaskIds);
+        }
+      };
+
+      const undoLastTaskMove = () => {
+        if (!taskMoveUndoStack.value.length) return;
+        const { taskId, fromProjectId, fromProjectTaskIds } = taskMoveUndoStack.value[taskMoveUndoStack.value.length - 1];
+
+        const globalTaskIndex = tasks.value.findIndex(t => idsMatch(t.Task_ID, taskId));
+        if (globalTaskIndex === -1) return;
+
+        const globalTask = tasks.value[globalTaskIndex];
+        tasks.value.splice(globalTaskIndex, 1);
+        globalTask.Project_ID = fromProjectId;
+
+        const originalIndex = fromProjectTaskIds.findIndex(id => idsMatch(id, taskId));
+        if (originalIndex <= 0) {
+          const firstFromTask = tasks.value.find(t => idsMatch(t.Project_ID, fromProjectId));
+          if (firstFromTask) {
+            const insertIdx = tasks.value.findIndex(t => idsMatch(t.Task_ID, firstFromTask.Task_ID));
+            tasks.value.splice(insertIdx, 0, globalTask);
+          } else {
+            tasks.value.push(globalTask);
+          }
+        } else {
+          const precedingId = fromProjectTaskIds[originalIndex - 1];
+          const precedingTask = tasks.value.find(t => idsMatch(t.Task_ID, precedingId));
+          if (precedingTask) {
+            const insertIdx = tasks.value.findIndex(t => idsMatch(t.Task_ID, precedingId));
+            tasks.value.splice(insertIdx + 1, 0, globalTask);
+          } else {
+            tasks.value.push(globalTask);
+          }
+        }
+
+        const orderedFromIds = tasks.value
+          .filter(t => idsMatch(t.Project_ID, fromProjectId))
+          .map(t => t.Task_ID);
+        google.script.run.updateTaskProjectAndOrder(taskId, fromProjectId, orderedFromIds);
+        taskMoveUndoStack.value.pop();
+      };
+
+      const handleGlobalKeyDown = (event) => {
+        if ((event.metaKey || event.ctrlKey) && event.key === 'z') {
+          const tag = document.activeElement?.tagName;
+          if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
+          if (taskMoveUndoStack.value.length) {
+            event.preventDefault();
+            undoLastTaskMove();
+          }
         }
       };
 
@@ -2997,6 +3075,7 @@
         fetchData();
         makeImageTransparent('.soar-logo', LOGO_CACHE_KEY);
         makeImageTransparent('.chat-logo', 'soar_chat_logo_v1');
+        document.addEventListener('keydown', handleGlobalKeyDown);
       });
 
       return {
@@ -3193,6 +3272,11 @@
         removeExistingSubtask,
         onProjectChange,
         onTaskChange,
+        onTaskDragStart,
+        onTaskDragEnd,
+        onDragEnterProject,
+        draggingTaskSourceProjectId,
+        draggingOverProjectId,
         startKanbanAutoScroll,
         endKanbanAutoScroll,
         onExistingSubtaskChange,
