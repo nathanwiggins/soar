@@ -324,7 +324,7 @@
             :class="isDarkMode ? 'bg-gray-800 text-gray-100 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
             class="h-9 w-9 rounded-lg inline-flex items-center justify-center transition-colors"
             :title="isSidebarVisible ? 'Hide side pane' : 'Show side pane'">
-            <i :class="isSidebarVisible ? 'fa-solid fa-sidebar' : 'fa-solid fa-bars'"></i>
+            <i class="fa-solid fa-bars"></i>
           </button>
           <h2 :class="isDarkMode ? 'text-gray-100' : 'text-black'" class="text-xl font-semibold">
             {{ currentTab === 'supervisor-view' ? 'Supervisor Tools' : (currentTab === 'calendar' ? 'Calendar' : (currentTab === 'past-assignments' ? 'Past Assignments' : (currentTab === 'agendas' ? 'Meeting Agendas' : 'Project Board'))) }}
@@ -519,13 +519,41 @@
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           <div v-for="agenda in myAgendas" :key="agenda.Agenda_ID"
                @click="openAgendaModal(agenda)"
-               :class="isDarkMode ? 'bg-gray-900 border-gray-700 hover:border-gray-500' : 'bg-white border-gray-200 hover:border-gray-300'"
-               class="rounded-xl border p-4 shadow-sm cursor-pointer transition-colors">
-            <div class="flex justify-between items-start">
-              <h4 class="font-semibold" :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'">{{ agenda.Title }}</h4>
-              <button @click.stop="deleteAgenda(agenda.Agenda_ID)" class="text-red-500 hover:text-red-700"><i class="fa-solid fa-trash"></i></button>
+               :class="isDarkMode ? 'bg-gray-900 border-gray-700 hover:shadow-gray-900' : 'bg-white border-gray-100'"
+               class="p-4 rounded-xl shadow-sm border hover:shadow-md transition-shadow cursor-pointer group">
+            <div class="flex justify-between items-start mb-2">
+              <span :class="isDarkMode ? 'bg-gray-700 text-gray-300 border-gray-600' : 'bg-gray-100 text-gray-600 border-gray-200'"
+                    class="text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider border">
+                {{ getAgendaSectionCount(agenda) }} {{ getAgendaSectionCount(agenda) === 1 ? 'section' : 'sections' }}
+              </span>
+              <button @click.stop="deleteAgenda(agenda.Agenda_ID)" class="text-gray-300 hover:text-red-500 transition-colors">
+                <i class="fa-solid fa-trash text-sm"></i>
+              </button>
             </div>
-            <p class="text-xs mt-2" :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'">Created: {{ formatDate(agenda.Created_Date) }}</p>
+            <h4 :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'" class="text-sm font-medium mb-2">{{ agenda.Title }}</h4>
+            <p v-if="getAgendaTextPreview(agenda)"
+               :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'"
+               class="text-xs line-clamp-2 mb-3">{{ getAgendaTextPreview(agenda) }}</p>
+            <div class="flex items-center justify-between mt-4">
+              <div class="flex -space-x-2">
+                <div :class="isDarkMode ? 'bg-gray-700 border-gray-900 text-gray-200' : 'bg-gray-200 border-white text-gray-600'"
+                     class="w-6 h-6 rounded-full border-2 flex items-center justify-center text-[8px] font-bold overflow-hidden"
+                     :title="getUserById(agenda.Creator_ID)?.Name">
+                  <img v-if="getUserById(agenda.Creator_ID)?.Profile_Pic_Url" :src="getUserById(agenda.Creator_ID).Profile_Pic_Url" class="w-full h-full object-cover">
+                  <span v-else>{{ getInitials(getUserById(agenda.Creator_ID)?.Name) }}</span>
+                </div>
+                <div v-for="user in getSharedUsersForAgenda(agenda.Agenda_ID)" :key="user.User_ID"
+                     :class="isDarkMode ? 'bg-gray-700 border-gray-900 text-gray-200' : 'bg-gray-200 border-white text-gray-600'"
+                     class="w-6 h-6 rounded-full border-2 flex items-center justify-center text-[8px] font-bold overflow-hidden"
+                     :title="user.Name">
+                  <img v-if="user.Profile_Pic_Url" :src="user.Profile_Pic_Url" class="w-full h-full object-cover">
+                  <span v-else>{{ getInitials(user.Name) }}</span>
+                </div>
+              </div>
+              <span :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'" class="text-xs font-medium">
+                <i class="fa-regular fa-calendar mr-1"></i>{{ formatDate(agenda.Created_Date) }}
+              </span>
+            </div>
           </div>
           <p v-if="myAgendas.length === 0" class="text-sm" :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'">No agendas created yet.</p>
         </div>
@@ -534,10 +562,38 @@
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div v-for="agenda in sharedAgendas" :key="'shared-'+agenda.Agenda_ID"
                @click="openAgendaModal(agenda)"
-               :class="isDarkMode ? 'bg-gray-900 border-gray-700 hover:border-gray-500' : 'bg-white border-gray-200 hover:border-gray-300'"
-               class="rounded-xl border p-4 shadow-sm cursor-pointer transition-colors">
-            <h4 class="font-semibold" :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'">{{ agenda.Title }}</h4>
-            <p class="text-xs mt-2" :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'">Shared by: {{ getUserById(agenda.Creator_ID)?.Name }}</p>
+               :class="isDarkMode ? 'bg-gray-900 border-gray-700 hover:shadow-gray-900' : 'bg-white border-gray-100'"
+               class="p-4 rounded-xl shadow-sm border hover:shadow-md transition-shadow cursor-pointer">
+            <div class="flex justify-between items-start mb-2">
+              <span :class="isDarkMode ? 'bg-gray-700 text-gray-300 border-gray-600' : 'bg-gray-100 text-gray-600 border-gray-200'"
+                    class="text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider border">
+                {{ getAgendaSectionCount(agenda) }} {{ getAgendaSectionCount(agenda) === 1 ? 'section' : 'sections' }}
+              </span>
+            </div>
+            <h4 :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'" class="text-sm font-medium mb-2">{{ agenda.Title }}</h4>
+            <p v-if="getAgendaTextPreview(agenda)"
+               :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'"
+               class="text-xs line-clamp-2 mb-3">{{ getAgendaTextPreview(agenda) }}</p>
+            <div class="flex items-center justify-between mt-4">
+              <div class="flex -space-x-2">
+                <div :class="isDarkMode ? 'bg-gray-700 border-gray-900 text-gray-200' : 'bg-gray-200 border-white text-gray-600'"
+                     class="w-6 h-6 rounded-full border-2 flex items-center justify-center text-[8px] font-bold overflow-hidden"
+                     :title="getUserById(agenda.Creator_ID)?.Name + ' (creator)'">
+                  <img v-if="getUserById(agenda.Creator_ID)?.Profile_Pic_Url" :src="getUserById(agenda.Creator_ID).Profile_Pic_Url" class="w-full h-full object-cover">
+                  <span v-else>{{ getInitials(getUserById(agenda.Creator_ID)?.Name) }}</span>
+                </div>
+                <div v-for="user in getSharedUsersForAgenda(agenda.Agenda_ID)" :key="user.User_ID"
+                     :class="isDarkMode ? 'bg-gray-700 border-gray-900 text-gray-200' : 'bg-gray-200 border-white text-gray-600'"
+                     class="w-6 h-6 rounded-full border-2 flex items-center justify-center text-[8px] font-bold overflow-hidden"
+                     :title="user.Name">
+                  <img v-if="user.Profile_Pic_Url" :src="user.Profile_Pic_Url" class="w-full h-full object-cover">
+                  <span v-else>{{ getInitials(user.Name) }}</span>
+                </div>
+              </div>
+              <span :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'" class="text-xs font-medium">
+                <i class="fa-regular fa-calendar mr-1"></i>{{ formatDate(agenda.Created_Date) }}
+              </span>
+            </div>
           </div>
           <p v-if="sharedAgendas.length === 0" class="text-sm" :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'">No shared agendas.</p>
         </div>
