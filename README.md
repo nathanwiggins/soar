@@ -189,7 +189,7 @@ Each project column shows:
 - draggable task cards;
 - a dashed **+ Add Task** button at the bottom.
 
-Projects can be reordered by dragging the project header area. The app saves the new order with `reorderProjects()`.
+Projects can be reordered by dragging the project header area. Only the project creator can drag their own project column. The new order is saved per-user via `saveUserSortOrder()` and does not affect the order other users see.
 
 #### Task cards
 
@@ -202,7 +202,7 @@ Each task card shows:
 - priority icon/label when priority is set;
 - due date when set, color-coded: yellow if due within 7 days, orange if due within 1 day, red if overdue (gray for completed tasks).
 
-Task cards can be dragged between project columns. Dragging a task to another project changes its `Project_ID` and persists the task order with `updateTaskProjectAndOrder()`.
+Task cards can be dragged between project columns. Moving a task to a different project requires the user to be the creator of both the source and target project. When dragging over an unauthorized project, a red "Not authorized to move here" banner appears; authorized targets show a blue "Move to: [Project]" banner. Cross-project moves persist the task's new `Project_ID` via `moveTaskToProject()`, and the user's task order is saved per-user via `saveUserSortOrder()`. Press **Cmd/Ctrl+Z** to undo the last cross-project move.
 
 ### Creating a Project
 
@@ -991,7 +991,7 @@ Deletes the project row, tasks in that project, and assignment rows for those de
 **Returns**: `{success: true, projectId: "P-00000001"}`
 
 #### `reorderProjects(orderedProjectIds)`
-Persists project display order by rewriting project rows in the supplied order.
+Persists project display order by rewriting project rows in the supplied order. Deprecated in favor of per-user ordering via `saveUserSortOrder()`.
 
 ### Task Functions
 
@@ -1032,8 +1032,14 @@ Deletes a task and related assignment rows.
 #### `deleteTask(taskId)` from **Past Assignments**
 The **Delete Permanently** button in **Past Assignments** calls the same backend `deleteTask(taskId)` function after a stronger confirmation message.
 
+#### `moveTaskToProject(taskId, newProjectId)`
+Moves a task to another project by updating its `Project_ID`. Enforces that the calling user is the creator of both the source and target project. Returns an error if the permission check fails.
+
+#### `saveUserSortOrder(entityType, orderedIds)`
+Persists a user's personal display order for `'projects'` or `'tasks'` to `PropertiesService`. Only affects the calling user's view — other users' orders are unchanged.
+
 #### `updateTaskProjectAndOrder(taskId, newProjectId, orderedTaskIdsInProject)`
-Moves a task to another project and persists ordering for the destination project.
+Legacy function that moves a task to another project and reorders the destination project's sheet rows. Superseded by `moveTaskToProject()` + `saveUserSortOrder()`.
 
 #### `purgeCompletedTasksPastDue()`
 Deletes completed tasks whose due dates have passed, plus their assignment rows.

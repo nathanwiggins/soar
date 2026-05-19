@@ -696,6 +696,55 @@ function updateTaskProjectAndOrder(taskId, newProjectId, orderedTaskIdsInProject
   }
 }
 
+function moveTaskToProject(taskId, newProjectId) {
+  const normalizedTaskId = taskId ? taskId.toString().trim() : '';
+  const normalizedProjectId = newProjectId ? newProjectId.toString().trim() : '';
+  if (!normalizedTaskId || !normalizedProjectId) return JSON.stringify({ success: false, error: 'IDs missing.' });
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Tasks');
+  if (!sheet) return JSON.stringify({ success: false, error: 'Tasks sheet not found.' });
+
+  try {
+    const data = sheet.getDataRange().getValues();
+    if (data.length <= 1) return JSON.stringify({ success: true });
+
+    const headers = data[0];
+    const idCol = headers.indexOf('Task_ID');
+    const projCol = headers.indexOf('Project_ID');
+    const bodyRows = data.slice(1);
+
+    const taskRow = bodyRows.find(row => (row[idCol] || '').toString().trim() === normalizedTaskId);
+    if (!taskRow) return JSON.stringify({ success: false, error: 'Task not found.' });
+
+    const currentProjectId = (taskRow[projCol] || '').toString().trim();
+    if (currentProjectId !== normalizedProjectId) {
+      const currentUserEmail = normalizeEmail(getCurrentUser());
+      const users = getTableData('Users');
+      const currentUserRecord = users.find(u => normalizeEmail(u.Email) === currentUserEmail);
+      const currentUserId = currentUserRecord ? (currentUserRecord.User_ID || '').toString().trim() : '';
+      const projects = getTableData('Projects');
+      const sourceProject = projects.find(p => (p.Project_ID || '').toString().trim() === currentProjectId);
+      const targetProject = projects.find(p => (p.Project_ID || '').toString().trim() === normalizedProjectId);
+      const sourceCreatorId = (sourceProject?.Creator_ID || '').toString().trim();
+      const targetCreatorId = (targetProject?.Creator_ID || '').toString().trim();
+      if (!currentUserId || currentUserId !== sourceCreatorId || currentUserId !== targetCreatorId) {
+        return JSON.stringify({ success: false, error: 'Only project creators can move tasks between projects.' });
+      }
+    }
+
+    const taskRowIndex = bodyRows.findIndex(row => (row[idCol] || '').toString().trim() === normalizedTaskId);
+    if (taskRowIndex >= 0) {
+      bodyRows[taskRowIndex][projCol] = normalizedProjectId;
+      sheet.getRange(2, 1, bodyRows.length, headers.length).setValues(bodyRows);
+      invalidateTableCache('Tasks');
+    }
+
+    return JSON.stringify({ success: true });
+  } catch (error) {
+    return JSON.stringify({ success: false, error: error.message });
+  }
+}
+
 function updateTaskDueDate(taskId, dueDate) {
   const normalizedTaskId = taskId ? taskId.toString().trim() : '';
   if (!normalizedTaskId) {

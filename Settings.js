@@ -1,4 +1,5 @@
 const USER_SETTINGS_PROPERTY_PREFIX = 'soar_user_settings:';
+const USER_SORT_ORDER_PREFIX = 'soar_sort:';
 const DEFAULT_NOTIFICATION_SETTINGS = {
   taskAssignments: true,
   commentsAndMentions: true,
@@ -57,6 +58,35 @@ function isNotificationEnabledForEmail(email, notificationKey, scriptPropertiesC
 function isNotificationEnabledForUser(user, notificationKey, scriptPropertiesCache) {
   return isNotificationEnabledForEmail(user && user.Email, notificationKey, scriptPropertiesCache);
 }
+function getUserSortOrderPropertyKey(email, entityType) {
+  const normalizedEmail = normalizeEmail(email);
+  return normalizedEmail ? `${USER_SORT_ORDER_PREFIX}${normalizedEmail}:${entityType}` : '';
+}
+
+function getUserSortOrders(email, scriptPropertiesCache) {
+  const projectsKey = getUserSortOrderPropertyKey(email, 'projects');
+  const tasksKey = getUserSortOrderPropertyKey(email, 'tasks');
+  if (!projectsKey) return { projects: [], tasks: [] };
+
+  const cache = scriptPropertiesCache || PropertiesService.getScriptProperties().getProperties();
+  let projects = [];
+  let tasks = [];
+  try { if (cache[projectsKey]) projects = JSON.parse(cache[projectsKey]); } catch (e) {}
+  try { if (cache[tasksKey]) tasks = JSON.parse(cache[tasksKey]); } catch (e) {}
+  return { projects, tasks };
+}
+
+function saveUserSortOrder(entityType, orderedIds) {
+  const currentUserEmail = normalizeEmail(getCurrentUser());
+  if (!currentUserEmail) return JSON.stringify({ success: false, error: 'Could not determine current user.' });
+  if (entityType !== 'projects' && entityType !== 'tasks') return JSON.stringify({ success: false, error: 'Invalid entity type.' });
+  if (!Array.isArray(orderedIds)) return JSON.stringify({ success: false, error: 'orderedIds must be an array.' });
+  const key = getUserSortOrderPropertyKey(currentUserEmail, entityType);
+  if (!key) return JSON.stringify({ success: false, error: 'Invalid user email.' });
+  PropertiesService.getScriptProperties().setProperty(key, JSON.stringify(orderedIds));
+  return JSON.stringify({ success: true });
+}
+
 function persistCurrentUserSettings(settingsInput) {
   const currentUserEmail = normalizeEmail(getCurrentUser());
   if (!currentUserEmail) {

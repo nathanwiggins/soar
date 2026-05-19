@@ -43,6 +43,7 @@ function getInitialPayload() {
       return normalized;
     }),
     currentUserSettings: getUserSettingsByEmail(currentUserEmail),
+    userSortOrders: getUserSortOrders(currentUserEmail),
     versionHash: buildGlobalVersionHash(),
     lastUpdated: getStoredDataVersion()
   };
