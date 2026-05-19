@@ -34,21 +34,21 @@ function createAgendaSession(agendaId, sessionDate, contentJson) {
     return JSON.stringify({ success: false, error: 'Only the agenda creator may create sessions.' });
   }
 
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Agenda_Sessions');
-  if (!sheet) return JSON.stringify({ success: false, error: 'Agenda_Sessions sheet not found.' });
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Sessions');
+  if (!sheet) return JSON.stringify({ success: false, error: 'Sessions sheet not found.' });
 
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   const headerIndex = getHeaderIndex(headers);
   const newRow = new Array(headers.length).fill('');
 
-  if (headerIndex.Session_ID !== undefined) newRow[headerIndex.Session_ID] = generateNextId('Agenda_Sessions', 'AS');
+  if (headerIndex.Session_ID !== undefined) newRow[headerIndex.Session_ID] = generateNextId('Sessions', 'AS');
   if (headerIndex.Agenda_ID !== undefined) newRow[headerIndex.Agenda_ID] = agendaId;
   if (headerIndex.Session_Date !== undefined) newRow[headerIndex.Session_Date] = sessionDate ? new Date(sessionDate + 'T00:00:00') : '';
   if (headerIndex.Content_JSON !== undefined) newRow[headerIndex.Content_JSON] = contentJson || '[]';
   if (headerIndex.Created_Date !== undefined) newRow[headerIndex.Created_Date] = new Date();
 
   appendRows(sheet, [newRow]);
-  invalidateTableCache('Agenda_Sessions');
+  invalidateTableCache('Sessions');
 
   const createdSession = {};
   headers.forEach((header, index) => {
@@ -60,8 +60,8 @@ function createAgendaSession(agendaId, sessionDate, contentJson) {
 }
 
 function updateAgendaSession(sessionId, sessionDate, contentJson) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Agenda_Sessions');
-  if (!sheet) return JSON.stringify({ success: false, error: 'Agenda_Sessions sheet not found.' });
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Sessions');
+  if (!sheet) return JSON.stringify({ success: false, error: 'Sessions sheet not found.' });
 
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
@@ -75,7 +75,7 @@ function updateAgendaSession(sessionId, sessionDate, contentJson) {
   if (headerIndex.Content_JSON !== undefined) updatedRow[headerIndex.Content_JSON] = contentJson || '[]';
 
   updateRowValues(sheet, rowIndex + 1, updatedRow);
-  invalidateTableCache('Agenda_Sessions');
+  invalidateTableCache('Sessions');
 
   const updatedSession = {};
   headers.forEach((header, index) => {
@@ -87,7 +87,7 @@ function updateAgendaSession(sessionId, sessionDate, contentJson) {
 }
 
 function getAgendaSessions(agendaId) {
-  const allSessions = getTableData('Agenda_Sessions');
+  const allSessions = getTableData('Sessions');
   const sessions = allSessions
     .filter(s => (s.Agenda_ID || '').toString().trim() === (agendaId || '').toString().trim())
     .map(s => {
@@ -104,8 +104,8 @@ function getAgendaSessions(agendaId) {
 }
 
 function deleteAgendaSession(sessionId) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Agenda_Sessions');
-  if (!sheet) return JSON.stringify({ success: false, error: 'Agenda_Sessions sheet not found.' });
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Sessions');
+  if (!sheet) return JSON.stringify({ success: false, error: 'Sessions sheet not found.' });
 
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
@@ -114,14 +114,14 @@ function deleteAgendaSession(sessionId) {
   const rowIndex = data.findIndex((row, i) => i > 0 && row[headerIndex.Session_ID] === sessionId);
   if (rowIndex > -1) {
     deleteRowsBySheetIndexes(sheet, [rowIndex + 1]);
-    invalidateTableCache('Agenda_Sessions');
+    invalidateTableCache('Sessions');
   }
 
   return JSON.stringify({ success: true, sessionId });
 }
 
 function migrateAgendaSessionsIfNeeded() {
-  const sessionsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Agenda_Sessions');
+  const sessionsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Sessions');
   if (!sessionsSheet) return;
 
   const agendasData = getTableData('Agendas');
@@ -132,7 +132,7 @@ function migrateAgendaSessionsIfNeeded() {
 
   if (agendasWithContent.length === 0) return;
 
-  const existingSessions = getTableData('Agenda_Sessions');
+  const existingSessions = getTableData('Sessions');
   const existingSessionAgendaIds = new Set(existingSessions.map(s => (s.Agenda_ID || '').toString().trim()));
 
   const headers = sessionsSheet.getRange(1, 1, 1, sessionsSheet.getLastColumn()).getValues()[0];
@@ -148,7 +148,7 @@ function migrateAgendaSessionsIfNeeded() {
     const dateStr = `${dateVal.getFullYear()}-${String(dateVal.getMonth()+1).padStart(2,'0')}-${String(dateVal.getDate()).padStart(2,'0')}`;
 
     const newRow = new Array(headers.length).fill('');
-    if (headerIndex.Session_ID !== undefined) newRow[headerIndex.Session_ID] = generateNextId('Agenda_Sessions', 'AS');
+    if (headerIndex.Session_ID !== undefined) newRow[headerIndex.Session_ID] = generateNextId('Sessions', 'AS');
     if (headerIndex.Agenda_ID !== undefined) newRow[headerIndex.Agenda_ID] = agendaId;
     if (headerIndex.Session_Date !== undefined) newRow[headerIndex.Session_Date] = new Date(dateStr + 'T00:00:00');
     if (headerIndex.Content_JSON !== undefined) newRow[headerIndex.Content_JSON] = agenda.Content_JSON || '[]';
@@ -158,7 +158,7 @@ function migrateAgendaSessionsIfNeeded() {
 
   if (rowsToAdd.length > 0) {
     appendRows(sessionsSheet, rowsToAdd);
-    invalidateTableCache('Agenda_Sessions');
+    invalidateTableCache('Sessions');
   }
 }
 
@@ -236,7 +236,7 @@ function deleteAgenda(agendaId) {
   deleteRowsBySheetIndexes(sharesSheet, rowsToDelete);
   invalidateTableCache('Sharing');
 
-  const sessionsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Agenda_Sessions');
+  const sessionsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Sessions');
   if (sessionsSheet && sessionsSheet.getLastRow() > 1) {
     const sessionsData = sessionsSheet.getDataRange().getValues();
     const sessionsHeaders = sessionsData[0];
@@ -246,7 +246,7 @@ function deleteAgenda(agendaId) {
       if (sessionsData[i][sessionsHeaderIndex.Agenda_ID] === agendaId) sessionRowsToDelete.push(i + 1);
     }
     deleteRowsBySheetIndexes(sessionsSheet, sessionRowsToDelete);
-    invalidateTableCache('Agenda_Sessions');
+    invalidateTableCache('Sessions');
   }
 
   return JSON.stringify({ success: true, agendaId });
