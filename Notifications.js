@@ -104,6 +104,7 @@ function sendManagerTaskCompletedNotifications(task, assigneeIds, completedByUse
   });
   if (managerIds.size === 0) return;
 
+  const scriptPropertiesCache = PropertiesService.getScriptProperties().getProperties();
   const details = getTaskNotificationDetails(task);
   const completedBy = usersById[(completedByUserId || '').toString().trim()];
   const completedByName = completedBy && completedBy.Name ? completedBy.Name : 'A user';
@@ -118,7 +119,7 @@ ${formatTaskNotificationBody(details)}
     const manager = usersById[managerId];
     const email = normalizeEmail(manager && manager.Email);
     if (!email || sentEmails.has(email)) return;
-    if (!isNotificationEnabledForUser(manager, 'taskCompletion')) return;
+    if (!isNotificationEnabledForUser(manager, 'taskCompletion', scriptPropertiesCache)) return;
     sentEmails.add(email);
     safeSendEmail(email, subject, body);
   });
@@ -177,6 +178,10 @@ function sendDueDateReminderNotifications() {
   const scriptProperties = PropertiesService.getScriptProperties();
   const scriptPropertiesCache = scriptProperties.getProperties();
   const todayKey = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  const projectsById = getTableData('Projects').reduce((acc, p) => {
+    acc[(p.Project_ID || '').toString().trim()] = p;
+    return acc;
+  }, {});
   let sentCount = 0;
 
   tasks.forEach((task) => {
@@ -187,7 +192,7 @@ function sendDueDateReminderNotifications() {
     if (daysUntilDue === null || daysUntilDue < 0 || daysUntilDue > 1) return;
 
     const taskId = (task.Task_ID || '').toString().trim();
-    const details = getTaskNotificationDetails(task);
+    const details = getTaskNotificationDetails(task, projectsById);
     const dueLabel = daysUntilDue === 0 ? 'today' : 'tomorrow';
     const subject = `Task due ${dueLabel}: ${details.taskTitle}`;
     const body = `A task is due ${dueLabel}.
@@ -220,6 +225,10 @@ function sendWeeklyDigestNotifications() {
   const tasks = getTableData('Tasks');
   const assignmentsByTaskId = getAssignmentsByAssignmentId();
   const usersById = getUsersById();
+  const projectsById = getTableData('Projects').reduce((acc, p) => {
+    acc[(p.Project_ID || '').toString().trim()] = p;
+    return acc;
+  }, {});
   const tasksByUserId = {};
 
   tasks.forEach((task) => {
@@ -253,7 +262,7 @@ function sendWeeklyDigestNotifications() {
         return (leftDays === null ? 9999 : leftDays) - (rightDays === null ? 9999 : rightDays);
       })
       .map((task) => {
-        const details = getTaskNotificationDetails(task);
+        const details = getTaskNotificationDetails(task, projectsById);
         const dueDate = task.Due_Date ? serializeDateOnlyForClient(parseDateInput(task.Due_Date)) : 'No due date';
         return `- ${details.taskTitle} (${details.projectTitle}), due: ${dueDate}`;
       });
