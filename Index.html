@@ -1894,7 +1894,7 @@
           <div class="flex items-center gap-2">
             <template v-if="idsMatch(activeAgenda.Creator_ID, currentUserId)">
               <div class="relative">
-                <button @click="showNewSessionPrompt = !showNewSessionPrompt" :class="isDarkMode ? 'bg-gray-800 text-gray-200 hover:bg-gray-700 border-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border-gray-300'" class="px-3 py-2 rounded-lg text-sm border font-medium transition-colors">
+                <button @click.stop="showNewSessionPrompt = !showNewSessionPrompt" :class="isDarkMode ? 'bg-gray-800 text-gray-200 hover:bg-gray-700 border-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border-gray-300'" class="px-3 py-2 rounded-lg text-sm border font-medium transition-colors">
                   <i class="fa-solid fa-plus mr-1"></i> New Session
                 </button>
                 <div v-if="showNewSessionPrompt" @click.stop :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'" class="absolute bottom-full mb-2 left-0 w-56 rounded-xl shadow-xl border p-3 z-30 flex flex-col gap-2">
