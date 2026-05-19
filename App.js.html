@@ -2766,7 +2766,8 @@
         
         activeAgenda.value = {
           ...agenda,
-          headers: parsedContent
+          headers: parsedContent,
+          agendaDate: formatDateForInput(agenda.Agenda_Date || '')
         };
         activeAgendaShares.value = agendaShares.value
           .filter(s => idsMatch(s.Agenda_ID, agenda.Agenda_ID))
@@ -2799,7 +2800,7 @@
               closeAgendaModal();
             }
           })
-          .updateAgenda(activeAgenda.value.Agenda_ID, activeAgenda.value.Title, contentStr, activeAgendaShares.value);
+          .updateAgenda(activeAgenda.value.Agenda_ID, activeAgenda.value.Title, activeAgenda.value.Description || '', activeAgenda.value.agendaDate || '', contentStr, activeAgendaShares.value);
       };
 
       const deleteAgenda = (id) => {
@@ -2884,6 +2885,54 @@
           addAgendaShare(filteredAgendaShareSuggestions.value[0].User_ID);
         } else if (e.key === 'Escape') {
           closeAgendaShareDropdown();
+        }
+      };
+
+      const getSharedUsersForAgenda = (agendaId) => {
+        return agendaShares.value
+          .filter(s => idsMatch(s.Agenda_ID, agendaId))
+          .map(s => getUserById(s.User_ID))
+          .filter(Boolean);
+      };
+
+      const getAgendaContentPreview = (agenda) => {
+        try {
+          const parsed = JSON.parse(agenda.Content_JSON || '[]');
+          return Array.isArray(parsed) ? parsed.slice(0, 3) : [];
+        } catch (e) {
+          return [];
+        }
+      };
+
+      const getAgendaSectionCount = (agenda) => {
+        try {
+          return JSON.parse(agenda.Content_JSON || '[]').length;
+        } catch (e) {
+          return 0;
+        }
+      };
+
+      const getAgendaTextPreview = (agenda) => {
+        try {
+          const sections = JSON.parse(agenda.Content_JSON || '[]');
+          const textParts = [];
+          for (const section of sections) {
+            for (const item of (section.items || [])) {
+              if (item.type === 'text' && item.content && item.content.trim()) {
+                textParts.push(item.content.trim());
+                if (textParts.length >= 3) break;
+              }
+            }
+            if (textParts.length >= 3) break;
+          }
+          const source = textParts.length > 0
+            ? textParts
+            : sections.filter(s => s.title).map(s => s.title).slice(0, 3);
+          if (!source.length) return '';
+          const joined = source.join(' · ');
+          return joined.length > 100 ? joined.slice(0, 100) + '…' : joined;
+        } catch (e) {
+          return '';
         }
       };
 
@@ -3173,6 +3222,10 @@
         addAgendaShare,
         removeAgendaShare,
         handleAgendaShareKeyDown,
+        getSharedUsersForAgenda,
+        getAgendaContentPreview,
+        getAgendaSectionCount,
+        getAgendaTextPreview,
         isChatOpen,
         isChatLoading,
         chatInput,

@@ -24,17 +24,19 @@ function createAgenda(title) {
   return JSON.stringify({ success: true, agenda: createdAgenda });
 }
 
-function updateAgenda(agendaId, title, contentJson, sharedUserIds) {
+function updateAgenda(agendaId, title, description, agendaDate, contentJson, sharedUserIds) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Agendas');
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
   const headerIndex = getHeaderIndex(headers);
-  
+
   const rowIndex = data.findIndex((row, i) => i > 0 && row[headerIndex.Agenda_ID] === agendaId);
   if (rowIndex < 0) return JSON.stringify({ success: false, error: 'Agenda not found.' });
 
   const updatedRow = data[rowIndex].slice();
   if (headerIndex.Title !== undefined) updatedRow[headerIndex.Title] = title;
+  if (headerIndex.Description !== undefined) updatedRow[headerIndex.Description] = description || '';
+  if (headerIndex.Agenda_Date !== undefined) updatedRow[headerIndex.Agenda_Date] = agendaDate ? new Date(agendaDate + 'T00:00:00') : '';
   if (headerIndex.Content_JSON !== undefined) updatedRow[headerIndex.Content_JSON] = contentJson;
   
   updateRowValues(sheet, rowIndex + 1, updatedRow);

@@ -525,13 +525,41 @@
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           <div v-for="agenda in myAgendas" :key="agenda.Agenda_ID"
                @click="openAgendaModal(agenda)"
-               :class="isDarkMode ? 'bg-gray-900 border-gray-700 hover:border-gray-500' : 'bg-white border-gray-200 hover:border-gray-300'"
-               class="rounded-xl border p-4 shadow-sm cursor-pointer transition-colors">
-            <div class="flex justify-between items-start">
-              <h4 class="font-semibold" :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'">{{ agenda.Title }}</h4>
-              <button @click.stop="deleteAgenda(agenda.Agenda_ID)" class="text-red-500 hover:text-red-700"><i class="fa-solid fa-trash"></i></button>
+               :class="isDarkMode ? 'bg-gray-900 border-gray-700 hover:shadow-gray-900' : 'bg-white border-gray-100'"
+               class="p-4 rounded-xl shadow-sm border hover:shadow-md transition-shadow cursor-pointer group">
+            <div class="flex justify-between items-start mb-2">
+              <span :class="isDarkMode ? 'bg-gray-700 text-gray-300 border-gray-600' : 'bg-gray-100 text-gray-600 border-gray-200'"
+                    class="text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider border">
+                {{ getAgendaSectionCount(agenda) }} {{ getAgendaSectionCount(agenda) === 1 ? 'section' : 'sections' }}
+              </span>
+              <button @click.stop="deleteAgenda(agenda.Agenda_ID)" class="text-gray-300 hover:text-red-500 transition-colors">
+                <i class="fa-solid fa-trash text-sm"></i>
+              </button>
             </div>
-            <p class="text-xs mt-2" :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'">Created: {{ formatDate(agenda.Created_Date) }}</p>
+            <h4 :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'" class="text-sm font-medium mb-2">{{ agenda.Title }}</h4>
+            <p v-if="agenda.Description"
+               :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'"
+               class="text-xs line-clamp-2 mb-3">{{ agenda.Description }}</p>
+            <div class="flex items-center justify-between mt-4">
+              <div class="flex -space-x-2">
+                <div :class="isDarkMode ? 'bg-gray-700 border-gray-900 text-gray-200' : 'bg-gray-200 border-white text-gray-600'"
+                     class="w-6 h-6 rounded-full border-2 flex items-center justify-center text-[8px] font-bold overflow-hidden"
+                     :title="getUserById(agenda.Creator_ID)?.Name">
+                  <img v-if="getUserById(agenda.Creator_ID)?.Profile_Pic_Url" :src="getUserById(agenda.Creator_ID).Profile_Pic_Url" class="w-full h-full object-cover">
+                  <span v-else>{{ getInitials(getUserById(agenda.Creator_ID)?.Name) }}</span>
+                </div>
+                <div v-for="user in getSharedUsersForAgenda(agenda.Agenda_ID)" :key="user.User_ID"
+                     :class="isDarkMode ? 'bg-gray-700 border-gray-900 text-gray-200' : 'bg-gray-200 border-white text-gray-600'"
+                     class="w-6 h-6 rounded-full border-2 flex items-center justify-center text-[8px] font-bold overflow-hidden"
+                     :title="user.Name">
+                  <img v-if="user.Profile_Pic_Url" :src="user.Profile_Pic_Url" class="w-full h-full object-cover">
+                  <span v-else>{{ getInitials(user.Name) }}</span>
+                </div>
+              </div>
+              <span :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'" class="text-xs font-medium">
+                <i class="fa-regular fa-calendar mr-1"></i>{{ formatDate(agenda.Agenda_Date || agenda.Created_Date) }}
+              </span>
+            </div>
           </div>
           <p v-if="myAgendas.length === 0" class="text-sm" :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'">No agendas created yet.</p>
         </div>
@@ -540,10 +568,38 @@
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div v-for="agenda in sharedAgendas" :key="'shared-'+agenda.Agenda_ID"
                @click="openAgendaModal(agenda)"
-               :class="isDarkMode ? 'bg-gray-900 border-gray-700 hover:border-gray-500' : 'bg-white border-gray-200 hover:border-gray-300'"
-               class="rounded-xl border p-4 shadow-sm cursor-pointer transition-colors">
-            <h4 class="font-semibold" :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'">{{ agenda.Title }}</h4>
-            <p class="text-xs mt-2" :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'">Shared by: {{ getUserById(agenda.Creator_ID)?.Name }}</p>
+               :class="isDarkMode ? 'bg-gray-900 border-gray-700 hover:shadow-gray-900' : 'bg-white border-gray-100'"
+               class="p-4 rounded-xl shadow-sm border hover:shadow-md transition-shadow cursor-pointer">
+            <div class="flex justify-between items-start mb-2">
+              <span :class="isDarkMode ? 'bg-gray-700 text-gray-300 border-gray-600' : 'bg-gray-100 text-gray-600 border-gray-200'"
+                    class="text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider border">
+                {{ getAgendaSectionCount(agenda) }} {{ getAgendaSectionCount(agenda) === 1 ? 'section' : 'sections' }}
+              </span>
+            </div>
+            <h4 :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'" class="text-sm font-medium mb-2">{{ agenda.Title }}</h4>
+            <p v-if="agenda.Description"
+               :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'"
+               class="text-xs line-clamp-2 mb-3">{{ agenda.Description }}</p>
+            <div class="flex items-center justify-between mt-4">
+              <div class="flex -space-x-2">
+                <div :class="isDarkMode ? 'bg-gray-700 border-gray-900 text-gray-200' : 'bg-gray-200 border-white text-gray-600'"
+                     class="w-6 h-6 rounded-full border-2 flex items-center justify-center text-[8px] font-bold overflow-hidden"
+                     :title="getUserById(agenda.Creator_ID)?.Name + ' (creator)'">
+                  <img v-if="getUserById(agenda.Creator_ID)?.Profile_Pic_Url" :src="getUserById(agenda.Creator_ID).Profile_Pic_Url" class="w-full h-full object-cover">
+                  <span v-else>{{ getInitials(getUserById(agenda.Creator_ID)?.Name) }}</span>
+                </div>
+                <div v-for="user in getSharedUsersForAgenda(agenda.Agenda_ID)" :key="user.User_ID"
+                     :class="isDarkMode ? 'bg-gray-700 border-gray-900 text-gray-200' : 'bg-gray-200 border-white text-gray-600'"
+                     class="w-6 h-6 rounded-full border-2 flex items-center justify-center text-[8px] font-bold overflow-hidden"
+                     :title="user.Name">
+                  <img v-if="user.Profile_Pic_Url" :src="user.Profile_Pic_Url" class="w-full h-full object-cover">
+                  <span v-else>{{ getInitials(user.Name) }}</span>
+                </div>
+              </div>
+              <span :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'" class="text-xs font-medium">
+                <i class="fa-regular fa-calendar mr-1"></i>{{ formatDate(agenda.Agenda_Date || agenda.Created_Date) }}
+              </span>
+            </div>
           </div>
           <p v-if="sharedAgendas.length === 0" class="text-sm" :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'">No shared agendas.</p>
         </div>
@@ -1628,8 +1684,17 @@
     <div v-if="showAgendaModal && activeAgenda" class="fixed inset-0 bg-gray-900/50 flex items-center justify-center z-50 px-4" @click.self="closeAgendaModal">
       <div :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-100'" class="w-full max-w-4xl rounded-2xl shadow-2xl border max-h-[90vh] flex flex-col">
         
-        <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="px-6 py-4 border-b flex justify-between items-center shrink-0">
-          <input v-model="activeAgenda.Title" type="text" :class="isDarkMode ? 'bg-transparent text-gray-100 focus:ring-gray-700' : 'bg-transparent text-gray-800 focus:ring-gray-200'" class="text-lg font-bold border-none focus:ring-2 rounded px-2 w-1/2">
+        <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="px-6 pt-4 pb-3 border-b shrink-0">
+          <div class="flex justify-between items-start">
+            <div class="flex-1 mr-4">
+              <input v-model="activeAgenda.Title" type="text" :class="isDarkMode ? 'bg-transparent text-gray-100 focus:ring-gray-700' : 'bg-transparent text-gray-800 focus:ring-gray-200'" class="text-lg font-bold border-none focus:ring-2 rounded px-2 w-full mb-2">
+              <div class="flex items-center gap-4 px-2">
+                <label :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-xs font-semibold uppercase tracking-wider flex items-center gap-1 shrink-0">
+                  <i class="fa-regular fa-calendar"></i> Date
+                </label>
+                <input v-model="activeAgenda.agendaDate" type="date" :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-200 focus:ring-gray-500' : 'bg-gray-50 border-gray-200 text-gray-800 focus:ring-gray-300'" class="text-sm border rounded-lg px-2 py-1 focus:outline-none focus:ring-2">
+              </div>
+            </div>
           
           <div class="flex items-center gap-2">
             
@@ -1699,9 +1764,11 @@
 
             <button @click="closeAgendaModal" class="text-gray-400 hover:text-gray-600 transition-colors ml-2"><i class="fa-solid fa-xmark text-lg"></i></button>
           </div>
+          </div>
         </div>
 
         <div class="flex-1 overflow-y-auto p-6 space-y-6">
+          <textarea v-model="activeAgenda.Description" rows="2" :class="isDarkMode ? 'bg-gray-800 border-gray-700 text-gray-300 placeholder-gray-600 focus:ring-gray-600' : 'bg-gray-50 border-gray-200 text-gray-700 placeholder-gray-400 focus:ring-gray-300'" class="w-full text-sm border rounded-xl px-4 py-3 focus:outline-none focus:ring-2 resize-none" placeholder="Add a description for this agenda..."></textarea>
           <div v-for="(header, hIndex) in activeAgenda.headers" :key="header.id" :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'" class="p-4 rounded-xl border">
             <div class="flex justify-between items-center mb-3">
               <input v-model="header.title" type="text" :class="isDarkMode ? 'bg-gray-900 text-gray-200 border-gray-600' : 'bg-white text-gray-800 border-gray-300'" class="font-bold border rounded px-2 py-1 w-1/2">
@@ -1718,12 +1785,43 @@
                   </template>
                   
                   <template v-else-if="item.type === 'task'">
-                    <div :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'" class="flex-1 rounded-lg border p-3 flex justify-between items-center shadow-sm">
-                      <div>
-                        <p class="font-semibold text-sm" :class="isDarkMode ? 'text-gray-200' : 'text-gray-800'">{{ getTaskById(item.taskId)?.Task_Title || 'Unknown Task' }}</p>
-                        <p class="text-xs" :class="statusColor(getTaskById(item.taskId)?.Status)">{{ normalizeTaskStatusForDisplay(getTaskById(item.taskId)?.Status) }}</p>
+                    <div :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-100'" class="flex-1 rounded-xl border p-3 shadow-sm">
+                      <div class="flex justify-between items-start mb-2">
+                        <span :class="statusColor(getTaskById(item.taskId)?.Status)" class="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                          {{ normalizeTaskStatusForDisplay(getTaskById(item.taskId)?.Status) }}
+                        </span>
+                        <button @click.stop="openTaskInfo(getTaskById(item.taskId))" class="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-blue-500 hover:underline flex items-center gap-1">
+                          View <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+                        </button>
                       </div>
-                      <button @click="openTaskInfo(getTaskById(item.taskId))" class="text-xs text-blue-500 hover:underline">View Task</button>
+                      <h4 :class="isDarkMode ? 'text-gray-200' : 'text-gray-800'" class="text-sm font-medium mb-3">
+                        {{ getTaskById(item.taskId)?.Task_Title || 'Unknown Task' }}
+                      </h4>
+                      <div class="flex items-center justify-between">
+                        <div class="flex -space-x-2">
+                          <div v-for="assignee in getAssigneesForTask(item.taskId)" :key="assignee.User_ID"
+                               :class="isDarkMode ? 'bg-gray-700 border-gray-900 text-gray-200' : 'bg-gray-200 border-white text-gray-600'"
+                               class="w-5 h-5 rounded-full border-2 flex items-center justify-center text-[7px] font-bold overflow-hidden"
+                               :title="assignee.Name">
+                            <img v-if="assignee?.Profile_Pic_Url" :src="assignee.Profile_Pic_Url" class="w-full h-full object-cover">
+                            <span v-else>{{ getInitials(assignee.Name) }}</span>
+                          </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                          <span v-if="hasPriority(getTaskById(item.taskId)?.Priority)"
+                                :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'"
+                                class="text-xs font-semibold inline-flex items-center gap-1"
+                                :title="getPriorityTitle(getTaskById(item.taskId)?.Priority)">
+                            <i class="fa-solid" :class="priorityIconClass(getTaskById(item.taskId)?.Priority)"></i>
+                            <span>{{ getPriorityLabel(getTaskById(item.taskId)?.Priority) }}</span>
+                          </span>
+                          <span v-if="getTaskById(item.taskId)?.Due_Date"
+                                :class="getTaskDueDateClass(getTaskById(item.taskId))"
+                                class="text-xs font-medium">
+                            <i class="fa-regular fa-clock mr-1"></i>{{ formatDate(getTaskById(item.taskId)?.Due_Date) }}
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   </template>
 
