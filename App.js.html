@@ -2634,7 +2634,8 @@
         
         activeAgenda.value = {
           ...agenda,
-          headers: parsedContent
+          headers: parsedContent,
+          agendaDate: formatDateForInput(agenda.Agenda_Date || '')
         };
         activeAgendaShares.value = agendaShares.value
           .filter(s => idsMatch(s.Agenda_ID, agenda.Agenda_ID))
@@ -2667,7 +2668,7 @@
               closeAgendaModal();
             }
           })
-          .updateAgenda(activeAgenda.value.Agenda_ID, activeAgenda.value.Title, contentStr, activeAgendaShares.value);
+          .updateAgenda(activeAgenda.value.Agenda_ID, activeAgenda.value.Title, activeAgenda.value.Description || '', activeAgenda.value.agendaDate || '', contentStr, activeAgendaShares.value);
       };
 
       const deleteAgenda = (id) => {
