@@ -731,6 +731,23 @@
         ];
         loadingCommentTopicIds.value = [];
         dataVersionHash.value = payload.versionHash || '';
+        const sortOrders = payload.userSortOrders;
+        if (sortOrders?.projects?.length) {
+          const orderMap = new Map(sortOrders.projects.map((id, i) => [normalizeId(id), i]));
+          projects.value.sort((a, b) => {
+            const ai = orderMap.has(normalizeId(a.Project_ID)) ? orderMap.get(normalizeId(a.Project_ID)) : Infinity;
+            const bi = orderMap.has(normalizeId(b.Project_ID)) ? orderMap.get(normalizeId(b.Project_ID)) : Infinity;
+            return ai - bi;
+          });
+        }
+        if (sortOrders?.tasks?.length) {
+          const orderMap = new Map(sortOrders.tasks.map((id, i) => [normalizeId(id), i]));
+          tasks.value.sort((a, b) => {
+            const ai = orderMap.has(normalizeId(a.Task_ID)) ? orderMap.get(normalizeId(a.Task_ID)) : Infinity;
+            const bi = orderMap.has(normalizeId(b.Task_ID)) ? orderMap.get(normalizeId(b.Task_ID)) : Infinity;
+            return ai - bi;
+          });
+        }
         applyNotificationSettings(payload.currentUserSettings?.notifications);
         loading.value = false;
 
@@ -2626,6 +2643,7 @@
 
       const draggingTaskSourceProjectId = ref(null);
       const draggingOverProjectId = ref(null);
+      const draggingMoveBlocked = ref(false);
       const taskMoveUndoStack = ref([]);
 
       const stopKanbanAutoScroll = () => {
@@ -2679,13 +2697,32 @@
       const onTaskDragEnd = () => {
         draggingTaskSourceProjectId.value = null;
         draggingOverProjectId.value = null;
+        draggingMoveBlocked.value = false;
         endKanbanAutoScroll();
       };
 
       const onDragEnterProject = (projectId) => {
-        if (draggingTaskSourceProjectId.value !== null) {
-          draggingOverProjectId.value = projectId;
+        if (draggingTaskSourceProjectId.value === null) return;
+        draggingOverProjectId.value = projectId;
+        if (idsMatch(projectId, draggingTaskSourceProjectId.value)) {
+          draggingMoveBlocked.value = false;
+          return;
         }
+        const sourceProject = getProjectById(draggingTaskSourceProjectId.value);
+        const targetProject = getProjectById(projectId);
+        draggingMoveBlocked.value = !(idsMatch(sourceProject?.Creator_ID, currentUserId.value) && idsMatch(targetProject?.Creator_ID, currentUserId.value));
+      };
+
+      const canDropTaskHere = (evt, targetProjectId) => {
+        const sourceProjectId = draggingTaskSourceProjectId.value;
+        if (!sourceProjectId || idsMatch(sourceProjectId, targetProjectId)) return true;
+        const sourceProject = getProjectById(sourceProjectId);
+        const targetProject = getProjectById(targetProjectId);
+        return idsMatch(sourceProject?.Creator_ID, currentUserId.value) && idsMatch(targetProject?.Creator_ID, currentUserId.value);
+      };
+
+      const canReorderProject = (evt) => {
+        return idsMatch(evt.draggedContext?.element?.Creator_ID, currentUserId.value);
       };
 
       const startKanbanAutoScroll = () => {
@@ -2727,7 +2764,7 @@
           }
 
           const orderedIds = projects.value.map(p => p.Project_ID);
-          google.script.run.reorderProjects(orderedIds);
+          google.script.run.saveUserSortOrder('projects', orderedIds);
         }
       };
 
@@ -2764,11 +2801,11 @@
               tasks.value.splice(insertIndex + 1, 0, globalTask);
            }
            
-           const orderedTargetTaskIds = tasks.value
-              .filter(t => idsMatch(t.Project_ID, targetProjectId))
-              .map(t => t.Task_ID);
-              
-           google.script.run.updateTaskProjectAndOrder(globalTask.Task_ID, targetProjectId, orderedTargetTaskIds);
+           const allTaskIds = tasks.value.map(t => t.Task_ID);
+           if (evt.added) {
+             google.script.run.moveTaskToProject(globalTask.Task_ID, targetProjectId);
+           }
+           google.script.run.saveUserSortOrder('tasks', allTaskIds);
         }
       };
 
@@ -2803,10 +2840,9 @@
           }
         }
 
-        const orderedFromIds = tasks.value
-          .filter(t => idsMatch(t.Project_ID, fromProjectId))
-          .map(t => t.Task_ID);
-        google.script.run.updateTaskProjectAndOrder(taskId, fromProjectId, orderedFromIds);
+        const allTaskIds = tasks.value.map(t => t.Task_ID);
+        google.script.run.moveTaskToProject(taskId, fromProjectId);
+        google.script.run.saveUserSortOrder('tasks', allTaskIds);
         taskMoveUndoStack.value.pop();
       };
 
@@ -3275,8 +3311,11 @@
         onTaskDragStart,
         onTaskDragEnd,
         onDragEnterProject,
+        canDropTaskHere,
+        canReorderProject,
         draggingTaskSourceProjectId,
         draggingOverProjectId,
+        draggingMoveBlocked,
         startKanbanAutoScroll,
         endKanbanAutoScroll,
         onExistingSubtaskChange,

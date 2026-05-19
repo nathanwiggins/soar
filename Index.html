@@ -614,6 +614,7 @@
       item-key="Project_ID"
       class="flex space-x-6 h-full items-start"
       handle=".project-drag-handle"
+      :move="canReorderProject"
       @change="onProjectChange"
       @start="startKanbanAutoScroll"
       @end="endKanbanAutoScroll">
@@ -647,9 +648,9 @@
 
             <div
               v-if="draggingOverProjectId && idsMatch(draggingOverProjectId, project.Project_ID) && draggingTaskSourceProjectId && !idsMatch(draggingTaskSourceProjectId, project.Project_ID)"
-              :class="isDarkMode ? 'bg-blue-900/50 text-blue-300 border-blue-600' : 'bg-blue-50 text-blue-600 border-blue-300'"
+              :class="draggingMoveBlocked ? (isDarkMode ? 'bg-red-900/50 text-red-300 border-red-600' : 'bg-red-50 text-red-600 border-red-300') : (isDarkMode ? 'bg-blue-900/50 text-blue-300 border-blue-600' : 'bg-blue-50 text-blue-600 border-blue-300')"
               class="px-3 py-2 rounded-lg text-xs font-semibold text-center border pointer-events-none">
-              Move to: {{ project.Project_Title }}
+              {{ draggingMoveBlocked ? 'Not authorized to move here' : 'Move to: ' + project.Project_Title }}
             </div>
 
             <draggable
@@ -657,6 +658,7 @@
               item-key="Task_ID"
               group="tasks"
               class="space-y-3 min-h-[50px] h-full"
+              :move="(evt) => canDropTaskHere(evt, project.Project_ID)"
               @change="onTaskChange($event, project.Project_ID)"
               @start="onTaskDragStart($event, project.Project_ID)"
               @end="onTaskDragEnd">
