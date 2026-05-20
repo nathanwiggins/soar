@@ -1,5 +1,5 @@
 function normalizeProjectColorSchemeValue(value) {
-  const validColorSchemes = ['suu_red', 'sunset_orange', 'amber_gold', 'lime_green', 'emerald_green', 'teal', 'sky_blue', 'royal_blue', 'indigo', 'violet', 'pink_rose', 'slate_gray'];
+  const validColorSchemes = ['suu_red', 'sunset_orange', 'amber_gold', 'emerald_green', 'ocean_teal', 'sky_blue', 'deep_indigo', 'soft_violet', 'rose_pink', 'slate_gray', 'pearl_white'];
   const normalizedValue = value ? value.toString().trim().toLowerCase() : 'suu_red';
   return validColorSchemes.includes(normalizedValue) ? normalizedValue : 'suu_red';
 }

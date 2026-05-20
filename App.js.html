@@ -392,7 +392,7 @@
 
       const filteredTasks = computed(() => {
         const signature = [
-          getCollectionSignature(tasks.value, 'Task_ID', ['Project_ID', 'Status', 'Due_Date', 'Priority', 'Task_Title', '_syncing']),
+          getCollectionSignature(tasks.value, 'Task_ID', ['Project_ID', 'Status', 'Due_Date', 'Priority', 'Task_Title', 'Description', '_syncing']),
           getCollectionSignature(assignments.value, 'Assignment_ID', ['Assignee_ID']),
           currentUserId.value,
           showAllWorkItems.value ? 'all' : 'assigned'
@@ -412,7 +412,7 @@
 
       const pastAssignments = computed(() => {
         const signature = [
-          getCollectionSignature(tasks.value, 'Task_ID', ['Status', 'Due_Date']),
+          getCollectionSignature(tasks.value, 'Task_ID', ['Status', 'Due_Date', 'Task_Title', 'Description', 'Priority']),
           currentUserId.value,
           getCollectionSignature(assignments.value, 'Assignment_ID', ['Assignee_ID'])
         ].join('::');
@@ -431,7 +431,7 @@
 
       const visibleProjects = computed(() => {
         const signature = [
-          getCollectionSignature(projects.value, 'Project_ID', ['Project_ID']),
+          getCollectionSignature(projects.value, 'Project_ID', ['Project_ID', 'Project_Title', 'Description', 'Status', 'Due_Date', 'Color_Scheme']),
           getCollectionSignature(visibleTasks.value, 'Task_ID', ['Project_ID']),
           currentUserId.value,
           showAllWorkItems.value ? '1' : '0'
@@ -525,7 +525,7 @@
 
       const supervisorVisibleTasks = computed(() => {
         const signature = [
-          getCollectionSignature(tasks.value, 'Task_ID', ['Status', 'Project_ID']),
+          getCollectionSignature(tasks.value, 'Task_ID', ['Status', 'Project_ID', 'Task_Title', 'Due_Date', 'Priority', 'Description']),
           selectedSupervisorUserIds.value.slice().sort().join(','),
           getCollectionSignature(assignments.value, 'Assignment_ID', ['Assignee_ID'])
         ].join('::');
@@ -554,7 +554,7 @@
 
       const projectSummaries = computed(() => {
         const signature = [
-          getCollectionSignature(projects.value, 'Project_ID', ['Project_Title', 'Status', 'Due_Date', 'Color_Scheme']),
+          getCollectionSignature(projects.value, 'Project_ID', ['Project_Title', 'Description', 'Status', 'Due_Date', 'Color_Scheme']),
           getCollectionSignature(visibleTasks.value, 'Task_ID', ['Project_ID', 'Status', 'Due_Date', 'Priority', 'Task_Title', '_syncing']),
           getCollectionSignature(supervisorVisibleTasks.value, 'Task_ID', ['Project_ID', 'Status', 'Due_Date', 'Priority', 'Task_Title', '_syncing'])
         ].join('::');
@@ -1000,6 +1000,13 @@
           currentTab.value = 'project-board';
           showSupervisorUserDropdown.value = false;
           return;
+        }
+
+        if (currentTab.value === 'calendar' && tabId !== 'calendar') {
+          calendarDateUndoStack.value = [];
+        }
+        if (currentTab.value !== 'calendar' && tabId === 'calendar') {
+          taskMoveUndoStack.value = [];
         }
 
         currentTab.value = tabId;
