@@ -458,8 +458,8 @@
                     draggable="true"
                     @dragstart="onCalendarProjectDragStart($event, projectEntry.project)"
                     @dragend="onCalendarDragEnd">
-                    <i class="fa-solid fa-folder-open mr-1"></i>
-                    <span class="uppercase tracking-wide">Project Due:</span> {{ projectEntry.projectTitle }}
+                    <i class="fa-solid fa-folder-open mr-1" draggable="false"></i>
+                    <span class="uppercase tracking-wide" draggable="false">Project Due:</span> {{ projectEntry.projectTitle }}
                   </button>
                   <button
                     v-for="calendarEntry in getCalendarTaskEntries(day.dateKey)"

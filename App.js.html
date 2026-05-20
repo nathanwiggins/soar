@@ -427,7 +427,7 @@
 
       const visibleProjects = computed(() => {
         const signature = [
-          getCollectionSignature(projects.value, 'Project_ID', ['Project_ID']),
+          getCollectionSignature(projects.value, 'Project_ID', ['Project_ID', 'Due_Date', 'Project_Title', 'Color_Scheme', 'Status']),
           getCollectionSignature(visibleTasks.value, 'Task_ID', ['Project_ID']),
           currentUserId.value,
           showAllWorkItems.value ? '1' : '0'
