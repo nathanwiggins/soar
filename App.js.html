@@ -392,7 +392,7 @@
 
       const filteredTasks = computed(() => {
         const signature = [
-          getCollectionSignature(tasks.value, 'Task_ID', ['Project_ID', 'Status', 'Due_Date', 'Priority', 'Task_Title', '_syncing']),
+          getCollectionSignature(tasks.value, 'Task_ID', ['Project_ID', 'Status', 'Due_Date', 'Priority', 'Task_Title', 'Description', '_syncing']),
           getCollectionSignature(assignments.value, 'Assignment_ID', ['Assignee_ID']),
           currentUserId.value,
           showAllWorkItems.value ? 'all' : 'assigned'
@@ -412,7 +412,7 @@
 
       const pastAssignments = computed(() => {
         const signature = [
-          getCollectionSignature(tasks.value, 'Task_ID', ['Status', 'Due_Date']),
+          getCollectionSignature(tasks.value, 'Task_ID', ['Status', 'Due_Date', 'Task_Title', 'Description', 'Priority']),
           currentUserId.value,
           getCollectionSignature(assignments.value, 'Assignment_ID', ['Assignee_ID'])
         ].join('::');
@@ -431,7 +431,7 @@
 
       const visibleProjects = computed(() => {
         const signature = [
-          getCollectionSignature(projects.value, 'Project_ID', ['Project_ID']),
+          getCollectionSignature(projects.value, 'Project_ID', ['Project_ID', 'Project_Title', 'Description', 'Status', 'Due_Date', 'Color_Scheme']),
           getCollectionSignature(visibleTasks.value, 'Task_ID', ['Project_ID']),
           currentUserId.value,
           showAllWorkItems.value ? '1' : '0'
@@ -525,7 +525,7 @@
 
       const supervisorVisibleTasks = computed(() => {
         const signature = [
-          getCollectionSignature(tasks.value, 'Task_ID', ['Status', 'Project_ID']),
+          getCollectionSignature(tasks.value, 'Task_ID', ['Status', 'Project_ID', 'Task_Title', 'Due_Date', 'Priority', 'Description']),
           selectedSupervisorUserIds.value.slice().sort().join(','),
           getCollectionSignature(assignments.value, 'Assignment_ID', ['Assignee_ID'])
         ].join('::');
@@ -554,7 +554,7 @@
 
       const projectSummaries = computed(() => {
         const signature = [
-          getCollectionSignature(projects.value, 'Project_ID', ['Project_Title', 'Status', 'Due_Date', 'Color_Scheme']),
+          getCollectionSignature(projects.value, 'Project_ID', ['Project_Title', 'Description', 'Status', 'Due_Date', 'Color_Scheme']),
           getCollectionSignature(visibleTasks.value, 'Task_ID', ['Project_ID', 'Status', 'Due_Date', 'Priority', 'Task_Title', '_syncing']),
           getCollectionSignature(supervisorVisibleTasks.value, 'Task_ID', ['Project_ID', 'Status', 'Due_Date', 'Priority', 'Task_Title', '_syncing'])
         ].join('::');
@@ -1002,6 +1002,13 @@
           return;
         }
 
+        if (currentTab.value === 'calendar' && tabId !== 'calendar') {
+          calendarDateUndoStack.value = [];
+        }
+        if (currentTab.value !== 'calendar' && tabId === 'calendar') {
+          taskMoveUndoStack.value = [];
+        }
+
         currentTab.value = tabId;
         if (tabId !== 'supervisor-view') {
           showSupervisorUserDropdown.value = false;
@@ -1196,6 +1203,11 @@
         calendarMonthOffset.value = 0;
       };
 
+      const calendarDragOverDateKey = ref(null);
+      const calendarDragItemType = ref(null);
+      const calendarDragItemTitle = ref('');
+      const calendarDateUndoStack = ref([]);
+
       let calendarDueDateRequestCounter = 0;
       const latestCalendarDueDateRequests = {
         task: new Map(),
@@ -1221,14 +1233,32 @@
 
       const onCalendarTaskDragStart = (event, task) => {
         if (!event?.dataTransfer || !task?.Task_ID) return;
+        const taskProject = getProjectById(task.Project_ID);
+        if (!idsMatch(taskProject?.Creator_ID, currentUserId.value)) { event.preventDefault(); return; }
         event.dataTransfer.effectAllowed = 'move';
         event.dataTransfer.setData('application/json', JSON.stringify({ type: 'task', id: task.Task_ID }));
+        calendarDragItemType.value = 'task';
+        calendarDragItemTitle.value = task.Task_Title || 'Task';
       };
 
       const onCalendarProjectDragStart = (event, project) => {
         if (!event?.dataTransfer || !project?.Project_ID) return;
+        if (!idsMatch(project.Creator_ID, currentUserId.value)) { event.preventDefault(); return; }
         event.dataTransfer.effectAllowed = 'move';
         event.dataTransfer.setData('application/json', JSON.stringify({ type: 'project', id: project.Project_ID }));
+        calendarDragItemType.value = 'project';
+        calendarDragItemTitle.value = project.Project_Title || 'Project';
+      };
+
+      const onCalendarDragEnd = () => {
+        calendarDragOverDateKey.value = null;
+        calendarDragItemType.value = null;
+        calendarDragItemTitle.value = '';
+      };
+
+      const onCalendarDragEnter = (dateKey) => {
+        if (!calendarDragItemTitle.value) return;
+        calendarDragOverDateKey.value = dateKey;
       };
 
       const onCalendarDrop = (event, dateKey) => {
@@ -1248,6 +1278,7 @@
           const originalDueDate = tasks.value[taskIndex].Due_Date || '';
           if (toCalendarDateKey(originalDueDate) === dateKey) return;
 
+          calendarDateUndoStack.value.push({ type: 'task', id: dragData.id, originalDateKey: originalDueDate });
           const requestId = startCalendarDueDateRequest('task', dragData.id);
           tasks.value[taskIndex] = { ...tasks.value[taskIndex], Due_Date: dateKey };
           google.script.run
@@ -1291,6 +1322,7 @@
           const originalDueDate = projects.value[projectIndex].Due_Date || '';
           if (toCalendarDateKey(originalDueDate) === dateKey) return;
 
+          calendarDateUndoStack.value.push({ type: 'project', id: dragData.id, originalDateKey: originalDueDate });
           const requestId = startCalendarDueDateRequest('project', dragData.id);
           projects.value[projectIndex] = { ...projects.value[projectIndex], Due_Date: dateKey };
           google.script.run
@@ -2902,11 +2934,63 @@
         taskMoveUndoStack.value.pop();
       };
 
+      const undoLastCalendarDateChange = () => {
+        if (!calendarDateUndoStack.value.length) return;
+        const { type, id, originalDateKey } = calendarDateUndoStack.value.pop();
+
+        if (type === 'task') {
+          const taskIndex = tasks.value.findIndex(t => idsMatch(t?.Task_ID, id));
+          if (taskIndex < 0) return;
+          const redoDate = tasks.value[taskIndex].Due_Date;
+          tasks.value[taskIndex] = { ...tasks.value[taskIndex], Due_Date: originalDateKey };
+          google.script.run
+            .withSuccessHandler((response) => {
+              const result = parseRunResponse(response);
+              const latestIndex = tasks.value.findIndex(t => idsMatch(t?.Task_ID, id));
+              if (latestIndex < 0) return;
+              if (!result.success || !result.task) {
+                tasks.value[latestIndex] = { ...tasks.value[latestIndex], Due_Date: redoDate };
+              } else {
+                tasks.value[latestIndex] = { ...tasks.value[latestIndex], ...result.task };
+              }
+            })
+            .withFailureHandler(() => {
+              const latestIndex = tasks.value.findIndex(t => idsMatch(t?.Task_ID, id));
+              if (latestIndex >= 0) tasks.value[latestIndex] = { ...tasks.value[latestIndex], Due_Date: redoDate };
+            })
+            .updateTaskDueDate(id, originalDateKey);
+        } else if (type === 'project') {
+          const projectIndex = projects.value.findIndex(p => idsMatch(p?.Project_ID, id));
+          if (projectIndex < 0) return;
+          const redoDate = projects.value[projectIndex].Due_Date;
+          projects.value[projectIndex] = { ...projects.value[projectIndex], Due_Date: originalDateKey };
+          google.script.run
+            .withSuccessHandler((response) => {
+              const result = parseRunResponse(response);
+              const latestIndex = projects.value.findIndex(p => idsMatch(p?.Project_ID, id));
+              if (latestIndex < 0) return;
+              if (!result.success || !result.project) {
+                projects.value[latestIndex] = { ...projects.value[latestIndex], Due_Date: redoDate };
+              } else {
+                projects.value[latestIndex] = { ...projects.value[latestIndex], ...result.project };
+              }
+            })
+            .withFailureHandler(() => {
+              const latestIndex = projects.value.findIndex(p => idsMatch(p?.Project_ID, id));
+              if (latestIndex >= 0) projects.value[latestIndex] = { ...projects.value[latestIndex], Due_Date: redoDate };
+            })
+            .updateProjectDueDate(id, originalDateKey);
+        }
+      };
+
       const handleGlobalKeyDown = (event) => {
         if ((event.metaKey || event.ctrlKey) && event.key === 'z') {
           const tag = document.activeElement?.tagName;
           if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
-          if (taskMoveUndoStack.value.length) {
+          if (calendarDateUndoStack.value.length) {
+            event.preventDefault();
+            undoLastCalendarDateChange();
+          } else if (taskMoveUndoStack.value.length) {
             event.preventDefault();
             undoLastTaskMove();
           }
@@ -3449,6 +3533,11 @@
         onCalendarTaskDragStart,
         onCalendarProjectDragStart,
         onCalendarDrop,
+        onCalendarDragEnd,
+        onCalendarDragEnter,
+        calendarDragOverDateKey,
+        calendarDragItemType,
+        calendarDragItemTitle,
         shouldStrikeTask,
         isTaskDueTomorrowAndOpen,
         getDueDateTooltip,

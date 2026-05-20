@@ -433,9 +433,19 @@
                 isDarkMode ? 'border-gray-800' : 'border-gray-200',
                 day.inCurrentMonth ? '' : (isDarkMode ? 'bg-gray-900/40 text-gray-600' : 'bg-gray-50/70 text-gray-400')
               ]"
-              class="min-h-36 border p-2"
+              class="relative min-h-36 border p-2"
               @dragover.prevent
+              @dragenter="onCalendarDragEnter(day.dateKey)"
               @drop="onCalendarDrop($event, day.dateKey)">
+              <div
+                v-if="calendarDragOverDateKey === day.dateKey && calendarDragItemTitle"
+                class="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+                <span
+                  :class="isDarkMode ? 'bg-blue-900/90 text-blue-200 border-blue-600' : 'bg-blue-50 text-blue-700 border-blue-300'"
+                  class="text-xs font-semibold px-2 py-1 rounded-md border shadow-sm">
+                  Move {{ calendarDragItemType === 'project' ? 'project' : 'task' }} to {{ formatDate(day.dateKey) }}
+                </span>
+              </div>
               <div class="flex justify-end mb-2">
                 <span
                   :class="[
@@ -455,8 +465,9 @@
                   :style="getCalendarProjectDueStyle(projectEntry.project)"
                   class="w-full text-left text-[11px] px-2 py-1 rounded-md border font-semibold truncate hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#DB0000]/40"
                   :title="`Project due: ${projectEntry.projectTitle}`"
-                  draggable="true"
-                  @dragstart="onCalendarProjectDragStart($event, projectEntry.project)">
+                  :draggable="idsMatch(projectEntry.project?.Creator_ID, currentUserId)"
+                  @dragstart="onCalendarProjectDragStart($event, projectEntry.project)"
+                  @dragend="onCalendarDragEnd">
                   <i class="fa-solid fa-folder-open mr-1"></i>
                   <span class="uppercase tracking-wide">Project Due:</span> {{ projectEntry.projectTitle }}
                 </button>
@@ -468,8 +479,9 @@
                   :style="getProjectCalendarTaskStyle(calendarEntry.project)"
                   class="w-full text-left text-[11px] px-2 py-1 rounded-md font-medium truncate hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#DB0000]/40 border"
                   :title="calendarEntry.taskTitle"
-                  draggable="true"
-                  @dragstart="onCalendarTaskDragStart($event, calendarEntry.task)">
+                  :draggable="idsMatch(getProjectById(calendarEntry.task?.Project_ID)?.Creator_ID, currentUserId)"
+                  @dragstart="onCalendarTaskDragStart($event, calendarEntry.task)"
+                  @dragend="onCalendarDragEnd">
                   {{ calendarEntry.taskTitle }}
                 </button>
               </div>
