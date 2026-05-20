@@ -1,5 +1,5 @@
 <script>
-  const { createApp, ref, computed, onMounted, nextTick } = Vue;
+  const { createApp, ref, computed, watch, onMounted, nextTick } = Vue;
 
   const app = createApp({
     setup() {
@@ -3218,6 +3218,12 @@
           })
           .askGeminiAssistant(chatMessages.value.slice(-10), context);
       };
+
+      watch(loading, (isLoading) => {
+        if (!isLoading && currentTab.value === 'calendar') {
+          goToCurrentCalendarMonth();
+        }
+      });
 
       onMounted(() => {
         applyFontScale(settingsForm.value.fontScale);
