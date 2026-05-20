@@ -109,6 +109,7 @@
       const currentTab = ref('project-board');
       const isSidebarVisible = ref(true);
       const kanbanScrollContainer = ref(null);
+      const calendarScrollContainer = ref(null);
       const showSupervisorUserDropdown = ref(false);
       const selectedSupervisorUserIds = ref([]);
       const INITIAL_PAYLOAD_CACHE_KEY = 'soar_initial_payload_v4';
@@ -999,6 +1000,9 @@
         if (tabId !== 'supervisor-view') {
           showSupervisorUserDropdown.value = false;
         }
+        if (tabId === 'calendar') {
+          goToCurrentCalendarMonth();
+        }
       };
 
       const toggleSupervisorUserSelection = (userId) => {
@@ -1061,20 +1065,9 @@
         return `${year}-${month}-${day}`;
       };
 
-      const calendarMonthOffset = ref(0);
-
       const today = computed(() => {
         const now = new Date();
         return new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      });
-
-      const calendarMonthStart = computed(() => {
-        const baseDate = today.value;
-        return new Date(baseDate.getFullYear(), baseDate.getMonth() + calendarMonthOffset.value, 1);
-      });
-
-      const calendarMonthLabel = computed(() => {
-        return calendarMonthStart.value.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
       });
 
       const calendarWeekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -1144,18 +1137,16 @@
         return byDate;
       });
 
-      const calendarDays = computed(() => {
-        const monthStart = calendarMonthStart.value;
+      const buildMonthDays = (monthStart) => {
         const firstDayOfMonth = monthStart.getDay();
         const gridStartDate = new Date(monthStart);
         gridStartDate.setDate(monthStart.getDate() - firstDayOfMonth);
+        const normalizedToday = today.value;
 
         return Array.from({ length: 42 }, (_, index) => {
           const cellDate = new Date(gridStartDate);
           cellDate.setDate(gridStartDate.getDate() + index);
-
           const dateKey = toCalendarDateKey(cellDate);
-          const normalizedToday = today.value;
 
           return {
             dateKey,
@@ -1165,6 +1156,24 @@
               cellDate.getFullYear() === normalizedToday.getFullYear() &&
               cellDate.getMonth() === normalizedToday.getMonth() &&
               cellDate.getDate() === normalizedToday.getDate()
+          };
+        });
+      };
+
+      const scrollCalendarMonths = computed(() => {
+        const base = today.value;
+        return Array.from({ length: 16 }, (_, i) => {
+          const offset = i - 3;
+          const monthStart = new Date(base.getFullYear(), base.getMonth() + offset, 1);
+          const monthKey = `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, '0')}`;
+          const isCurrentMonth =
+            monthStart.getFullYear() === base.getFullYear() &&
+            monthStart.getMonth() === base.getMonth();
+          return {
+            label: monthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+            monthKey,
+            isCurrentMonth,
+            days: buildMonthDays(monthStart)
           };
         });
       });
@@ -1177,16 +1186,66 @@
         return calendarTasksByDate.value.get(dateKey) || [];
       };
 
-      const goToPreviousCalendarMonth = () => {
-        calendarMonthOffset.value -= 1;
-      };
-
-      const goToNextCalendarMonth = () => {
-        calendarMonthOffset.value += 1;
-      };
-
       const goToCurrentCalendarMonth = () => {
-        calendarMonthOffset.value = 0;
+        Vue.nextTick(() => {
+          const el = document.getElementById('scroll-calendar-today');
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      };
+
+      const stopCalendarAutoScroll = () => {
+        isCalendarAutoScrollActive.value = false;
+        latestPointerY = null;
+        if (calendarAutoScrollFrameId !== null) {
+          cancelAnimationFrame(calendarAutoScrollFrameId);
+          calendarAutoScrollFrameId = null;
+        }
+      };
+
+      const runCalendarAutoScroll = () => {
+        if (!isCalendarAutoScrollActive.value) {
+          calendarAutoScrollFrameId = null;
+          return;
+        }
+        const container = calendarScrollContainer.value;
+        if (!container || typeof latestPointerY !== 'number') {
+          calendarAutoScrollFrameId = requestAnimationFrame(runCalendarAutoScroll);
+          return;
+        }
+        const rect = container.getBoundingClientRect();
+        const edgeThreshold = 180;
+        const maxStep = 12;
+        let delta = 0;
+        if (latestPointerY < rect.top + edgeThreshold) {
+          const intensity = Math.min(1, (rect.top + edgeThreshold - latestPointerY) / edgeThreshold);
+          delta = -Math.max(1, Math.round(maxStep * intensity));
+        } else if (latestPointerY > rect.bottom - edgeThreshold) {
+          const intensity = Math.min(1, (latestPointerY - (rect.bottom - edgeThreshold)) / edgeThreshold);
+          delta = Math.max(1, Math.round(maxStep * intensity));
+        }
+        if (delta !== 0) container.scrollTop += delta;
+        calendarAutoScrollFrameId = requestAnimationFrame(runCalendarAutoScroll);
+      };
+
+      const handleCalendarDragPointerMove = (event) => {
+        if (!isCalendarAutoScrollActive.value) return;
+        latestPointerY = event.clientY;
+      };
+
+      const startCalendarAutoScroll = () => {
+        if (isCalendarAutoScrollActive.value) return;
+        isCalendarAutoScrollActive.value = true;
+        document.addEventListener('dragover', handleCalendarDragPointerMove);
+        runCalendarAutoScroll();
+      };
+
+      const endCalendarAutoScroll = () => {
+        document.removeEventListener('dragover', handleCalendarDragPointerMove);
+        stopCalendarAutoScroll();
+      };
+
+      const onCalendarDragEnd = () => {
+        endCalendarAutoScroll();
       };
 
       let calendarDueDateRequestCounter = 0;
@@ -1216,12 +1275,14 @@
         if (!event?.dataTransfer || !task?.Task_ID) return;
         event.dataTransfer.effectAllowed = 'move';
         event.dataTransfer.setData('application/json', JSON.stringify({ type: 'task', id: task.Task_ID }));
+        startCalendarAutoScroll();
       };
 
       const onCalendarProjectDragStart = (event, project) => {
         if (!event?.dataTransfer || !project?.Project_ID) return;
         event.dataTransfer.effectAllowed = 'move';
         event.dataTransfer.setData('application/json', JSON.stringify({ type: 'project', id: project.Project_ID }));
+        startCalendarAutoScroll();
       };
 
       const onCalendarDrop = (event, dateKey) => {
@@ -2690,6 +2751,10 @@
       let kanbanAutoScrollFrameId = null;
       let latestPointerX = null;
 
+      const isCalendarAutoScrollActive = ref(false);
+      let calendarAutoScrollFrameId = null;
+      let latestPointerY = null;
+
       const draggingTaskSourceProjectId = ref(null);
       const draggingOverProjectId = ref(null);
       const draggingMoveBlocked = ref(false);
@@ -2717,8 +2782,8 @@
         }
 
         const rect = container.getBoundingClientRect();
-        const edgeThreshold = 120;
-        const maxStep = 24;
+        const edgeThreshold = 180;
+        const maxStep = 12;
         let delta = 0;
 
         if (latestPointerX < rect.left + edgeThreshold) {
@@ -3169,6 +3234,7 @@
         currentTab,
         isSidebarVisible,
         kanbanScrollContainer,
+        isKanbanAutoScrollActive,
         isUserMenuOpen,
         showCreateAccountModal,
         createAccountForm,
@@ -3261,18 +3327,18 @@
         isUpdatingTaskStatus,
         getInitials,
         formatDate,
-        calendarMonthLabel,
+        calendarScrollContainer,
+        isCalendarAutoScrollActive,
         calendarWeekdays,
-        calendarDays,
+        scrollCalendarMonths,
         getCalendarProjectEntries,
         getCalendarTaskEntries,
         getCalendarProjectDueStyle,
-        goToPreviousCalendarMonth,
-        goToNextCalendarMonth,
         goToCurrentCalendarMonth,
         onCalendarTaskDragStart,
         onCalendarProjectDragStart,
         onCalendarDrop,
+        onCalendarDragEnd,
         shouldStrikeTask,
         isTaskDueTomorrowAndOpen,
         getDueDateTooltip,
@@ -3369,6 +3435,8 @@
         draggingMoveBlocked,
         startKanbanAutoScroll,
         endKanbanAutoScroll,
+        handleKanbanDragPointerMove,
+        handleCalendarDragPointerMove,
         onExistingSubtaskChange,
         agendas,
         myAgendas,
@@ -3400,6 +3468,7 @@
         getAgendaContentPreview,
         getAgendaSectionCount,
         getAgendaTextPreview,
+
         isChatOpen,
         isChatLoading,
         chatInput,
