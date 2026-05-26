@@ -541,9 +541,19 @@
                   isDarkMode ? 'border-gray-800' : 'border-gray-200',
                   day.inCurrentMonth ? '' : (isDarkMode ? 'bg-gray-900/40 text-gray-600' : 'bg-gray-50/70 text-gray-400')
                 ]"
-                class="min-h-36 border p-2"
+                class="relative min-h-36 border p-2"
                 @dragover.prevent
+                @dragenter="onCalendarDragEnter(day.dateKey)"
                 @drop="onCalendarDrop($event, day.dateKey)">
+                <div
+                  v-if="calendarDragOverDateKey === day.dateKey && calendarDragItemTitle"
+                  class="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+                  <span
+                    :class="isDarkMode ? 'bg-blue-900/90 text-blue-200 border-blue-600' : 'bg-blue-50 text-blue-700 border-blue-300'"
+                    class="text-xs font-semibold px-2 py-1 rounded-md border shadow-sm">
+                    Move {{ calendarDragItemType === 'project' ? 'project' : 'task' }} to {{ formatDate(day.dateKey) }}
+                  </span>
+                </div>
                 <div class="flex justify-end mb-2">
                   <span
                     :class="[
