@@ -1711,6 +1711,10 @@
         return comments.value.filter((comment) => !isResolvedComment(comment) && idsMatch(getCommentTopicId(comment), taskId)).length;
       };
 
+      const getSubtaskCountForTask = (taskId) => {
+        return subtasks.value.filter((s) => idsMatch(s.Task_ID, taskId)).length;
+      };
+
       const getCommentAuthor = (comment) => {
         return getUserById(comment?.Commenter_ID || comment?.User_ID || comment?.Author_ID);
       };
@@ -3582,6 +3586,7 @@
         createProject,
         getCommentAuthor,
         getCommentCountForTask,
+        getSubtaskCountForTask,
         formatCommentTimestamp,
         formatDateTime,
         toggleWorkVisibility,
