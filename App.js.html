@@ -110,6 +110,7 @@
       const isSidebarVisible = ref(true);
       const kanbanScrollContainer = ref(null);
       const calendarScrollContainer = ref(null);
+      const calendarViewMode = ref(localStorage.getItem('soar_calendar_view') || 'month');
       const showSupervisorUserDropdown = ref(false);
       const selectedSupervisorUserIds = ref([]);
       const INITIAL_PAYLOAD_CACHE_KEY = 'soar_initial_payload_v4';
@@ -1070,6 +1071,17 @@
         return new Date(now.getFullYear(), now.getMonth(), now.getDate());
       });
 
+      const calendarMonthOffset = ref(0);
+
+      const calendarMonthStart = computed(() => {
+        const baseDate = today.value;
+        return new Date(baseDate.getFullYear(), baseDate.getMonth() + calendarMonthOffset.value, 1);
+      });
+
+      const calendarMonthLabel = computed(() => {
+        return calendarMonthStart.value.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      });
+
       const calendarWeekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
       const toCalendarDateKey = (dateValue) => {
@@ -1178,6 +1190,8 @@
         });
       });
 
+      const calendarDays = computed(() => buildMonthDays(calendarMonthStart.value));
+
       const getCalendarProjectEntries = (dateKey) => {
         return calendarProjectsByDate.value.get(dateKey) || [];
       };
@@ -1186,11 +1200,34 @@
         return calendarTasksByDate.value.get(dateKey) || [];
       };
 
+      const goToPreviousCalendarMonth = () => {
+        calendarMonthOffset.value -= 1;
+      };
+
+      const goToNextCalendarMonth = () => {
+        calendarMonthOffset.value += 1;
+      };
+
       const goToCurrentCalendarMonth = () => {
-        Vue.nextTick(() => {
-          const el = document.getElementById('scroll-calendar-today');
-          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        });
+        if (calendarViewMode.value === 'scroll') {
+          nextTick(() => {
+            const el = document.getElementById('scroll-calendar-today');
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          });
+        } else {
+          calendarMonthOffset.value = 0;
+        }
+      };
+
+      const toggleCalendarViewMode = (mode) => {
+        calendarViewMode.value = mode;
+        localStorage.setItem('soar_calendar_view', mode);
+        if (mode === 'scroll') {
+          nextTick(() => {
+            const el = document.getElementById('scroll-calendar-today');
+            if (el) el.scrollIntoView({ behavior: 'instant', block: 'start' });
+          });
+        }
       };
 
       const stopCalendarAutoScroll = () => {
@@ -3220,7 +3257,7 @@
       };
 
       watch(loading, (isLoading) => {
-        if (!isLoading && currentTab.value === 'calendar') {
+        if (!isLoading && currentTab.value === 'calendar' && calendarViewMode.value === 'scroll') {
           goToCurrentCalendarMonth();
         }
       });
@@ -3334,13 +3371,19 @@
         getInitials,
         formatDate,
         calendarScrollContainer,
+        calendarViewMode,
         isCalendarAutoScrollActive,
         calendarWeekdays,
+        calendarMonthLabel,
+        calendarDays,
         scrollCalendarMonths,
         getCalendarProjectEntries,
         getCalendarTaskEntries,
         getCalendarProjectDueStyle,
+        goToPreviousCalendarMonth,
+        goToNextCalendarMonth,
         goToCurrentCalendarMonth,
+        toggleCalendarViewMode,
         onCalendarTaskDragStart,
         onCalendarProjectDragStart,
         onCalendarDrop,
