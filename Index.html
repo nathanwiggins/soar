@@ -708,8 +708,7 @@
                       </div>
                       <span
                         v-if="getSubtaskCountForTask(task.Task_ID) > 0"
-                        :class="isDarkMode ? 'text-gray-400' : 'text-gray-400'"
-                        class="inline-flex items-center gap-1 text-xs"
+                        class="inline-flex items-center gap-1 text-xs text-gray-400"
                         title="Subtasks">
                         <i class="fa-solid fa-list-check text-[11px]"></i>
                         <span :class="isDarkMode ? 'text-gray-300' : 'text-gray-500'" class="font-medium">{{ getSubtaskCountForTask(task.Task_ID) }}</span>
