@@ -1,4 +1,4 @@
-function createAgenda(title) {
+function createAgenda(title, description) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Agendas');
   const creatorId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
 
@@ -8,6 +8,7 @@ function createAgenda(title) {
 
   if (headerIndex.Agenda_ID !== undefined) newRow[headerIndex.Agenda_ID] = generateNextId('Agendas', 'A');
   if (headerIndex.Title !== undefined) newRow[headerIndex.Title] = title.toString().trim();
+  if (headerIndex.Description !== undefined) newRow[headerIndex.Description] = (description || '').toString().trim();
   if (headerIndex.Creator_ID !== undefined) newRow[headerIndex.Creator_ID] = creatorId;
   if (headerIndex.Created_Date !== undefined) newRow[headerIndex.Created_Date] = new Date();
 
