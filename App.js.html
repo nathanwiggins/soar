@@ -2736,6 +2736,7 @@
       const draggingTaskSourceProjectId = ref(null);
       const draggingOverProjectId = ref(null);
       const draggingMoveBlocked = ref(false);
+      const draggingTask = ref(null);
       const taskMoveUndoStack = ref([]);
 
       const stopKanbanAutoScroll = () => {
@@ -2783,6 +2784,10 @@
 
       const onTaskDragStart = (evt, projectId) => {
         draggingTaskSourceProjectId.value = projectId;
+        const projectTasks = currentTab.value === 'supervisor-view'
+          ? getSupervisorTasksForProject(projectId)
+          : getTasksForProject(projectId);
+        draggingTask.value = projectTasks[evt.oldIndex] ?? null;
         startKanbanAutoScroll();
       };
 
@@ -2790,6 +2795,7 @@
         draggingTaskSourceProjectId.value = null;
         draggingOverProjectId.value = null;
         draggingMoveBlocked.value = false;
+        draggingTask.value = null;
         endKanbanAutoScroll();
       };
 
@@ -2800,17 +2806,24 @@
           draggingMoveBlocked.value = false;
           return;
         }
+        if (!idsMatch(draggingTask.value?.Creator_ID, currentUserId.value)) {
+          draggingMoveBlocked.value = true;
+          return;
+        }
         const sourceProject = getProjectById(draggingTaskSourceProjectId.value);
         const targetProject = getProjectById(projectId);
         draggingMoveBlocked.value = !(idsMatch(sourceProject?.Creator_ID, currentUserId.value) && idsMatch(targetProject?.Creator_ID, currentUserId.value));
       };
 
       const canDropTaskHere = (evt, targetProjectId) => {
+        const draggedTask = evt.draggedContext?.element;
+        if (!idsMatch(draggedTask?.Creator_ID, currentUserId.value)) return false;
+        const targetProject = getProjectById(targetProjectId);
+        if (!idsMatch(targetProject?.Creator_ID, currentUserId.value)) return false;
         const sourceProjectId = draggingTaskSourceProjectId.value;
         if (!sourceProjectId || idsMatch(sourceProjectId, targetProjectId)) return true;
         const sourceProject = getProjectById(sourceProjectId);
-        const targetProject = getProjectById(targetProjectId);
-        return idsMatch(sourceProject?.Creator_ID, currentUserId.value) && idsMatch(targetProject?.Creator_ID, currentUserId.value);
+        return idsMatch(sourceProject?.Creator_ID, currentUserId.value);
       };
 
       const canReorderProject = (evt) => {
@@ -2865,8 +2878,16 @@
            const element = evt.added ? evt.added.element : evt.moved.element;
            const newIndex = evt.added ? evt.added.newIndex : evt.moved.newIndex;
 
+           if (!idsMatch(element?.Creator_ID, currentUserId.value)) return;
+           const targetProject = getProjectById(targetProjectId);
+           if (!idsMatch(targetProject?.Creator_ID, currentUserId.value)) return;
+
            if (evt.added) {
              const fromProjectId = draggingTaskSourceProjectId.value;
+             if (fromProjectId && !idsMatch(fromProjectId, targetProjectId)) {
+               const sourceProject = getProjectById(fromProjectId);
+               if (!idsMatch(sourceProject?.Creator_ID, currentUserId.value)) return;
+             }
              const fromProjectTaskIds = tasks.value
                .filter(t => idsMatch(t.Project_ID, fromProjectId))
                .map(t => t.Task_ID);

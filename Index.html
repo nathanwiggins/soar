@@ -1341,8 +1341,7 @@
                   <input type="checkbox"
                          :checked="subtask.Status === 'Complete'"
                          @change="toggleSubtask(subtask, $event.target.checked)"
-                         :disabled="!isEditingTask"
-                         class="h-4 w-4 ml-1 text-[#DB0000] rounded border-gray-300 focus:ring-[#DB0000] cursor-pointer disabled:cursor-not-allowed">
+                         class="h-4 w-4 ml-1 text-[#DB0000] rounded border-gray-300 focus:ring-[#DB0000] cursor-pointer">
                   <input
                     v-if="isEditingTask"
                     v-model="subtask.Subtask_Title"
@@ -1475,7 +1474,7 @@
               class="w-full border rounded-lg px-3 py-2 text-sm">
           </div>
 
-          <div>
+          <div v-if="isCompleteStatus(taskDetailsForm.status)">
             <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Completed By</label>
             <input
               :value="completedTaskByUser?.Name || '—'"
@@ -1485,7 +1484,7 @@
               class="w-full border rounded-lg px-3 py-2 text-sm">
           </div>
 
-          <div>
+          <div v-if="isCompleteStatus(taskDetailsForm.status)">
             <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Completed At</label>
             <input
               :value="formatDateTime(taskDetailsForm.completedAt)"
