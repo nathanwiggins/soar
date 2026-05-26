@@ -19,6 +19,18 @@ After making changes, be sure to do `clasp push` to send the changes to the dev 
 
 ---
 
+## PR Review Process
+
+When asked to review a pull request:
+
+1. **Keep it brief** — summarize what the PR does in plain language and flag only critical issues. Skip minor style notes unless asked for a deeper review.
+2. **Always check for missing docs** — every PR that touches the UI, features, backend, or data model must update `README.md` and `Tutorial.html`. Flag it if either is missing.
+3. **Before merging** — fix any flagged issues on the PR branch, then push the fix to the branch before merging.
+4. **Merging with conflicts** — merge locally (`git merge origin/<branch>`), resolve conflicts manually, commit, then `clasp push` before `git push origin main`. Walk the user through each conflict and explain the reasoning before resolving.
+5. **After merging** — commit any post-merge fixes, `clasp push`, then `git push origin main`.
+
+---
+
 ## Development Commands
 
 ```bash

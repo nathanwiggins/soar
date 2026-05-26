@@ -204,7 +204,7 @@ Each task card shows:
 - priority icon/label when priority is set;
 - due date when set, color-coded: yellow if due within 7 days, orange if due within 1 day, red if overdue (gray for completed tasks).
 
-Task cards can be dragged between project columns. Moving a task to a different project requires the user to be the creator of both the source and target project. When dragging over an unauthorized project, a red "Not authorized to move here" banner appears; authorized targets show a blue "Move to: [Project]" banner. Cross-project moves persist the task's new `Project_ID` via `moveTaskToProject()`, and the user's task order is saved per-user via `saveUserSortOrder()`. Press **Cmd/Ctrl+Z** to undo the last cross-project move.
+Task cards can be dragged between project columns. Only the task creator can drag a task. Moving a task to a different project additionally requires the user to be the creator of both the source and target project. When dragging over an unauthorized project, a red "Not authorized to move here" banner appears; authorized targets show a blue "Move to: [Project]" banner. Cross-project moves persist the task's new `Project_ID` via `moveTaskToProject()`, and the user's task order is saved per-user via `saveUserSortOrder()`. Press **Cmd/Ctrl+Z** to undo the last cross-project move.
 
 ### Creating a Project
 
@@ -275,13 +275,13 @@ Controls and fields:
 - **Edit Task**: enables editing.
 - **Task Name**: task title.
 - **Description**
-- **Subtasks**: checkboxes, editable titles in edit mode, drag handles in edit mode, and delete controls.
+- **Subtasks**: checkboxes (always clickable to toggle complete/incomplete), editable titles in edit mode, drag handles in edit mode, and delete controls.
 - **Task Status**: `Not Started`, `Upcoming`, `Review`, `In Progress`, `Ongoing`, `On Hold`, `Cancelled`, or `Complete`.
 - **Associated Project**: project dropdown available while editing.
 - **Priority**: dropdown with `None`, `High`, `Medium`, `Low`.
 - **Date Created**: display-only.
 - **Date Due**: editable date picker in edit mode.
-- **Completed By** and **Completed At**: populated when the task is completed.
+- **Completed By** and **Completed At**: only visible and populated when the task status is `Complete`.
 - **Assigned To**: assignee dropdown plus selected assignee rows.
 
 Footer buttons:
@@ -409,10 +409,9 @@ Each agenda is a recurring **template**. Every time the team meets, the agenda c
 Creating an agenda:
 
 1. Go to **Meeting Agendas**.
-2. Click **New Agenda**.
-3. SOAR creates the agenda and opens the editor. No sessions exist yet.
-4. Edit the title in the title input at the top of the modal.
-5. Add a description in the description textarea.
+2. Click **New Agenda**. The **New Meeting Agenda** modal opens.
+3. Enter a **Title** (required) and optional **Description**, then click **Create Agenda**.
+4. SOAR creates the agenda and opens the editor. No sessions exist yet.
 6. Click **New Session** (visible to the agenda creator) and choose **Blank** or **Copy from previous session**.
 7. Set the date shown in the session navigation bar.
 8. Click **+ Add Header** to create a section.
@@ -461,8 +460,9 @@ Open the lower-left user menu and click **Profile**.
 
 - The modal title is **My Profile**.
 - It shows avatar/profile image, **Name**, and **Email**.
-- Click **Edit Profile** to edit the form.
-- Click **Save Changes** to persist the display name and refresh profile-photo URL if needed. The current backend does not update the login email even though the email input appears in the form.
+- **Email** is always read-only and reflects the signed-in Google account. It cannot be changed.
+- Click **Edit Profile** to edit the display name.
+- Click **Save Changes** to persist the display name and refresh profile-photo URL if needed.
 - Click **Cancel** while editing, or **Close** when not editing.
 
 #### Settings

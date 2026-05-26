@@ -184,9 +184,12 @@
 
       const showAddTaskModal = ref(false);
       const showAddProjectModal = ref(false);
+      const showAddAgendaModal = ref(false);
       const selectedProject = ref(null);
       const creatingTask = ref(false);
       const creatingProject = ref(false);
+      const creatingAgenda = ref(false);
+      const newAgendaForm = ref({ title: '', description: '' });
       const showAssigneeDropdown = ref(false);
       const newDraftSubtask = ref('');
       const newTaskForm = ref({
@@ -2895,26 +2898,31 @@
       const onDragEnterProject = (projectId) => {
         if (draggingTaskSourceProjectId.value === null) return;
         draggingOverProjectId.value = projectId;
-        if (idsMatch(projectId, draggingTaskSourceProjectId.value)) {
-          draggingMoveBlocked.value = false;
-          return;
-        }
-        const sourceProject = getProjectById(draggingTaskSourceProjectId.value);
-        const targetProject = getProjectById(projectId);
-        draggingMoveBlocked.value = !(idsMatch(sourceProject?.Creator_ID, currentUserId.value) && idsMatch(targetProject?.Creator_ID, currentUserId.value));
       };
 
       const canDropTaskHere = (evt, targetProjectId) => {
         const sourceProjectId = draggingTaskSourceProjectId.value;
-        if (!sourceProjectId || idsMatch(sourceProjectId, targetProjectId)) return true;
-        const sourceProject = getProjectById(sourceProjectId);
+        if (!sourceProjectId || idsMatch(sourceProjectId, targetProjectId)) {
+          draggingMoveBlocked.value = false;
+          return true;
+        }
+        const draggedTask = evt.draggedContext?.element;
+        if (!idsMatch(draggedTask?.Creator_ID, currentUserId.value)) {
+          draggingMoveBlocked.value = true;
+          return false;
+        }
         const targetProject = getProjectById(targetProjectId);
-        return idsMatch(sourceProject?.Creator_ID, currentUserId.value) && idsMatch(targetProject?.Creator_ID, currentUserId.value);
+        if (!idsMatch(targetProject?.Creator_ID, currentUserId.value)) {
+          draggingMoveBlocked.value = true;
+          return false;
+        }
+        const sourceProject = getProjectById(sourceProjectId);
+        const allowed = idsMatch(sourceProject?.Creator_ID, currentUserId.value);
+        draggingMoveBlocked.value = !allowed;
+        return allowed;
       };
 
-      const canReorderProject = (evt) => {
-        return idsMatch(evt.draggedContext?.element?.Creator_ID, currentUserId.value);
-      };
+      const canReorderProject = () => true;
 
       const startKanbanAutoScroll = () => {
         if (isKanbanAutoScrollActive.value) return;
@@ -2965,7 +2973,14 @@
            const newIndex = evt.added ? evt.added.newIndex : evt.moved.newIndex;
 
            if (evt.added) {
+             if (!idsMatch(element?.Creator_ID, currentUserId.value)) return;
+             const targetProject = getProjectById(targetProjectId);
+             if (!idsMatch(targetProject?.Creator_ID, currentUserId.value)) return;
              const fromProjectId = draggingTaskSourceProjectId.value;
+             if (fromProjectId && !idsMatch(fromProjectId, targetProjectId)) {
+               const sourceProject = getProjectById(fromProjectId);
+               if (!idsMatch(sourceProject?.Creator_ID, currentUserId.value)) return;
+             }
              const fromProjectTaskIds = tasks.value
                .filter(t => idsMatch(t.Project_ID, fromProjectId))
                .map(t => t.Task_ID);
@@ -3101,18 +3116,33 @@
       };
 
       const openNewAgenda = () => {
-        const title = prompt("Enter a title for the new Meeting Agenda:");
-        if (!title) return;
-        
+        newAgendaForm.value = { title: '', description: '' };
+        showAddAgendaModal.value = true;
+      };
+
+      const closeAddAgenda = () => {
+        if (creatingAgenda.value) return;
+        showAddAgendaModal.value = false;
+      };
+
+      const submitNewAgenda = () => {
+        const trimmedTitle = newAgendaForm.value.title.trim();
+        if (!trimmedTitle) return;
+        creatingAgenda.value = true;
         google.script.run
           .withSuccessHandler((res) => {
+            creatingAgenda.value = false;
             const result = parseRunResponse(res);
             if (result.success) {
               agendas.value.push(result.agenda);
+              showAddAgendaModal.value = false;
               openAgendaModal(result.agenda);
             }
           })
-          .createAgenda(title);
+          .withFailureHandler(() => {
+            creatingAgenda.value = false;
+          })
+          .createAgenda(trimmedTitle, newAgendaForm.value.description.trim());
       };
 
       const getSessionsForAgenda = (agendaId) => {
@@ -3586,14 +3616,17 @@
         fontScaleLabel,
         showAddTaskModal,
         showAddProjectModal,
+        showAddAgendaModal,
         selectedProject,
         creatingTask,
         creatingProject,
+        creatingAgenda,
         showAssigneeDropdown,
         assigneeSummary,
         assignableUsers,
         newTaskForm,
         newProjectForm,
+        newAgendaForm,
         showTaskDetailsModal,
         taskDetailsForm,
         showTaskDetailsAssigneeDropdown,
@@ -3766,6 +3799,8 @@
         activeAgendaShares,
         savingAgenda,
         openNewAgenda,
+        closeAddAgenda,
+        submitNewAgenda,
         openAgendaModal,
         closeAgendaModal,
         saveSession,
