@@ -120,7 +120,7 @@ SOAR has a left sidebar, a top header, a main work area, a lower-left user menu,
 
 - **Project Board**: The default work board. Shows project columns and task cards.
 - **Supervisor Tools**: Only available to users who have direct reports. Shows selected direct reports' assigned work.
-- **Calendar**: Month view of project due dates and task due dates.
+- **Calendar**: Month view of project due dates and task due dates, with an optional multi-month scroll view.
 - **Past Assignments**: Completed tasks assigned to the current user.
 - **Meeting Agendas**: Agenda cards under **My Agendas** and **Shared With Me**.
 
@@ -129,7 +129,7 @@ SOAR has a left sidebar, a top header, a main work area, a lower-left user menu,
 - On **Project Board**, the primary red button is **New Project**.
 - On **Meeting Agendas**, the primary red button is **New Agenda**.
 - On **Supervisor Tools**, the header has a team-member selector whose default text is **Select team members**.
-- On **Calendar**, the header has previous-month and next-month arrow buttons, a **Today** button, and the current month label.
+- On **Calendar**, the header has previous-month and next-month arrow buttons (month view only), a **Today** button, the current month label (month view only), and a **Month / Multi-month** toggle.
 
 #### Lower-left user menu
 
@@ -353,7 +353,9 @@ Notes:
 
 ### Calendar
 
-The **Calendar** tab is a month view.
+The **Calendar** tab supports two view modes, toggled via the **Month / Multi-month** segmented control in the header. The selected mode is remembered across sessions.
+
+**Month view** (default): displays a single month grid.
 
 Header controls:
 
@@ -362,11 +364,17 @@ Header controls:
 - month label: current displayed month and year;
 - right arrow: next month.
 
-Calendar entries:
+**Multi-month view**: a continuous-scroll view spanning 16 months (3 months before the current month through 12 months ahead). Each month is displayed as its own grid block with a month-and-year label. The current month is marked with a **Current** badge.
+
+Header controls:
+
+- **Today**: smoothly scrolls back to the current month.
+
+Calendar entries (both views):
 
 - Project due dates appear as **Project Due:** entries with a folder icon.
 - Task due dates appear as task-title entries.
-- Drag and drop both task entries and project-due entries onto another day cell to immediately update their due dates. Only the project creator can drag their own tasks and projects.
+- Drag and drop both task entries and project-due entries onto another day cell to immediately update their due dates. Only the project creator can drag their own tasks and projects. In multi-month view, the page auto-scrolls while dragging near the top or bottom edge.
 - While dragging, the hovered day cell shows a "Move [type] to [date]" tooltip so you can confirm the target before dropping.
 - Press **Cmd/Ctrl+Z** to undo the last calendar date change.
 - Click a project-due entry to open **Project Details**.
@@ -593,7 +601,8 @@ Footer buttons:
 - Select direct reports and view their open assigned tasks grouped by project.
 
 ✅ **Calendar**
-- Month view for project due dates and task due dates.
+- Month view (default) and multi-month scroll view for project due dates and task due dates.
+- Toggle between views with the Month / Multi-month control; preference is saved per browser.
 - Click entries to open details.
 
 ✅ **Past Assignments**

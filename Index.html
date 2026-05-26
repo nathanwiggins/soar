@@ -383,29 +383,48 @@
           </div>
           <template v-else-if="currentTab === 'calendar'">
             <div class="flex items-center gap-2">
-              <button
-                @click="goToPreviousCalendarMonth"
-                :class="isDarkMode ? 'bg-gray-800 border-gray-700 text-gray-200 hover:bg-gray-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'"
-                class="h-9 w-9 rounded-lg border text-sm font-semibold">
-                <i class="fa-solid fa-chevron-left"></i>
-              </button>
+              <template v-if="calendarViewMode === 'month'">
+                <button
+                  @click="goToPreviousCalendarMonth"
+                  :class="isDarkMode ? 'bg-gray-800 border-gray-700 text-gray-200 hover:bg-gray-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'"
+                  class="h-9 w-9 rounded-lg border text-sm font-semibold">
+                  <i class="fa-solid fa-chevron-left"></i>
+                </button>
+              </template>
               <button
                 @click="goToCurrentCalendarMonth"
                 :class="isDarkMode ? 'bg-gray-800 border-gray-700 text-gray-200 hover:bg-gray-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'"
                 class="px-3 py-2 rounded-lg border text-sm font-medium">
                 Today
               </button>
-              <span
-                :class="isDarkMode ? 'text-gray-300 bg-gray-800 border-gray-700' : 'text-gray-700 bg-white border-gray-200'"
-                class="px-3 py-2 rounded-lg border text-sm font-medium min-w-40 text-center">
-                {{ calendarMonthLabel }}
-              </span>
-              <button
-                @click="goToNextCalendarMonth"
-                :class="isDarkMode ? 'bg-gray-800 border-gray-700 text-gray-200 hover:bg-gray-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'"
-                class="h-9 w-9 rounded-lg border text-sm font-semibold">
-                <i class="fa-solid fa-chevron-right"></i>
-              </button>
+              <template v-if="calendarViewMode === 'month'">
+                <span
+                  :class="isDarkMode ? 'text-gray-300 bg-gray-800 border-gray-700' : 'text-gray-700 bg-white border-gray-200'"
+                  class="px-3 py-2 rounded-lg border text-sm font-medium min-w-40 text-center">
+                  {{ calendarMonthLabel }}
+                </span>
+                <button
+                  @click="goToNextCalendarMonth"
+                  :class="isDarkMode ? 'bg-gray-800 border-gray-700 text-gray-200 hover:bg-gray-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'"
+                  class="h-9 w-9 rounded-lg border text-sm font-semibold">
+                  <i class="fa-solid fa-chevron-right"></i>
+                </button>
+              </template>
+              <div :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'" class="flex rounded-lg border overflow-hidden ml-1">
+                <button
+                  @click="toggleCalendarViewMode('month')"
+                  :class="calendarViewMode === 'month' ? 'bg-[#DB0000] text-white' : (isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-50')"
+                  class="px-3 py-2 text-sm font-medium transition-colors">
+                  <i class="fa-solid fa-calendar-days mr-1.5"></i>Month
+                </button>
+                <button
+                  @click="toggleCalendarViewMode('scroll')"
+                  :class="calendarViewMode === 'scroll' ? 'bg-[#DB0000] text-white' : (isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-50')"
+                  class="px-3 py-2 text-sm font-medium transition-colors border-l"
+                  :style="calendarViewMode === 'scroll' ? '' : (isDarkMode ? 'border-color: #374151' : 'border-color: #e5e7eb')">
+                  <i class="fa-solid fa-table-list mr-1.5"></i>Multi-month
+                </button>
+              </div>
             </div>
           </template>
         </div>
@@ -417,9 +436,12 @@
 
       <div
         v-else-if="currentTab === 'calendar'"
+        ref="calendarScrollContainer"
         :class="isDarkMode ? 'bg-gray-950' : 'bg-gray-50/50'"
         class="flex-1 overflow-auto p-8 transition-colors duration-200">
-        <div :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'" class="rounded-2xl border shadow-sm overflow-hidden">
+
+        <!-- Month view (default) -->
+        <div v-if="calendarViewMode === 'month'" :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'" class="rounded-2xl border shadow-sm overflow-hidden">
           <div :class="isDarkMode ? 'bg-gray-900 text-gray-300 border-gray-700' : 'bg-gray-50 text-gray-500 border-gray-200'" class="grid grid-cols-7 border-b">
             <div v-for="weekday in calendarWeekdays" :key="weekday" class="px-3 py-3 text-xs font-semibold uppercase tracking-wide text-center">
               {{ weekday }}
@@ -455,7 +477,6 @@
                   {{ day.dayOfMonth }}
                 </span>
               </div>
-
               <div class="space-y-1">
                 <button
                   v-for="projectEntry in getCalendarProjectEntries(day.dateKey)"
@@ -468,8 +489,8 @@
                   :draggable="idsMatch(projectEntry.project?.Creator_ID, currentUserId)"
                   @dragstart="onCalendarProjectDragStart($event, projectEntry.project)"
                   @dragend="onCalendarDragEnd">
-                  <i class="fa-solid fa-folder-open mr-1"></i>
-                  <span class="uppercase tracking-wide">Project Due:</span> {{ projectEntry.projectTitle }}
+                  <i class="fa-solid fa-folder-open mr-1" draggable="false"></i>
+                  <span class="uppercase tracking-wide" draggable="false">Project Due:</span> {{ projectEntry.projectTitle }}
                 </button>
                 <button
                   v-for="calendarEntry in getCalendarTaskEntries(day.dateKey)"
@@ -484,6 +505,83 @@
                   @dragend="onCalendarDragEnd">
                   {{ calendarEntry.taskTitle }}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Multi-month scroll view -->
+        <div v-else class="space-y-10">
+          <div
+            v-for="month in scrollCalendarMonths"
+            :key="month.monthKey"
+            :id="month.isCurrentMonth ? 'scroll-calendar-today' : undefined"
+            :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'"
+            class="rounded-2xl border shadow-sm overflow-hidden">
+            <div
+              :class="isDarkMode ? 'bg-gray-800 border-gray-700 text-gray-200' : 'bg-gray-50 border-gray-200 text-gray-800'"
+              class="px-5 py-3 border-b flex items-center gap-3">
+              <span class="text-base font-semibold">{{ month.label }}</span>
+              <span
+                v-if="month.isCurrentMonth"
+                class="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#DB0000] text-white">
+                Current
+              </span>
+            </div>
+            <div :class="isDarkMode ? 'bg-gray-900 text-gray-300 border-gray-700' : 'bg-gray-50 text-gray-500 border-gray-200'" class="grid grid-cols-7 border-b">
+              <div v-for="weekday in calendarWeekdays" :key="weekday" class="px-3 py-3 text-xs font-semibold uppercase tracking-wide text-center">
+                {{ weekday }}
+              </div>
+            </div>
+            <div class="grid grid-cols-7">
+              <div
+                v-for="day in month.days"
+                :key="day.dateKey"
+                :class="[
+                  isDarkMode ? 'border-gray-800' : 'border-gray-200',
+                  day.inCurrentMonth ? '' : (isDarkMode ? 'bg-gray-900/40 text-gray-600' : 'bg-gray-50/70 text-gray-400')
+                ]"
+                class="min-h-36 border p-2"
+                @dragover.prevent
+                @drop="onCalendarDrop($event, day.dateKey)">
+                <div class="flex justify-end mb-2">
+                  <span
+                    :class="[
+                      isDarkMode ? (day.isToday ? 'bg-[#DB0000] text-white' : 'text-gray-300') : (day.isToday ? 'bg-[#DB0000] text-white' : 'text-gray-700'),
+                      day.isToday ? 'px-2 py-1 rounded-full text-xs font-semibold' : 'text-xs font-medium'
+                    ]">
+                    {{ day.dayOfMonth }}
+                  </span>
+                </div>
+                <div class="space-y-1">
+                  <button
+                    v-for="projectEntry in getCalendarProjectEntries(day.dateKey)"
+                    :key="`${day.dateKey}-project-${projectEntry.project?.Project_ID || projectEntry.projectTitle}`"
+                    type="button"
+                    @click.stop="openProjectInfo(projectEntry.project)"
+                    :style="getCalendarProjectDueStyle(projectEntry.project)"
+                    class="w-full text-left text-[11px] px-2 py-1 rounded-md border font-semibold truncate hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#DB0000]/40"
+                    :title="`Project due: ${projectEntry.projectTitle}`"
+                    draggable="true"
+                    @dragstart="onCalendarProjectDragStart($event, projectEntry.project)"
+                    @dragend="onCalendarDragEnd">
+                    <i class="fa-solid fa-folder-open mr-1" draggable="false"></i>
+                    <span class="uppercase tracking-wide" draggable="false">Project Due:</span> {{ projectEntry.projectTitle }}
+                  </button>
+                  <button
+                    v-for="calendarEntry in getCalendarTaskEntries(day.dateKey)"
+                    :key="`${day.dateKey}-${calendarEntry.task?.Task_ID || calendarEntry.taskTitle}`"
+                    type="button"
+                    @click.stop="openTaskInfo(calendarEntry.task)"
+                    :style="getProjectCalendarTaskStyle(calendarEntry.project)"
+                    class="w-full text-left text-[11px] px-2 py-1 rounded-md font-medium truncate hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#DB0000]/40 border"
+                    :title="calendarEntry.taskTitle"
+                    draggable="true"
+                    @dragstart="onCalendarTaskDragStart($event, calendarEntry.task)"
+                    @dragend="onCalendarDragEnd">
+                    {{ calendarEntry.taskTitle }}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1944,6 +2042,11 @@
         </div>
       </div>
     </div>
+
+    <div v-if="isKanbanAutoScrollActive" class="fixed inset-y-0 left-0 w-44 z-[9998] pointer-events-auto" @dragover.prevent="handleKanbanDragPointerMove($event)"></div>
+    <div v-if="isKanbanAutoScrollActive" class="fixed inset-y-0 right-0 w-44 z-[9998] pointer-events-auto" @dragover.prevent="handleKanbanDragPointerMove($event)"></div>
+    <div v-if="isCalendarAutoScrollActive" class="fixed inset-x-0 top-0 h-24 z-[9998] pointer-events-auto" @dragover.prevent="handleCalendarDragPointerMove($event)"></div>
+    <div v-if="isCalendarAutoScrollActive" class="fixed inset-x-0 bottom-0 h-24 z-[9998] pointer-events-auto" @dragover.prevent="handleCalendarDragPointerMove($event)"></div>
 
     <div class="fixed bottom-6 right-6 z-50 flex flex-col items-end">
       <div v-if="isChatOpen" 
