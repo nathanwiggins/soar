@@ -2739,7 +2739,6 @@
       const draggingTaskSourceProjectId = ref(null);
       const draggingOverProjectId = ref(null);
       const draggingMoveBlocked = ref(false);
-      const draggingTask = ref(null);
       const taskMoveUndoStack = ref([]);
 
       const stopKanbanAutoScroll = () => {
@@ -2787,10 +2786,6 @@
 
       const onTaskDragStart = (evt, projectId) => {
         draggingTaskSourceProjectId.value = projectId;
-        const projectTasks = currentTab.value === 'supervisor-view'
-          ? getSupervisorTasksForProject(projectId)
-          : getTasksForProject(projectId);
-        draggingTask.value = projectTasks[evt.oldIndex] ?? null;
         startKanbanAutoScroll();
       };
 
@@ -2798,35 +2793,34 @@
         draggingTaskSourceProjectId.value = null;
         draggingOverProjectId.value = null;
         draggingMoveBlocked.value = false;
-        draggingTask.value = null;
         endKanbanAutoScroll();
       };
 
       const onDragEnterProject = (projectId) => {
         if (draggingTaskSourceProjectId.value === null) return;
         draggingOverProjectId.value = projectId;
-        if (idsMatch(projectId, draggingTaskSourceProjectId.value)) {
-          draggingMoveBlocked.value = false;
-          return;
-        }
-        if (!idsMatch(draggingTask.value?.Creator_ID, currentUserId.value)) {
-          draggingMoveBlocked.value = true;
-          return;
-        }
-        const sourceProject = getProjectById(draggingTaskSourceProjectId.value);
-        const targetProject = getProjectById(projectId);
-        draggingMoveBlocked.value = !(idsMatch(sourceProject?.Creator_ID, currentUserId.value) && idsMatch(targetProject?.Creator_ID, currentUserId.value));
       };
 
       const canDropTaskHere = (evt, targetProjectId) => {
         const sourceProjectId = draggingTaskSourceProjectId.value;
-        if (!sourceProjectId || idsMatch(sourceProjectId, targetProjectId)) return true;
+        if (!sourceProjectId || idsMatch(sourceProjectId, targetProjectId)) {
+          draggingMoveBlocked.value = false;
+          return true;
+        }
         const draggedTask = evt.draggedContext?.element;
-        if (!idsMatch(draggedTask?.Creator_ID, currentUserId.value)) return false;
+        if (!idsMatch(draggedTask?.Creator_ID, currentUserId.value)) {
+          draggingMoveBlocked.value = true;
+          return false;
+        }
         const targetProject = getProjectById(targetProjectId);
-        if (!idsMatch(targetProject?.Creator_ID, currentUserId.value)) return false;
+        if (!idsMatch(targetProject?.Creator_ID, currentUserId.value)) {
+          draggingMoveBlocked.value = true;
+          return false;
+        }
         const sourceProject = getProjectById(sourceProjectId);
-        return idsMatch(sourceProject?.Creator_ID, currentUserId.value);
+        const allowed = idsMatch(sourceProject?.Creator_ID, currentUserId.value);
+        draggingMoveBlocked.value = !allowed;
+        return allowed;
       };
 
       const canReorderProject = () => true;
