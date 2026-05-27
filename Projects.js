@@ -275,47 +275,6 @@ function deleteProject(projectId) {
   }
 }
 
-function reorderProjects(orderedProjectIds) {
-  if (!Array.isArray(orderedProjectIds)) return JSON.stringify({ success: false, error: 'Project order required.' });
-
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Projects');
-  if (!sheet) return JSON.stringify({ success: false, error: 'Projects sheet not found.' });
-
-  try {
-    const data = sheet.getDataRange().getValues();
-    if (data.length <= 1) return JSON.stringify({ success: true });
-
-    const headers = data[0];
-    const idCol = headers.indexOf('Project_ID');
-    const bodyRows = data.slice(1);
-    
-    const rowsById = {};
-    bodyRows.forEach(row => rowsById[(row[idCol] || '').toString().trim()] = row);
-
-    const reorderedRows = [];
-    const seenIds = new Set();
-
-    orderedProjectIds.forEach(id => {
-      const normId = (id || '').toString().trim();
-      if (rowsById[normId]) {
-        reorderedRows.push(rowsById[normId]);
-        seenIds.add(normId);
-      }
-    });
-
-    bodyRows.forEach(row => {
-      const id = (row[idCol] || '').toString().trim();
-      if (!seenIds.has(id)) reorderedRows.push(row);
-    });
-
-    sheet.getRange(2, 1, reorderedRows.length, headers.length).setValues(reorderedRows);
-    invalidateTableCache('Projects');
-    
-    return JSON.stringify({ success: true });
-  } catch (error) {
-    return JSON.stringify({ success: false, error: error.message });
-  }
-}
 function updateProjectDueDate(projectId, dueDate) {
   const normalizedProjectId = projectId ? projectId.toString().trim() : '';
   if (!normalizedProjectId) {
