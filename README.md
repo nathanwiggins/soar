@@ -80,6 +80,7 @@
    - In Apps Script, open **Project Settings** → **Script Properties**.
    - Add a property named `GEMINI_API_KEY` with your Gemini API key.
    - If this property is missing, the red chat bubble still appears, but assistant requests return: `AI Assistant is not configured (Missing API Key).`
+   - To enable the support ticketing GitHub integration, add a property named `GITHUB_PAT` with a GitHub Personal Access Token that has write access to issues on the `nathanwiggins/soar` repository.
 
 6. **Deploy as web app**
    - Click **Deploy** → **New deployment**.
@@ -148,6 +149,7 @@ Click your name/avatar at the bottom of the sidebar to open:
 - Assistant responses are rendered as formatted markdown.
 - A privacy disclaimer is displayed at the bottom of the chat: messages are processed by the Gemini API, data may be used to train Google's AI models, and users should not share private or sensitive information.
 - The assistant needs Script Property `GEMINI_API_KEY`; otherwise, it responds with a configuration error.
+- **Support ticket logging**: If the user describes a bug, the assistant first attempts to troubleshoot. If the issue persists, it asks for confirmation before logging. Once confirmed, the ticket is logged to the `Issues` sheet and a GitHub issue is created immediately. A hidden marker in the AI response triggers server-side logging transparently — the user only sees the conversational confirmation.
 
 ### Onboarding: Create Account
 
@@ -933,6 +935,7 @@ The manifest file defines permissions, runtime, and deployment settings:
 | Property | Required | Purpose |
 |---|---:|---|
 | `GEMINI_API_KEY` | Optional | Enables SOAR Assistant calls to Gemini. |
+| `GITHUB_PAT` | Optional | GitHub Personal Access Token for the support ticketing integration. Must have write access to issues on `nathanwiggins/soar`. |
 | `soar_data_version:last_updated` | Auto-created | App data version for cache invalidation. |
 | `soar_next_id:{Sheet}:{Prefix}` | Auto-created | ID counters for generated IDs. |
 | `soar_user_settings:{email}` | Auto-created | User font size and notification settings. |
@@ -984,6 +987,11 @@ Session_ID | Agenda_ID | Session_Date | Content_JSON | Created_Date
 **Sharing**:
 ```
 Agenda_ID | User_ID
+```
+
+**Issues**:
+```
+Issue_ID | Timestamp | User_Email | Issue_Description | Status | GitHub_Issue_Number
 ```
 
 ---
@@ -1233,7 +1241,15 @@ Fetches initial app state.
 Returns a version hash based on spreadsheet metadata and app data version.
 
 #### `askGeminiAssistant(conversationHistory, userContext)`
-Calls Gemini with SOAR assistant instructions, `Tutorial.html`, recent conversation history, and current UI context. Requires Script Property `GEMINI_API_KEY`.
+Calls Gemini with SOAR assistant instructions, `Tutorial.html`, recent conversation history, and current UI context. Requires Script Property `GEMINI_API_KEY`. Returns `{success, text, ticketLogged}` — `ticketLogged` is `true` when the response triggered automatic ticket creation.
+
+#### `logSupportTicket(issueSummary)`
+Logs a support ticket and immediately creates a GitHub issue. If `GITHUB_PAT` is configured, POSTs to the GitHub API and sets `Status` to `"Pending"` with the new issue number. If the PAT is missing or the API call fails, the row is stored with `Status` `"New"` as a fallback. Called automatically by `askGeminiAssistant()` when the AI response contains a confirmed ticket marker.
+
+**Returns**: `{success: true, issueId: "ISSUE-00000001"}` or `{success: false, error: "..."}`
+
+#### `syncDailyGitHubStatus()`
+Background job intended to run on a daily time-driven trigger. Reads all `"Pending"` issues from the `Issues` sheet, fetches each corresponding GitHub issue, and marks closed ones as `"Complete"` while emailing the reporting user. Requires Script Property `GITHUB_PAT`.
 
 ---
 
