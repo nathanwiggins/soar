@@ -211,6 +211,14 @@
                   @change="updateNotificationSetting('agendaShares', $event.target.checked)"
                   class="rounded border-gray-300 text-[#DB0000] focus:ring-[#DB0000]">
               </label>
+              <label :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'" class="flex items-center justify-between rounded-lg border px-4 py-3">
+                <span class="text-sm">Support ticket follow-up</span>
+                <input
+                  type="checkbox"
+                  :checked="settingsForm.notifications.ticketFollowUp"
+                  @change="updateNotificationSetting('ticketFollowUp', $event.target.checked)"
+                  class="rounded border-gray-300 text-[#DB0000] focus:ring-[#DB0000]">
+              </label>
             </div>
           </section>
 

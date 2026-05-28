@@ -74,7 +74,9 @@ function logSupportTicket(issueSummary) {
 }
 
 function syncDailyGitHubStatus() {
-  const githubPat = PropertiesService.getScriptProperties().getProperty('GITHUB_PAT');
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const scriptPropertiesCache = scriptProperties.getProperties();
+  const githubPat = scriptPropertiesCache['GITHUB_PAT'];
   if (!githubPat) {
     Logger.log('syncDailyGitHubStatus: Missing GITHUB_PAT');
     return;
@@ -118,12 +120,14 @@ function syncDailyGitHubStatus() {
       newRow[headerIndex.Status] = 'Complete';
       updateRowValues(sheet, sheetRowIndex, newRow);
 
-      const { shortDescription, description } = generateIssueEmailParts(row[headerIndex.Issue_Description]);
-      safeSendEmail(
-        row[headerIndex.User_Email],
-        `[SOAR Issue] ${shortDescription}`,
-        `Hello,\n\nThe issue you reported regarding ${description} has been resolved by our development team.\n\nThank you for helping us improve SOAR!`
-      );
+      if (isNotificationEnabledForEmail(row[headerIndex.User_Email], 'ticketFollowUp', scriptPropertiesCache)) {
+        const { shortDescription, description } = generateIssueEmailParts(row[headerIndex.Issue_Description]);
+        safeSendEmail(
+          row[headerIndex.User_Email],
+          `[SOAR Issue] ${shortDescription}`,
+          `Hello,\n\nThe issue you reported regarding ${description} has been resolved by our development team.\n\nThank you for helping us improve SOAR!`
+        );
+      }
     }
   });
 
