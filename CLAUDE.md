@@ -17,6 +17,8 @@ Do not include code comments. This codebase should be free of all code comments.
 
 After making changes, be sure to do `clasp push` to send the changes to the dev environment so the user can view them.
 
+If a change introduces genuinely new testable behavior — a new feature, a new notification type, a new edge case, or a new configuration path — add the minimum necessary items to the **Pre-Beta Release Checklist** (GitHub Issue #138 on `nathanwiggins/soar`). Do not add checklist items for refactors, performance improvements, or internal changes that produce no new user-visible behavior.
+
 ---
 
 ## PR Review Process
