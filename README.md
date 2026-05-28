@@ -149,7 +149,7 @@ Click your name/avatar at the bottom of the sidebar to open:
 - Assistant responses are rendered as formatted markdown.
 - A privacy disclaimer is displayed at the bottom of the chat: messages are processed by the Gemini API, data may be used to train Google's AI models, and users should not share private or sensitive information.
 - The assistant needs Script Property `GEMINI_API_KEY`; otherwise, it responds with a configuration error.
-- **Support ticket logging**: If the user describes a bug, the assistant asks for confirmation before logging it. Once confirmed, it logs the issue to the `Issues` sheet and informs the user. A hidden marker in the AI response triggers server-side logging transparently — the user only sees the conversational confirmation.
+- **Support ticket logging**: If the user describes a bug, the assistant first attempts to troubleshoot. If the issue persists, it asks for confirmation before logging. Once confirmed, the ticket is logged to the `Issues` sheet and a GitHub issue is created immediately. A hidden marker in the AI response triggers server-side logging transparently — the user only sees the conversational confirmation.
 
 ### Onboarding: Create Account
 
@@ -1244,12 +1244,9 @@ Returns a version hash based on spreadsheet metadata and app data version.
 Calls Gemini with SOAR assistant instructions, `Tutorial.html`, recent conversation history, and current UI context. Requires Script Property `GEMINI_API_KEY`. Returns `{success, text, ticketLogged}` — `ticketLogged` is `true` when the response triggered automatic ticket creation.
 
 #### `logSupportTicket(issueSummary)`
-Appends a new row to the `Issues` sheet with status `"New"` and the current user's email. Called automatically by `askGeminiAssistant()` when the AI response contains a confirmed ticket marker.
+Logs a support ticket and immediately creates a GitHub issue. If `GITHUB_PAT` is configured, POSTs to the GitHub API and sets `Status` to `"Pending"` with the new issue number. If the PAT is missing or the API call fails, the row is stored with `Status` `"New"` as a fallback. Called automatically by `askGeminiAssistant()` when the AI response contains a confirmed ticket marker.
 
 **Returns**: `{success: true, issueId: "ISSUE-00000001"}` or `{success: false, error: "..."}`
-
-#### `processWeeklyTickets()`
-Background job intended to run on a weekly time-driven trigger. Reads all `"New"` issues from the `Issues` sheet, sends them to Gemini for bug/user-error classification, creates real GitHub issues for confirmed bugs via the GitHub API, and updates each row's `Status` to `"Pending"` (with `GitHub_Issue_Number`) or `"User Error"`. Requires Script Properties `GEMINI_API_KEY` and `GITHUB_PAT`.
 
 #### `syncDailyGitHubStatus()`
 Background job intended to run on a daily time-driven trigger. Reads all `"Pending"` issues from the `Issues` sheet, fetches each corresponding GitHub issue, and marks closed ones as `"Complete"` while emailing the reporting user. Requires Script Property `GITHUB_PAT`.
