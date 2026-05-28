@@ -3,8 +3,8 @@ function generateIssueEmailParts(issueSummary) {
   if (!apiKey) return { shortDescription: 'Your reported issue', description: issueSummary };
 
   const prompt = `Given the following SOAR support issue summary, return a JSON object with two fields:
-1. "shortDescription": a concise title (max 10 words) suitable for an email subject line.
-2. "description": a single clear sentence describing the issue, written for the end user.
+1. "shortDescription": a concise title (max 7 words) suitable for an email subject line.
+2. "description": a short noun phrase (not a full sentence) that fits naturally into the blank here: "The issue you reported regarding ___ has been resolved." It should read as a natural continuation of that sentence — for example: "the task status not updating correctly" or "the dashboard failing to load".
 
 Issue summary:
 ${issueSummary}
