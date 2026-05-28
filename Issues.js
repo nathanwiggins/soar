@@ -1,3 +1,37 @@
+function generateIssueEmailParts(issueSummary) {
+  const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  if (!apiKey) return { shortDescription: 'Your reported issue', description: issueSummary };
+
+  const prompt = `Given the following SOAR support issue summary, return a JSON object with two fields:
+1. "shortDescription": a concise title (max 10 words) suitable for an email subject line.
+2. "description": a single clear sentence describing the issue, written for the end user.
+
+Issue summary:
+${issueSummary}
+
+Respond with only valid JSON, no markdown or code fences.`;
+
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${apiKey}`;
+  try {
+    const response = UrlFetchApp.fetch(endpoint, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }] }),
+      muteHttpExceptions: true
+    });
+    const json = JSON.parse(response.getContentText());
+    const text = json.candidates[0].content.parts[0].text.trim();
+    const parsed = JSON.parse(text);
+    return {
+      shortDescription: parsed.shortDescription || 'Your reported issue',
+      description: parsed.description || issueSummary
+    };
+  } catch (e) {
+    Logger.log(`generateIssueEmailParts: ${e.message}`);
+    return { shortDescription: 'Your reported issue', description: issueSummary };
+  }
+}
+
 function logSupportTicket(issueSummary) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Issues');
   if (!sheet) {
@@ -64,7 +98,16 @@ function syncDailyGitHubStatus() {
       muteHttpExceptions: true
     });
 
-    if (githubResponse.getResponseCode() !== 200) {
+    const responseCode = githubResponse.getResponseCode();
+
+    if (responseCode === 404) {
+      const newRow = [...row];
+      newRow[headerIndex.Status] = 'Deleted';
+      updateRowValues(sheet, sheetRowIndex, newRow);
+      return;
+    }
+
+    if (responseCode !== 200) {
       Logger.log(`syncDailyGitHubStatus: GitHub API error for issue #${issueNumber}: ${githubResponse.getContentText()}`);
       return;
     }
@@ -75,10 +118,11 @@ function syncDailyGitHubStatus() {
       newRow[headerIndex.Status] = 'Complete';
       updateRowValues(sheet, sheetRowIndex, newRow);
 
+      const { shortDescription, description } = generateIssueEmailParts(row[headerIndex.Issue_Description]);
       safeSendEmail(
         row[headerIndex.User_Email],
-        'Your SOAR issue has been resolved',
-        `Great news! The issue you reported regarding '${row[headerIndex.Issue_Description]}' has been resolved by our development team. Thank you for helping us improve SOAR!`
+        `[SOAR Issue] ${shortDescription}`,
+        `Hello,\n\nThe issue you reported regarding ${description} has been resolved by our development team.\n\nThank you for helping us improve SOAR!`
       );
     }
   });
