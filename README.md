@@ -486,6 +486,7 @@ Open the lower-left user menu and click **Settings**.
 - **Due-date reminders**
 - **Weekly digest**
 - **Agenda shares**
+- **Support ticket follow-up**
 
 Footer buttons:
 

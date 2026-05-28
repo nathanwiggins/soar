@@ -6,7 +6,8 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
   dueDateReminders: true,
   taskCompletion: true,
   weeklyDigest: false,
-  agendaShares: true
+  agendaShares: true,
+  ticketFollowUp: true
 };
 function getDefaultNotificationSettings() {
   return Object.assign({}, DEFAULT_NOTIFICATION_SETTINGS);
