@@ -2810,25 +2810,21 @@
         const settingsToSave = JSON.parse(JSON.stringify(settingsForm.value));
         localStorage.setItem('soar_user_settings_v1', JSON.stringify(settingsToSave));
         savingSettings.value = true;
+        applyNotificationSettings(settingsToSave.notifications);
+        closeSettingsModal();
 
         google.script.run
           .withSuccessHandler((response) => {
-            const payload = JSON.parse(response);
             savingSettings.value = false;
-
-            if (!payload.success) {
-              alert(payload.error || 'Failed to save settings.');
-              return;
+            const payload = parseRunResponse(response);
+            if (!payload || !payload.success) {
+              showToast('Settings could not be saved to the server — they may revert on next page load.');
             }
-
-            applyNotificationSettings(payload.settings?.notifications);
-            localStorage.setItem('soar_user_settings_v1', JSON.stringify(settingsForm.value));
-            closeSettingsModal();
           })
           .withFailureHandler((error) => {
             savingSettings.value = false;
             console.error('Failed to save settings:', error);
-            alert('Error saving settings.');
+            showToast('Settings could not be saved to the server — they may revert on next page load.');
           })
           .persistCurrentUserSettings(settingsToSave);
       };
@@ -2866,12 +2862,10 @@
       };
 
       const closeSettingsModal = () => {
-        if (savingSettings.value) return;
         showSettingsModal.value = false;
       };
 
       const closeProfileModal = () => {
-        if (savingProfile.value) return;
         showProfileModal.value = false;
         isEditingProfile.value = false;
       };
@@ -2897,32 +2891,50 @@
           return;
         }
 
+        const userIndex = users.value.findIndex((u) => idsMatch(u.User_ID, currentUser.value?.User_ID));
+        const previousUser = userIndex >= 0 ? { ...users.value[userIndex] } : null;
+        const previousEmail = currentUserEmail.value;
+        const optimisticUser = {
+          ...(previousUser || {}),
+          Name: trimmedName,
+          Email: trimmedEmail,
+          _syncing: true
+        };
+
         savingProfile.value = true;
+        if (userIndex >= 0) users.value.splice(userIndex, 1, optimisticUser);
+        currentUserEmail.value = trimmedEmail;
+        isEditingProfile.value = false;
+
         google.script.run
           .withSuccessHandler((response) => {
             savingProfile.value = false;
-            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            const result = parseRunResponse(response);
             if (!result || !result.success || !result.user) {
-              alert(result?.error || 'Failed to update profile.');
+              if (previousUser && userIndex >= 0) users.value.splice(userIndex, 1, previousUser);
+              currentUserEmail.value = previousEmail;
+              isEditingProfile.value = true;
+              showToast(result?.error || 'Failed to update profile — your changes were not saved.');
               return;
             }
 
-            const updatedUser = result.user;
-            const userIndex = users.value.findIndex((u) => idsMatch(u.User_ID, updatedUser.User_ID));
-            if (userIndex >= 0) {
-              users.value.splice(userIndex, 1, updatedUser);
+            const updatedUser = stripSyncFlag(result.user);
+            const currentIndex = users.value.findIndex((u) => idsMatch(u.User_ID, updatedUser.User_ID));
+            if (currentIndex >= 0) {
+              users.value.splice(currentIndex, 1, updatedUser);
             } else {
               users.value.push(updatedUser);
             }
-
             currentUserEmail.value = updatedUser.Email || trimmedEmail;
             profileForm.value = buildProfileForm();
-            isEditingProfile.value = false;
           })
           .withFailureHandler((error) => {
             savingProfile.value = false;
+            if (previousUser && userIndex >= 0) users.value.splice(userIndex, 1, previousUser);
+            currentUserEmail.value = previousEmail;
+            isEditingProfile.value = true;
             console.error('Failed to update profile:', error);
-            alert('Error updating profile.');
+            showToast('Failed to update profile — your changes were not saved.');
           })
           .updateCurrentUserProfile({
             name: trimmedName,
@@ -3231,22 +3243,40 @@
 
       const submitNewAgenda = () => {
         const trimmedTitle = newAgendaForm.value.title.trim();
+        const trimmedDescription = newAgendaForm.value.description.trim();
         if (!trimmedTitle) return;
+
+        const tempId = makeClientId('AGENDA');
+        const tempAgenda = {
+          Agenda_ID: tempId,
+          Title: trimmedTitle,
+          Description: trimmedDescription,
+          Creator_ID: currentUser.value?.User_ID || '',
+          _syncing: true
+        };
+
         creatingAgenda.value = true;
+        agendas.value.push(tempAgenda);
+        showAddAgendaModal.value = false;
+
         google.script.run
           .withSuccessHandler((res) => {
             creatingAgenda.value = false;
+            agendas.value = agendas.value.filter((a) => !idsMatch(a.Agenda_ID, tempId));
             const result = parseRunResponse(res);
-            if (result.success) {
+            if (result && result.success) {
               agendas.value.push(result.agenda);
-              showAddAgendaModal.value = false;
               openAgendaModal(result.agenda);
+            } else {
+              showToast(result?.error || 'Failed to create agenda.');
             }
           })
           .withFailureHandler(() => {
             creatingAgenda.value = false;
+            agendas.value = agendas.value.filter((a) => !idsMatch(a.Agenda_ID, tempId));
+            showToast('Failed to create agenda. Please try again.');
           })
-          .createAgenda(trimmedTitle, newAgendaForm.value.description.trim());
+          .createAgenda(trimmedTitle, trimmedDescription);
       };
 
       const getSessionsForAgenda = (agendaId) => {
@@ -3345,75 +3375,113 @@
         const contentStr = JSON.stringify(activeAgenda.value.headers);
         const title = activeAgenda.value.Title;
         const description = activeAgenda.value.Description || '';
+        const sharesSnapshot = activeAgendaShares.value.slice();
 
-        const finishAgendaUpdate = (callback) => {
+        const agendaIdx = agendas.value.findIndex((a) => idsMatch(a.Agenda_ID, agendaId));
+        const previousAgenda = agendaIdx >= 0 ? { ...agendas.value[agendaIdx] } : null;
+        const previousShares = agendaShares.value.filter((s) => idsMatch(s.Agenda_ID, agendaId)).slice();
+
+        const applyOptimisticAgenda = () => {
+          const optimisticAgenda = { ...(previousAgenda || {}), Agenda_ID: agendaId, Title: title, Description: description, _syncing: true };
+          if (agendaIdx >= 0) agendas.value.splice(agendaIdx, 1, optimisticAgenda);
+          agendaShares.value = agendaShares.value.filter((s) => !idsMatch(s.Agenda_ID, agendaId));
+          agendaShares.value.push(...sharesSnapshot.map((userId) => ({ Agenda_ID: agendaId, User_ID: userId })));
+        };
+
+        const rollbackAgenda = () => {
+          if (previousAgenda) {
+            const idx = agendas.value.findIndex((a) => idsMatch(a.Agenda_ID, agendaId));
+            if (idx >= 0) agendas.value.splice(idx, 1, previousAgenda);
+          }
+          agendaShares.value = agendaShares.value.filter((s) => !idsMatch(s.Agenda_ID, agendaId));
+          agendaShares.value.push(...previousShares);
+        };
+
+        const finalizeAgendaUpdate = () => {
           google.script.run
-            .withSuccessHandler((res) => {
-              const result = parseRunResponse(res);
-              if (result && result.success) {
-                const idx = agendas.value.findIndex(a => idsMatch(a.Agenda_ID, result.agenda.Agenda_ID));
-                if (idx >= 0) agendas.value.splice(idx, 1, result.agenda);
-                agendaShares.value = agendaShares.value.filter(s => !idsMatch(s.Agenda_ID, result.agenda.Agenda_ID));
-                agendaShares.value.push(...(result.shares || []));
+            .withSuccessHandler((agendaRes) => {
+              savingSession.value = false;
+              const agendaResult = parseRunResponse(agendaRes);
+              if (agendaResult && agendaResult.success) {
+                const idx = agendas.value.findIndex((a) => idsMatch(a.Agenda_ID, agendaResult.agenda.Agenda_ID));
+                if (idx >= 0) agendas.value.splice(idx, 1, agendaResult.agenda);
+                agendaShares.value = agendaShares.value.filter((s) => !idsMatch(s.Agenda_ID, agendaResult.agenda.Agenda_ID));
+                agendaShares.value.push(...(agendaResult.shares || []));
+              } else {
+                showToast('Session saved but agenda details could not be updated.');
               }
-              if (callback) callback(result);
             })
             .withFailureHandler(() => {
               savingSession.value = false;
-              alert('Error saving agenda details.');
+              showToast('Session saved but agenda details could not be updated.');
             })
-            .updateAgenda(agendaId, title, description, activeAgendaShares.value);
+            .updateAgenda(agendaId, title, description, sharesSnapshot);
         };
 
         if (activeSessionIndex.value === -1) {
+          const tempSessionId = makeClientId('SESSION');
+          const tempSession = { Session_ID: tempSessionId, Agenda_ID: agendaId, Session_Date: sessionDate, Content_JSON: contentStr, _syncing: true };
+          applyOptimisticAgenda();
+          agendaSessions.value.push(tempSession);
+          closeAgendaModal();
+
           google.script.run
             .withSuccessHandler((res) => {
+              agendaSessions.value = agendaSessions.value.filter((s) => !idsMatch(s.Session_ID, tempSessionId));
               const result = parseRunResponse(res);
               if (!result || !result.success) {
                 savingSession.value = false;
-                alert(result?.error || 'Failed to create session.');
+                rollbackAgenda();
+                showToast(result?.error || 'Failed to create session.');
                 return;
               }
               agendaSessions.value.push(result.session);
-              activeSession.value = result.session;
-              finishAgendaUpdate(() => {
-                savingSession.value = false;
-                const sessions = getSessionsForAgenda(agendaId);
-                activeSessionIndex.value = sessions.findIndex(s => idsMatch(s.Session_ID, result.session.Session_ID));
-                if (activeSessionIndex.value < 0) activeSessionIndex.value = 0;
-                closeAgendaModal();
-              });
+              finalizeAgendaUpdate();
             })
             .withFailureHandler(() => {
               savingSession.value = false;
-              alert('Error creating session.');
+              agendaSessions.value = agendaSessions.value.filter((s) => !idsMatch(s.Session_ID, tempSessionId));
+              rollbackAgenda();
+              showToast('Failed to create session.');
             })
             .createAgendaSession(agendaId, sessionDate, contentStr);
         } else {
           const sessionId = activeSession.value?.Session_ID;
-          if (!sessionId) {
-            savingSession.value = false;
-            return;
-          }
+          if (!sessionId) { savingSession.value = false; return; }
+
+          const sessionIdx = agendaSessions.value.findIndex((s) => idsMatch(s.Session_ID, sessionId));
+          const previousSession = sessionIdx >= 0 ? { ...agendaSessions.value[sessionIdx] } : null;
+          const optimisticSession = { ...(previousSession || {}), Session_ID: sessionId, Session_Date: sessionDate, Content_JSON: contentStr, _syncing: true };
+
+          applyOptimisticAgenda();
+          if (sessionIdx >= 0) agendaSessions.value.splice(sessionIdx, 1, optimisticSession);
+          closeAgendaModal();
+
           google.script.run
             .withSuccessHandler((res) => {
               const result = parseRunResponse(res);
               if (!result || !result.success) {
                 savingSession.value = false;
-                alert(result?.error || 'Failed to update session.');
+                if (previousSession) {
+                  const idx = agendaSessions.value.findIndex((s) => idsMatch(s.Session_ID, sessionId));
+                  if (idx >= 0) agendaSessions.value.splice(idx, 1, previousSession);
+                }
+                rollbackAgenda();
+                showToast(result?.error || 'Failed to update session.');
                 return;
               }
-              const idx = agendaSessions.value.findIndex(s => idsMatch(s.Session_ID, sessionId));
+              const idx = agendaSessions.value.findIndex((s) => idsMatch(s.Session_ID, sessionId));
               if (idx >= 0) agendaSessions.value.splice(idx, 1, result.session);
-              activeSession.value = result.session;
-              finishAgendaUpdate(() => {
-                savingSession.value = false;
-                closeAgendaModal();
-              });
+              finalizeAgendaUpdate();
             })
             .withFailureHandler(() => {
               savingSession.value = false;
-              alert('Error updating session.');
+              if (previousSession) {
+                const idx = agendaSessions.value.findIndex((s) => idsMatch(s.Session_ID, sessionId));
+                if (idx >= 0) agendaSessions.value.splice(idx, 1, previousSession);
+              }
+              rollbackAgenda();
+              showToast('Failed to update session.');
             })
             .updateAgendaSession(sessionId, sessionDate, contentStr);
         }
@@ -3424,44 +3492,81 @@
       const deleteActiveSession = () => {
         if (!activeSession.value?.Session_ID) return;
         if (!confirm('Are you sure you want to delete this session?')) return;
+
         const sessionId = activeSession.value.Session_ID;
+        const previousSessions = agendaSessions.value.slice();
+        const previousActiveSession = activeSession.value;
+        const previousActiveSessionIndex = activeSessionIndex.value;
+        const previousHeaders = activeAgenda.value.headers ? JSON.parse(JSON.stringify(activeAgenda.value.headers)) : [];
+        const previousAgendaDate = activeAgenda.value.agendaDate;
+
+        agendaSessions.value = agendaSessions.value.filter((s) => !idsMatch(s.Session_ID, sessionId));
+        const remaining = getSessionsForAgenda(activeAgenda.value?.Agenda_ID);
+        if (remaining.length > 0) {
+          const next = remaining[0];
+          let headers = [];
+          try { headers = JSON.parse(next.Content_JSON || '[]'); } catch (e) { headers = []; }
+          activeSession.value = next;
+          activeSessionIndex.value = 0;
+          activeAgenda.value.headers = headers;
+          activeAgenda.value.agendaDate = formatDateForInput(next.Session_Date || '');
+        } else {
+          activeSession.value = null;
+          activeSessionIndex.value = 0;
+          activeAgenda.value.headers = [];
+          activeAgenda.value.agendaDate = '';
+        }
+
         google.script.run
           .withSuccessHandler((res) => {
             const result = parseRunResponse(res);
             if (!result || !result.success) {
-              alert(result?.error || 'Failed to delete session.');
-              return;
-            }
-            agendaSessions.value = agendaSessions.value.filter(s => !idsMatch(s.Session_ID, sessionId));
-            const remaining = getSessionsForAgenda(activeAgenda.value?.Agenda_ID);
-            if (remaining.length > 0) {
-              const next = remaining[0];
-              let headers = [];
-              try { headers = JSON.parse(next.Content_JSON || '[]'); } catch (e) { headers = []; }
-              activeSession.value = next;
-              activeSessionIndex.value = 0;
-              activeAgenda.value.headers = headers;
-              activeAgenda.value.agendaDate = formatDateForInput(next.Session_Date || '');
-            } else {
-              activeSession.value = null;
-              activeSessionIndex.value = 0;
-              activeAgenda.value.headers = [];
-              activeAgenda.value.agendaDate = '';
+              agendaSessions.value = previousSessions;
+              activeSession.value = previousActiveSession;
+              activeSessionIndex.value = previousActiveSessionIndex;
+              activeAgenda.value.headers = previousHeaders;
+              activeAgenda.value.agendaDate = previousAgendaDate;
+              showToast(result?.error || 'Failed to delete session — it has been restored.');
             }
           })
           .withFailureHandler(() => {
-            alert('Error deleting session.');
+            agendaSessions.value = previousSessions;
+            activeSession.value = previousActiveSession;
+            activeSessionIndex.value = previousActiveSessionIndex;
+            activeAgenda.value.headers = previousHeaders;
+            activeAgenda.value.agendaDate = previousAgendaDate;
+            showToast('Failed to delete session — it has been restored.');
           })
           .deleteAgendaSession(sessionId);
       };
 
       const deleteAgenda = (id) => {
         if (!confirm("Are you sure you want to delete this agenda? All sessions will also be deleted.")) return;
+
+        const previousAgendas = agendas.value.slice();
+        const previousSessions = agendaSessions.value.slice();
+        const previousShares = agendaShares.value.slice();
+
+        agendas.value = agendas.value.filter((a) => !idsMatch(a.Agenda_ID, id));
+        agendaSessions.value = agendaSessions.value.filter((s) => !idsMatch(s.Agenda_ID, id));
+        agendaShares.value = agendaShares.value.filter((s) => !idsMatch(s.Agenda_ID, id));
+        if (activeAgenda.value && idsMatch(activeAgenda.value.Agenda_ID, id)) closeAgendaModal();
+
         google.script.run
-          .withSuccessHandler(() => {
-            agendas.value = agendas.value.filter(a => !idsMatch(a.Agenda_ID, id));
-            agendaSessions.value = agendaSessions.value.filter(s => !idsMatch(s.Agenda_ID, id));
-            if (activeAgenda.value && idsMatch(activeAgenda.value.Agenda_ID, id)) closeAgendaModal();
+          .withSuccessHandler((res) => {
+            const result = parseRunResponse(res);
+            if (result && !result.success) {
+              agendas.value = previousAgendas;
+              agendaSessions.value = previousSessions;
+              agendaShares.value = previousShares;
+              showToast(result.error || 'Failed to delete agenda — it has been restored.');
+            }
+          })
+          .withFailureHandler(() => {
+            agendas.value = previousAgendas;
+            agendaSessions.value = previousSessions;
+            agendaShares.value = previousShares;
+            showToast('Failed to delete agenda — it has been restored.');
           })
           .deleteAgenda(id);
       };
