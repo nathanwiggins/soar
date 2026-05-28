@@ -3569,6 +3569,7 @@
       }, { deep: true });
 
       const resetChat = () => {
+        if (!confirm('Reset chat history? This cannot be undone.')) return;
         chatMessages.value = [CHAT_WELCOME_MESSAGE];
         localStorage.removeItem(CHAT_HISTORY_KEY);
       };
