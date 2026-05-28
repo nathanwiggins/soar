@@ -38,9 +38,23 @@
       const isChatOpen = ref(false);
       const isChatLoading = ref(false);
       const chatInput = ref('');
-      const chatMessages = ref([
-        { role: 'assistant', content: 'Hi there! I am your SOAR AI Assistant. How can I help you use SOAR today?' }
-      ]);
+      const CHAT_HISTORY_KEY = 'soar_chat_history_v1';
+      const CHAT_WELCOME_MESSAGE = { role: 'assistant', content: 'Hi there! I am your SOAR AI Assistant. How can I help you use SOAR today?' };
+
+      const loadPersistedChat = () => {
+        try {
+          const raw = localStorage.getItem(CHAT_HISTORY_KEY);
+          if (!raw) return null;
+          const parsed = JSON.parse(raw);
+          const today = new Date().toISOString().slice(0, 10);
+          if (parsed.date !== today) return null;
+          return parsed.messages;
+        } catch (e) {
+          return null;
+        }
+      };
+
+      const chatMessages = ref(loadPersistedChat() || [CHAT_WELCOME_MESSAGE]);
       const chatScrollContainer = ref(null);
 
       const chatOffsetX = ref(0);
@@ -3545,6 +3559,20 @@
           .askGeminiAssistant(chatMessages.value.slice(-10), context);
       };
 
+      watch(chatMessages, (messages) => {
+        try {
+          localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify({
+            date: new Date().toISOString().slice(0, 10),
+            messages: messages
+          }));
+        } catch (e) {}
+      }, { deep: true });
+
+      const resetChat = () => {
+        chatMessages.value = [CHAT_WELCOME_MESSAGE];
+        localStorage.removeItem(CHAT_HISTORY_KEY);
+      };
+
       watch(loading, (isLoading) => {
         if (!isLoading && currentTab.value === 'calendar' && calendarViewMode.value === 'scroll') {
           goToCurrentCalendarMonth();
@@ -3836,6 +3864,7 @@
         chatScrollContainer,
         toggleChat,
         sendChatMessage,
+        resetChat,
         renderMarkdown,
         chatOffsetX,
         chatOffsetY,
