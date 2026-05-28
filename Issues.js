@@ -100,7 +100,7 @@ function syncDailyGitHubStatus() {
 
     const responseCode = githubResponse.getResponseCode();
 
-    if (responseCode === 404) {
+    if (responseCode === 410) {
       const newRow = [...row];
       newRow[headerIndex.Status] = 'Deleted';
       updateRowValues(sheet, sheetRowIndex, newRow);
