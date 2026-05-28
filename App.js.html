@@ -1741,6 +1741,7 @@
       };
 
       const openTaskInfo = (task) => {
+        if (task._syncing) return;
         taskDetailsForm.value = buildTaskDetailsForm(task);
         isEditingTask.value = false;
         showTaskDetailsAssigneeDropdown.value = false;
@@ -1782,7 +1783,6 @@
       };
 
       const closeProjectInfo = () => {
-        if (deletingProject.value || savingProject.value) return;
         showProjectDetailsModal.value = false;
         isEditingProject.value = false;
         projectDetailsForm.value = null;
@@ -1802,7 +1802,6 @@
       };
 
       const closeTaskInfo = () => {
-        if (savingTask.value) return;
         showTaskDetailsModal.value = false;
         showTaskDetailsAssigneeDropdown.value = false;
         isEditingTask.value = false;
@@ -1858,6 +1857,15 @@
 
 
       const makeClientId = (prefix) => `${prefix}-local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      const toasts = ref([]);
+      const showToast = (message, type = 'error') => {
+        const id = makeClientId('toast');
+        toasts.value.push({ id, message, type });
+        setTimeout(() => {
+          toasts.value = toasts.value.filter((t) => t.id !== id);
+        }, 4500);
+      };
 
       const parseRunResponse = (response) => {
         if (typeof response !== 'string') return response || null;
@@ -2179,6 +2187,8 @@
         if (taskIndex >= 0) tasks.value.splice(taskIndex, 1, optimisticTask);
         assignments.value = assignments.value.filter((a) => !idsMatch(a.Assignment_ID, taskId));
         assignments.value.push(...optimisticAssignments);
+        isEditingTask.value = false;
+        showTaskDetailsAssigneeDropdown.value = false;
 
         google.script.run
           .withSuccessHandler((response) => {
@@ -2188,14 +2198,20 @@
             if (!result || !result.success) {
               if (previousTask && taskIndex >= 0) tasks.value.splice(taskIndex, 1, previousTask);
               assignments.value = previousAssignments;
-              alert(result?.error || 'Failed to update task.');
+              if (taskDetailsForm.value && idsMatch(taskDetailsForm.value.taskId, taskId)) {
+                taskDetailsForm.value = previousTask ? buildTaskDetailsForm(previousTask) : taskDetailsForm.value;
+              }
+              showToast(result?.error || 'Failed to save task — your changes were not saved.');
               return;
             }
 
             if (!result.task) {
               if (previousTask && taskIndex >= 0) tasks.value.splice(taskIndex, 1, previousTask);
               assignments.value = previousAssignments;
-              alert('The server updated the task but did not return the updated task data. Please refresh and try again.');
+              if (taskDetailsForm.value && idsMatch(taskDetailsForm.value.taskId, taskId)) {
+                taskDetailsForm.value = previousTask ? buildTaskDetailsForm(previousTask) : taskDetailsForm.value;
+              }
+              showToast('Failed to save task — your changes were not saved.');
               return;
             }
 
@@ -2216,17 +2232,19 @@
               subtasks.value.push(...result.newSubtasks);
             }
 
-            taskDetailsForm.value = buildTaskDetailsForm(updatedTask);
-            isEditingTask.value = false;
-            showTaskDetailsAssigneeDropdown.value = false;
+            if (taskDetailsForm.value && idsMatch(taskDetailsForm.value.taskId, updatedTask.Task_ID)) {
+              taskDetailsForm.value = buildTaskDetailsForm(updatedTask);
+            }
           })
           .withFailureHandler((error) => {
             savingTask.value = false;
             if (previousTask && taskIndex >= 0) tasks.value.splice(taskIndex, 1, previousTask);
             assignments.value = previousAssignments;
-            taskDetailsForm.value = previousTask ? buildTaskDetailsForm(previousTask) : taskDetailsForm.value;
+            if (taskDetailsForm.value && idsMatch(taskDetailsForm.value.taskId, taskId)) {
+              taskDetailsForm.value = previousTask ? buildTaskDetailsForm(previousTask) : taskDetailsForm.value;
+            }
             console.error('Failed to update task:', error);
-            alert('Error updating task.');
+            showToast('Failed to save task — your changes were not saved.');
           })
           .updateTask(taskId, {
             taskTitle: trimmedTitle,
@@ -2331,23 +2349,29 @@
         const confirmed = confirm('Delete this completed task permanently? This action cannot be undone.');
         if (!confirmed) return;
 
+        const previousTasks = tasks.value.slice();
+        const previousAssignments = assignments.value.slice();
+
         permanentlyDeletingTaskIds.value.push(taskId);
+        tasks.value = tasks.value.filter((t) => !idsMatch(t.Task_ID, taskId));
+        assignments.value = assignments.value.filter((a) => !idsMatch(a.Assignment_ID, taskId));
+
         google.script.run
           .withSuccessHandler((response) => {
             permanentlyDeletingTaskIds.value = permanentlyDeletingTaskIds.value.filter((id) => !idsMatch(id, taskId));
-            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            const result = parseRunResponse(response);
             if (!result || !result.success) {
-              alert(result?.error || 'Failed to delete task.');
-              return;
+              tasks.value = previousTasks;
+              assignments.value = previousAssignments;
+              showToast(result?.error || 'Failed to delete task — it has been restored.');
             }
-
-            tasks.value = tasks.value.filter((item) => !idsMatch(item.Task_ID, taskId));
-            assignments.value = assignments.value.filter((assignment) => !idsMatch(assignment.Assignment_ID, taskId));
           })
           .withFailureHandler((error) => {
             permanentlyDeletingTaskIds.value = permanentlyDeletingTaskIds.value.filter((id) => !idsMatch(id, taskId));
+            tasks.value = previousTasks;
+            assignments.value = previousAssignments;
             console.error('Failed to delete task:', error);
-            alert('Error deleting task.');
+            showToast('Failed to delete task — it has been restored.');
           })
           .deleteTask(taskId);
       };
@@ -2360,38 +2384,41 @@
         );
         if (!confirmed) return;
 
+        const projectId = projectDetailsForm.value.projectId;
+        const previousProjects = projects.value.slice();
+        const previousTasks = tasks.value.slice();
+        const previousAssignments = assignments.value.slice();
+        const removedTaskIds = tasks.value.filter((t) => idsMatch(t.Project_ID, projectId)).map((t) => t.Task_ID);
+
         deletingProject.value = true;
+        projects.value = projects.value.filter((p) => !idsMatch(p.Project_ID, projectId));
+        tasks.value = tasks.value.filter((t) => !idsMatch(t.Project_ID, projectId));
+        assignments.value = assignments.value.filter(
+          (a) => !removedTaskIds.some((taskId) => idsMatch(a.Assignment_ID, taskId))
+        );
+        closeProjectInfo();
 
         google.script.run
           .withSuccessHandler((response) => {
             deletingProject.value = false;
 
-            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            const result = parseRunResponse(response);
             if (!result || !result.success) {
-              alert(result?.error || 'Failed to delete project.');
-              return;
+              projects.value = previousProjects;
+              tasks.value = previousTasks;
+              assignments.value = previousAssignments;
+              showToast(result?.error || 'Failed to delete project — it has been restored.');
             }
-
-            const deletedProjectId = result.projectId;
-            projects.value = projects.value.filter((project) => !idsMatch(project.Project_ID, deletedProjectId));
-
-            if (Array.isArray(result.deletedTaskIds) && result.deletedTaskIds.length > 0) {
-              tasks.value = tasks.value.filter(
-                (task) => !result.deletedTaskIds.some((taskId) => idsMatch(task.Task_ID, taskId))
-              );
-              assignments.value = assignments.value.filter(
-                (assignment) => !result.deletedTaskIds.some((taskId) => idsMatch(assignment.Assignment_ID, taskId))
-              );
-            }
-
-            closeProjectInfo();
           })
           .withFailureHandler((error) => {
             deletingProject.value = false;
+            projects.value = previousProjects;
+            tasks.value = previousTasks;
+            assignments.value = previousAssignments;
             console.error('Failed to delete project:', error);
-            alert('Error deleting project.');
+            showToast('Failed to delete project — it has been restored.');
           })
-          .deleteProject(projectDetailsForm.value.projectId);
+          .deleteProject(projectId);
       };
 
       const saveProjectEdits = () => {
@@ -2403,33 +2430,58 @@
           return;
         }
 
+        const projectId = projectDetailsForm.value.projectId;
+        const projectIndex = projects.value.findIndex((p) => idsMatch(p.Project_ID, projectId));
+        const previousProject = projectIndex >= 0 ? { ...projects.value[projectIndex] } : null;
+        const optimisticProject = {
+          ...(previousProject || {}),
+          Project_ID: projectId,
+          Project_Title: trimmedTitle,
+          Due_Date: projectDetailsForm.value.dueDate,
+          Status: projectDetailsForm.value.status,
+          Description: projectDetailsForm.value.description,
+          Color_Scheme: projectDetailsForm.value.colorScheme,
+          _syncing: true
+        };
+
         savingProject.value = true;
+        if (projectIndex >= 0) projects.value.splice(projectIndex, 1, optimisticProject);
+        isEditingProject.value = false;
 
         google.script.run
           .withSuccessHandler((response) => {
             savingProject.value = false;
 
-            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            const result = parseRunResponse(response);
             if (!result || !result.success || !result.project) {
-              alert(result?.error || 'Failed to update project.');
+              if (previousProject && projectIndex >= 0) projects.value.splice(projectIndex, 1, previousProject);
+              if (projectDetailsForm.value && idsMatch(projectDetailsForm.value.projectId, projectId)) {
+                projectDetailsForm.value = previousProject ? buildProjectDetailsForm(previousProject) : projectDetailsForm.value;
+              }
+              showToast(result?.error || 'Failed to save project — your changes were not saved.');
               return;
             }
 
-            const updatedProject = result.project;
-            const projectIndex = projects.value.findIndex((p) => idsMatch(p.Project_ID, updatedProject.Project_ID));
-            if (projectIndex >= 0) {
-              projects.value.splice(projectIndex, 1, updatedProject);
+            const updatedProject = stripSyncFlag(result.project);
+            const updatedIndex = projects.value.findIndex((p) => idsMatch(p.Project_ID, updatedProject.Project_ID));
+            if (updatedIndex >= 0) {
+              projects.value.splice(updatedIndex, 1, updatedProject);
             }
 
-            projectDetailsForm.value = buildProjectDetailsForm(updatedProject);
-            isEditingProject.value = false;
+            if (projectDetailsForm.value && idsMatch(projectDetailsForm.value.projectId, updatedProject.Project_ID)) {
+              projectDetailsForm.value = buildProjectDetailsForm(updatedProject);
+            }
           })
           .withFailureHandler((error) => {
             savingProject.value = false;
+            if (previousProject && projectIndex >= 0) projects.value.splice(projectIndex, 1, previousProject);
+            if (projectDetailsForm.value && idsMatch(projectDetailsForm.value.projectId, projectId)) {
+              projectDetailsForm.value = previousProject ? buildProjectDetailsForm(previousProject) : projectDetailsForm.value;
+            }
             console.error('Failed to update project:', error);
-            alert('Error updating project.');
+            showToast('Failed to save project — your changes were not saved.');
           })
-          .updateProject(projectDetailsForm.value.projectId, {
+          .updateProject(projectId, {
             projectTitle: trimmedTitle,
             dueDate: projectDetailsForm.value.dueDate,
             status: projectDetailsForm.value.status,
@@ -2533,7 +2585,6 @@
       };
 
       const closeAddProject = () => {
-        if (creatingProject.value) return;
         showAddProjectModal.value = false;
       };
 
@@ -2547,7 +2598,6 @@
       };
 
       const closeAddTask = () => {
-        if (creatingTask.value) return;
         showAssigneeDropdown.value = false;
         showAddTaskModal.value = false;
         selectedProject.value = null;
@@ -2587,21 +2637,46 @@
           return;
         }
 
+        const projectId = selectedProject.value.Project_ID;
+        const tempId = makeClientId('TASK');
+        const tempTask = {
+          Task_ID: tempId,
+          Project_ID: projectId,
+          Task_Title: trimmedTitle,
+          Description: newTaskForm.value.description || '',
+          Status: 'Not Started',
+          Priority: newTaskForm.value.priority || '',
+          Due_Date: newTaskForm.value.dueDate || '',
+          Creator_ID: currentUser.value?.User_ID || '',
+          Sort_Order: 0,
+          _syncing: true
+        };
+        const tempAssignments = newTaskForm.value.assigneeIds.map((assigneeId) => ({
+          Assignment_ID: tempId,
+          Assignee_ID: assigneeId,
+          _syncing: true
+        }));
+        const subtaskTitles = newTaskForm.value.subtasks.map((s) => s.title.trim()).filter(Boolean);
+
         creatingTask.value = true;
+        tasks.value.push(tempTask);
+        assignments.value.push(...tempAssignments);
+        closeAddTask();
 
         google.script.run
           .withSuccessHandler((response) => {
             creatingTask.value = false;
+            tasks.value = tasks.value.filter((t) => !idsMatch(t.Task_ID, tempId));
+            assignments.value = assignments.value.filter((a) => !idsMatch(a.Assignment_ID, tempId));
 
-            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            const result = parseRunResponse(response);
             if (!result || !result.success) {
-              alert(result?.error || 'Failed to create task.');
+              showToast(result?.error || 'Failed to create task.');
               return;
             }
 
             if (result.task) {
               tasks.value.push(result.task);
-
               if (Array.isArray(result.assignments)) {
                 assignments.value.push(...result.assignments);
               }
@@ -2611,20 +2686,21 @@
             } else {
               fetchData();
             }
-            closeAddTask();
           })
           .withFailureHandler((error) => {
             creatingTask.value = false;
+            tasks.value = tasks.value.filter((t) => !idsMatch(t.Task_ID, tempId));
+            assignments.value = assignments.value.filter((a) => !idsMatch(a.Assignment_ID, tempId));
             console.error('Failed to add task:', error);
-            alert('Error creating task.');
+            showToast('Failed to create task. Please try again.');
           })
-          .createTask(selectedProject.value.Project_ID, {
+          .createTask(projectId, {
             taskTitle: trimmedTitle,
             dueDate: newTaskForm.value.dueDate,
             description: newTaskForm.value.description,
             priority: newTaskForm.value.priority,
             assigneeIds: newTaskForm.value.assigneeIds,
-            subtasks: newTaskForm.value.subtasks.map((s) => s.title.trim()).filter(Boolean)
+            subtasks: subtaskTitles
           });
       };
 
@@ -2635,15 +2711,31 @@
           return;
         }
 
+        const tempId = makeClientId('PROJ');
+        const tempProject = {
+          Project_ID: tempId,
+          Project_Title: trimmedTitle,
+          Description: newProjectForm.value.description || '',
+          Status: newProjectForm.value.status || 'Not Started',
+          Due_Date: newProjectForm.value.dueDate || '',
+          Creator_ID: currentUser.value?.User_ID || '',
+          Color_Scheme: newProjectForm.value.colorScheme || 'default',
+          Sort_Order: 0,
+          _syncing: true
+        };
+
         creatingProject.value = true;
+        projects.value.push(tempProject);
+        closeAddProject();
 
         google.script.run
           .withSuccessHandler((response) => {
             creatingProject.value = false;
+            projects.value = projects.value.filter((p) => !idsMatch(p.Project_ID, tempId));
 
-            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            const result = parseRunResponse(response);
             if (!result || !result.success) {
-              alert(result?.error || 'Failed to create project.');
+              showToast(result?.error || 'Failed to create project.');
               return;
             }
 
@@ -2655,13 +2747,12 @@
             } else {
               fetchData();
             }
-
-            closeAddProject();
           })
           .withFailureHandler((error) => {
             creatingProject.value = false;
+            projects.value = projects.value.filter((p) => !idsMatch(p.Project_ID, tempId));
             console.error('Failed to add project:', error);
-            alert('Error creating project.');
+            showToast('Failed to create project. Please try again.');
           })
           .createProject({
             projectTitle: trimmedTitle,
@@ -3870,7 +3961,9 @@
         chatOffsetX,
         chatOffsetY,
         isDraggingChat,
-        startChatDrag
+        startChatDrag,
+        toasts,
+        showToast
       };
     }
   });
