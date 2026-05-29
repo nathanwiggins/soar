@@ -566,6 +566,14 @@ function deleteTask(taskId) {
   }
 
   try {
+    const currentUserId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
+    const taskData = getTableData('Tasks');
+    const task = taskData.find(t => (t.Task_ID || '').toString().trim() === normalizedTaskId);
+    if (!task) return JSON.stringify({ success: false, error: 'Task not found.' });
+    if ((task.Creator_ID || '').toString().trim() !== (currentUserId || '').toString().trim()) {
+      return JSON.stringify({ success: false, error: 'Only the task creator can delete this task.' });
+    }
+
     deleteTaskAndAssignments(normalizedTaskId);
     return JSON.stringify({ success: true, taskId: normalizedTaskId });
   } catch (error) {
