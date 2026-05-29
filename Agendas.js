@@ -113,10 +113,21 @@ function deleteAgendaSession(sessionId) {
   const headerIndex = getHeaderIndex(headers);
 
   const rowIndex = data.findIndex((row, i) => i > 0 && row[headerIndex.Session_ID] === sessionId);
-  if (rowIndex > -1) {
-    deleteRowsBySheetIndexes(sheet, [rowIndex + 1]);
-    invalidateTableCache('Sessions');
+  if (rowIndex < 0) return JSON.stringify({ success: false, error: 'Session not found.' });
+
+  const agendaId = (data[rowIndex][headerIndex.Agenda_ID] || '').toString().trim();
+  const agendasData = getTableData('Agendas');
+  const agenda = agendasData.find(a => (a.Agenda_ID || '').toString().trim() === agendaId);
+  if (agenda) {
+    const currentUserId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
+    const creatorId = (agenda.Creator_ID || '').toString().trim();
+    if (creatorId !== (currentUserId || '').toString().trim()) {
+      return JSON.stringify({ success: false, error: 'Only the agenda creator can delete sessions.' });
+    }
   }
+
+  deleteRowsBySheetIndexes(sheet, [rowIndex + 1]);
+  invalidateTableCache('Sessions');
 
   return JSON.stringify({ success: true, sessionId });
 }
@@ -222,11 +233,20 @@ function updateAgenda(agendaId, title, description, sharedUserIds) {
 function deleteAgenda(agendaId) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Agendas');
   const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const headerIndex = getHeaderIndex(headers);
+
   const rowIndex = data.findIndex((row, i) => i > 0 && row[0] === agendaId);
-  if (rowIndex > -1) {
-    deleteRowsBySheetIndexes(sheet, [rowIndex + 1]);
-    invalidateTableCache('Agendas');
+  if (rowIndex < 0) return JSON.stringify({ success: false, error: 'Agenda not found.' });
+
+  const currentUserId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
+  const creatorId = (data[rowIndex][headerIndex.Creator_ID] || '').toString().trim();
+  if (creatorId !== (currentUserId || '').toString().trim()) {
+    return JSON.stringify({ success: false, error: 'Only the agenda creator can delete this agenda.' });
   }
+
+  deleteRowsBySheetIndexes(sheet, [rowIndex + 1]);
+  invalidateTableCache('Agendas');
 
   const sharesSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Sharing');
   const sharesData = sharesSheet.getDataRange().getValues();

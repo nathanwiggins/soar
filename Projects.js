@@ -227,6 +227,15 @@ function deleteProject(projectId) {
       throw new Error('Project not found.');
     }
 
+    const creatorIdColumnIndex = projectHeaders.indexOf('Creator_ID');
+    if (creatorIdColumnIndex !== -1) {
+      const currentUserId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
+      const projectCreatorId = (projectData[projectRowIndex][creatorIdColumnIndex] || '').toString().trim();
+      if (projectCreatorId !== (currentUserId || '').toString().trim()) {
+        return JSON.stringify({ success: false, error: 'Only the project creator can delete this project.' });
+      }
+    }
+
     const tasksData = tasksSheet.getDataRange().getValues();
     const taskHeaders = tasksData[0] || [];
     const taskIdColumnIndex = taskHeaders.indexOf('Task_ID');
