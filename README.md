@@ -1046,7 +1046,7 @@ Updates project metadata.
 **Returns**: `{success: true, project: {...}}`
 
 #### `deleteProject(projectId)`
-Deletes the project row, tasks in that project, and assignment rows for those deleted tasks. It does not currently remove the project creator assignment row from `Assignments`.
+Deletes the project row, tasks in that project, and assignment rows for those deleted tasks. It does not currently remove the project creator assignment row from `Assignments`. Only the project creator may call this; others receive an error.
 
 **Returns**: `{success: true, projectId: "P-00000001"}`
 
@@ -1087,10 +1087,10 @@ Marks a task as completed and records completion timestamp and completing user.
 **Net Effect**: Sets `Status = "Complete"`, `Completed_By = current_user`, `Completed_At = now()`.
 
 #### `deleteTask(taskId)`
-Deletes a task and related assignment rows.
+Deletes a task and related assignment rows. Only the task creator may call this; others receive an error.
 
 #### `deleteTask(taskId)` from **Past Assignments**
-The **Delete Permanently** button in **Past Assignments** calls the same backend `deleteTask(taskId)` function after a stronger confirmation message.
+The **Delete Permanently** button in **Past Assignments** calls the same backend `deleteTask(taskId)` function after a stronger confirmation message. The creator-only restriction applies here as well.
 
 #### `moveTaskToProject(taskId, newProjectId)`
 Moves a task to another project by updating its `Project_ID`. Enforces that the calling user is the creator of both the source and target project. Returns an error if the permission check fails.
@@ -1160,7 +1160,7 @@ Updates an agenda's title, description, and sharing permissions.
 **Returns**: `{success: true, agenda: {...}, shares: [...]}`
 
 #### `deleteAgenda(agendaId)`
-Deletes an agenda, all its sessions, and associated sharing permissions.
+Deletes an agenda, all its sessions, and associated sharing permissions. Only the agenda creator may call this; others receive an error.
 
 #### `createAgendaSession(agendaId, sessionDate, contentJson)`
 Creates a new session for the agenda. Only the agenda creator may call this.
@@ -1188,7 +1188,7 @@ Returns all sessions for an agenda sorted by date descending.
 **Returns**: `{success: true, sessions: [...]}`
 
 #### `deleteAgendaSession(sessionId)`
-Deletes a single agenda session.
+Deletes a single agenda session. Only the creator of the parent agenda may call this; others receive an error.
 
 **Returns**: `{success: true, sessionId: "..."}`
 
