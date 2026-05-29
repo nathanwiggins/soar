@@ -133,7 +133,7 @@ What SOAR records:
 
 Other buttons:
 
-- **Delete Project**: Deletes the project row, tasks in that project, and assignment rows for those deleted tasks. It does not currently remove the project creator assignment row from `Assignments`.
+- **Delete Project**: Deletes the project row, tasks in that project, and assignment rows for those deleted tasks. Only the project creator can delete a project; non-creators see an error toast if they attempt it.
 - **Cancel**: Cancels edit mode.
 - **Close**: Closes the modal when not editing.
 
@@ -180,7 +180,7 @@ Footer buttons:
 
 - **Complete Task**: sets the task status to `Complete`, records `Completed_By`, and records `Completed_At`.
 - **Complete**: displayed in the same button position when the task is already complete.
-- **Delete Task**: deletes the task and related assignments.
+- **Delete Task**: deletes the task and related assignments. Only the task creator can delete a task; non-creators see an error toast if they attempt it.
 - **Save Changes**: saves edits.
 - **Cancel**: cancels edit mode.
 - **Close**: closes the modal when not editing.
@@ -325,7 +325,7 @@ Navigating sessions:
 Managing sessions:
 
 - **New Session** button (owner only): creates a new session blank or copied from the previous one. The date defaults to today.
-- **Delete Session** button (owner only): deletes the currently viewed session. Only visible when more than one session exists.
+- **Delete Session** button (creator only): deletes the currently viewed session. Only the agenda creator can delete sessions; non-creators see an error toast if they attempt it.
 - Deleting an agenda deletes all its sessions.
 
 Sharing an agenda:
@@ -426,7 +426,7 @@ Footer buttons:
 - Each agenda is a recurring template; add a new **session** each time the team meets.
 - The latest session date and section count appear on agenda cards.
 - Navigate past sessions with **← Older** / **Newer →** controls; past sessions are read-only.
-- Agenda creators can create new sessions (blank or copied from the previous session), delete sessions, and edit the current session.
+- Agenda creators can create new sessions (blank or copied from the previous session), delete sessions, delete the agenda, and edit the current session. Only the creator can perform these destructive actions; non-creators see an error toast if they attempt them.
 - Organize session content with headers; add free-text items with **+ Text Item**; embed task references with **+ Link Task**.
 - Open linked tasks using **View**.
 
