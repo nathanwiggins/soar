@@ -3018,12 +3018,12 @@
       };
 
       const canDropTaskHere = (evt, targetProjectId) => {
-        const sourceProjectId = draggingTaskSourceProjectId.value;
+        const draggedTask = evt.draggedContext?.element;
+        const sourceProjectId = draggingTaskSourceProjectId.value || normalizeId(draggedTask?.Project_ID);
         if (!sourceProjectId || idsMatch(sourceProjectId, targetProjectId)) {
           draggingMoveBlocked.value = false;
           return true;
         }
-        const draggedTask = evt.draggedContext?.element;
         if (!idsMatch(draggedTask?.Creator_ID, currentUserId.value)) {
           draggingMoveBlocked.value = true;
           return false;
@@ -3090,13 +3090,22 @@
            const newIndex = evt.added ? evt.added.newIndex : evt.moved.newIndex;
 
            if (evt.added) {
-             if (!idsMatch(element?.Creator_ID, currentUserId.value)) return;
+             const fromProjectId = draggingTaskSourceProjectId.value || normalizeId(element?.Project_ID);
+             if (!idsMatch(element?.Creator_ID, currentUserId.value)) {
+               tasks.value = [...tasks.value];
+               return;
+             }
              const targetProject = getProjectById(targetProjectId);
-             if (!idsMatch(targetProject?.Creator_ID, currentUserId.value)) return;
-             const fromProjectId = draggingTaskSourceProjectId.value;
+             if (!idsMatch(targetProject?.Creator_ID, currentUserId.value)) {
+               tasks.value = [...tasks.value];
+               return;
+             }
              if (fromProjectId && !idsMatch(fromProjectId, targetProjectId)) {
                const sourceProject = getProjectById(fromProjectId);
-               if (!idsMatch(sourceProject?.Creator_ID, currentUserId.value)) return;
+               if (!idsMatch(sourceProject?.Creator_ID, currentUserId.value)) {
+                 tasks.value = [...tasks.value];
+                 return;
+               }
              }
              const fromProjectTaskIds = tasks.value
                .filter(t => idsMatch(t.Project_ID, fromProjectId))
@@ -3107,16 +3116,27 @@
            const globalTaskIndex = tasks.value.findIndex(t => idsMatch(t.Task_ID, element.Task_ID));
            const globalTask = tasks.value[globalTaskIndex];
            tasks.value.splice(globalTaskIndex, 1);
-           
+
            globalTask.Project_ID = targetProjectId;
-           
+
            const currentProjectTasks = tasks.value.filter(t => idsMatch(t.Project_ID, targetProjectId));
            if (newIndex === 0) {
               if (currentProjectTasks.length > 0) {
                  const insertIndex = tasks.value.findIndex(t => idsMatch(t.Task_ID, currentProjectTasks[0].Task_ID));
                  tasks.value.splice(insertIndex, 0, globalTask);
               } else {
-                 tasks.value.push(globalTask);
+                 const visibleProjectOrder = visibleProjects.value.map(p => normalizeId(p.Project_ID));
+                 const targetOrder = visibleProjectOrder.indexOf(normalizeId(targetProjectId));
+                 let insertBeforeIndex = -1;
+                 for (let i = 0; i < tasks.value.length; i++) {
+                   const projOrder = visibleProjectOrder.indexOf(normalizeId(tasks.value[i].Project_ID));
+                   if (projOrder > targetOrder) { insertBeforeIndex = i; break; }
+                 }
+                 if (insertBeforeIndex >= 0) {
+                   tasks.value.splice(insertBeforeIndex, 0, globalTask);
+                 } else {
+                   tasks.value.push(globalTask);
+                 }
               }
            } else {
               const precedingTask = currentProjectTasks[newIndex - 1];
