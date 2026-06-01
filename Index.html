@@ -983,46 +983,49 @@
         <p v-else-if="todoItems.length === 0" :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-sm italic text-center py-8">
           Your To-Do list is empty.
         </p>
-        <div v-else class="space-y-px">
-          <div
-            v-for="item in todoItems"
-            :key="item.id"
-            :class="isDarkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'"
-            class="flex items-start gap-3 px-4 py-2.5 group transition-colors">
-            <input
-              type="checkbox"
-              :checked="item.completed"
-              @change="toggleTodoComplete(item)"
-              class="h-4 w-4 flex-shrink-0 mt-0.5 text-[#DB0000] rounded border-gray-300 focus:ring-[#DB0000] cursor-pointer">
-            <div class="flex-1 min-w-0">
-              <p
-                :class="[
-                  item.completed ? 'line-through opacity-50' : '',
-                  isDarkMode ? 'text-gray-200' : 'text-gray-800'
-                ]"
-                class="text-sm leading-snug break-words">
-                {{ item.label }}
-              </p>
-              <span
-                v-if="item.type !== 'text'"
-                class="inline-flex items-center mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide"
-                :class="item.type === 'project'
-                  ? (isDarkMode ? 'bg-blue-900/50 text-blue-300' : 'bg-blue-50 text-blue-600')
-                  : item.type === 'task'
-                  ? (isDarkMode ? 'bg-purple-900/50 text-purple-300' : 'bg-purple-50 text-purple-600')
-                  : (isDarkMode ? 'bg-green-900/50 text-green-300' : 'bg-green-50 text-green-600')">
-                {{ item.type }}
-              </span>
+        <draggable v-else :list="todoItems" item-key="id" handle=".todo-drag-handle" @end="saveTodoOrder" class="space-y-px">
+          <template #item="{ element: item }">
+            <div
+              :class="isDarkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'"
+              class="flex items-start gap-3 px-4 py-2.5 group transition-colors">
+              <i
+                class="todo-drag-handle fa-solid fa-grip-vertical cursor-grab active:cursor-grabbing flex-shrink-0 mt-1 text-xs"
+                :class="isDarkMode ? 'text-gray-600 group-hover:text-gray-500' : 'text-gray-300 group-hover:text-gray-400'"></i>
+              <input
+                type="checkbox"
+                :checked="item.completed"
+                @change="toggleTodoComplete(item)"
+                class="h-4 w-4 flex-shrink-0 mt-0.5 text-[#DB0000] rounded border-gray-300 focus:ring-[#DB0000] cursor-pointer">
+              <div class="flex-1 min-w-0">
+                <p
+                  :class="[
+                    item.completed ? 'line-through opacity-50' : '',
+                    isDarkMode ? 'text-gray-200' : 'text-gray-800'
+                  ]"
+                  class="text-sm leading-snug break-words">
+                  {{ item.label }}
+                </p>
+                <span
+                  v-if="item.type !== 'text'"
+                  class="inline-flex items-center mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide"
+                  :class="item.type === 'project'
+                    ? (isDarkMode ? 'bg-blue-900/50 text-blue-300' : 'bg-blue-50 text-blue-600')
+                    : item.type === 'task'
+                    ? (isDarkMode ? 'bg-purple-900/50 text-purple-300' : 'bg-purple-50 text-purple-600')
+                    : (isDarkMode ? 'bg-green-900/50 text-green-300' : 'bg-green-50 text-green-600')">
+                  {{ item.type }}
+                </span>
+              </div>
+              <button
+                @click="removeTodoItem(item)"
+                :class="isDarkMode ? 'text-gray-600 hover:text-red-400' : 'text-gray-300 hover:text-red-500'"
+                class="transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0 mt-0.5"
+                title="Remove">
+                <i class="fa-solid fa-trash-can text-xs"></i>
+              </button>
             </div>
-            <button
-              @click="removeTodoItem(item)"
-              :class="isDarkMode ? 'text-gray-600 hover:text-red-400' : 'text-gray-300 hover:text-red-500'"
-              class="transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0 mt-0.5"
-              title="Remove">
-              <i class="fa-solid fa-trash-can text-xs"></i>
-            </button>
-          </div>
-        </div>
+          </template>
+        </draggable>
       </div>
 
       <div

@@ -3938,6 +3938,13 @@
           .resetTodoList();
       };
 
+      const saveTodoOrder = () => {
+        google.script.run
+          .withSuccessHandler(() => {})
+          .withFailureHandler(() => {})
+          .saveTodoList(JSON.stringify(todoItems.value));
+      };
+
       watch(loading, (isLoading) => {
         if (!isLoading && currentTab.value === 'calendar' && calendarViewMode.value === 'scroll') {
           goToCurrentCalendarMonth();
@@ -4234,6 +4241,7 @@
         toggleTodoComplete,
         removeTodoItem,
         resetTodoList,
+        saveTodoOrder,
 
         isChatOpen,
         isChatLoading,
