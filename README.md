@@ -1,6 +1,6 @@
 # Soar — Project Management for Google Workspace
 
-**Soar** is a lightweight, Google-native project management system built on **Google Apps Script** and **Google Sheets**. It provides project tracking, task management, subtasks, task comments with mentions, meeting agendas with sharing, team-supervisor views, calendar views, configurable email notifications, and an optional in-app SOAR AI Assistant—all without a custom server or external database.
+**Soar** is a lightweight, Google-native project management system built on **Google Apps Script** and **Google Sheets**. It provides project tracking, task management, subtasks, task comments with mentions, meeting agendas with sharing, team-supervisor views, calendar views, a personal To-Do list, configurable email notifications, and an optional in-app SOAR AI Assistant—all without a custom server or external database.
 
 **Perfect for**: Small to mid-sized teams already using Google Workspace who want project management without complex setup or external infrastructure.
 
@@ -131,6 +131,21 @@ SOAR has a left sidebar, a top header, a main work area, a lower-left user menu,
 - On **Meeting Agendas**, the primary red button is **New Agenda**.
 - On **Supervisor Tools**, the header has a team-member selector whose default text is **Select team members**.
 - On **Calendar**, the header has previous-month and next-month arrow buttons (month view only), a **Today** button, the current month label (month view only), and a **Month / Multi-month** toggle.
+- The **To-Do** button (checkmark icon with "To-Do" label) is always visible in the top header and opens the **To-Do List** sidebar on the right side.
+
+#### To-Do List sidebar
+
+The **To-Do List** is a personal checklist stored per user in Script Properties. It is opened by clicking the **To-Do** button in the top header and appears as a panel on the right side of the screen.
+
+- **Adding plain text items**: type in the input field at the bottom of the panel and press Enter or the **+** button.
+- **Adding linked items**: open the **Project Details**, **Task Details**, or task's subtask list, then click **Add to To-Do**. Linked items sync their completion state with the original entity — checking one off in either location completes it globally:
+  - Checking off a linked **project** sets its status to **Completed**.
+  - Checking off a linked **task** sets its status to **Complete**.
+  - Checking off a linked **subtask** sets its status to **Complete**.
+  - Unchecking a linked item resets its status to **Not Started** (projects and tasks) or **Incomplete** (subtasks).
+- **Removing an item**: hover the row and click the trash icon.
+- **Clearing the list**: click the reset icon in the sidebar header, then confirm. This removes all items without changing the originals.
+- Completed items remain in the list with a strikethrough until explicitly removed or the list is reset.
 
 #### Lower-left user menu
 
@@ -575,6 +590,17 @@ Footer buttons:
 - Sync profile photos from Google account when possible.
 - View email and edit display name in **My Profile**. The active backend identifies the user by signed-in Google email and does not persist profile email changes.
 - Manage notification preferences per user.
+
+### Personal To-Do List
+
+✅ **To-Do List**
+- Open from the **To-Do** button in the top header; appears as a right-side panel.
+- Add plain text items from the input at the bottom of the panel.
+- Add linked items (projects, tasks, subtasks) via **Add to To-Do** in their detail views.
+- Checking off a linked item updates the original entity's status; unchecking reverses it.
+- Remove individual items with the trash icon (hover to reveal) or clear everything with the reset button.
+- Completed items remain visible with a strikethrough until removed or the list is reset.
+- Stored per user in Script Properties.
 
 ### Accessibility & Personalization
 

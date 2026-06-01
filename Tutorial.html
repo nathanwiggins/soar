@@ -38,6 +38,7 @@ SOAR has a left sidebar, a top header, a main work area, a lower-left user menu,
 - On **Meeting Agendas**, the primary red button is **New Agenda**.
 - On **Supervisor Tools**, the header has a team-member selector whose default text is **Select team members**.
 - On **Calendar**, the header has previous-month and next-month arrow buttons (month view only), a **Today** button, the current month label (month view only), and a **Month / Multi-month** toggle.
+- The **To-Do** button (checklist icon) is always visible in the header on every tab. Click it to open or close the **To-Do List** sidebar on the right side of the screen.
 
 #### Lower-left user menu
 
@@ -418,6 +419,25 @@ Footer buttons:
 - Add subtasks while creating a task or later from **Task Details**.
 - Toggle each subtask between `Incomplete` and `Complete`.
 - Edit, delete, and reorder subtasks in task edit mode.
+
+### Personal To-Do List
+
+✅ **To-Do List**
+- Open from the **To-Do** button in the top header (visible on all tabs); appears as a panel on the right side of the screen.
+- Add plain text items from the input field at the bottom of the panel; press Enter or the **+** button.
+- Add linked items from any detail view:
+  - In **Project Details**, click **Add to To-Do** (visible when not editing) to link the project.
+  - In **Task Details**, click **Add to To-Do** (visible when not editing) to link the task.
+  - In **Task Details**, hover a subtask row and click the checklist icon to link the subtask.
+- Linked items are bidirectional: completing a linked item in the To-Do list updates the original entity's status, and vice versa (status changes on the board are reflected in the To-Do list the next time it syncs).
+  - Checking off a linked project sets its status to **Completed**; unchecking sets it to **Not Started**.
+  - Checking off a linked task sets its status to **Complete**; unchecking sets it to **Not Started**.
+  - Checking off a linked subtask sets its status to **Complete**; unchecking sets it to **Incomplete**.
+- Buttons change to **In To-Do** (green) once an item is already in the list.
+- Remove individual items with the trash icon (hover the row to reveal it).
+- Clear the entire list with the reset icon in the sidebar header; a confirmation dialog appears first.
+- Completed items remain in the list with a strikethrough until removed or reset.
+- The To-Do list is stored per user in Script Properties and persists across sessions.
 
 ### Meeting Agendas
 

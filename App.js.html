@@ -38,6 +38,12 @@
 
       const isChatOpen = ref(false);
       const isChatLoading = ref(false);
+
+      const isTodoOpen = ref(false);
+      const todoItems = ref([]);
+      const todoNewItemText = ref('');
+      const todoLoaded = ref(false);
+      const todoSaving = ref(false);
       const chatInput = ref('');
       const CHAT_HISTORY_KEY = 'soar_chat_history_v1';
       const CHAT_WELCOME_MESSAGE = { role: 'assistant', content: 'Hi there! I am your SOAR AI Assistant. How can I help you use SOAR today?' };
@@ -819,6 +825,7 @@
         }
         applyNotificationSettings(payload.currentUserSettings?.notifications);
         loading.value = false;
+        syncTodoCompletedStates();
 
         if (payload.requiresAccountSetup) {
           const fallbackName = currentUserEmail.value.split('@')[0] || '';
@@ -3791,6 +3798,140 @@
         localStorage.removeItem(CHAT_HISTORY_KEY);
       };
 
+      const isTodoItemInList = (type, linkedId) =>
+        todoItems.value.some((item) => item.type === type && item.linkedId === (linkedId || '').toString().trim());
+
+      const syncTodoCompletedStates = () => {
+        if (!todoLoaded.value) return;
+        todoItems.value.forEach((item) => {
+          if (!item.linkedId) return;
+          if (item.type === 'task') {
+            const task = tasksById.value.get(normalizeId(item.linkedId));
+            if (task) item.completed = isCompleteStatus(task.Status);
+          } else if (item.type === 'project') {
+            const project = projectsById.value.get(normalizeId(item.linkedId));
+            if (project) item.completed = ['Completed', 'Complete'].includes((project.Status || '').trim());
+          } else if (item.type === 'subtask') {
+            const subtask = subtasks.value.find((s) => (s.Subtask_ID || '').toString().trim() === item.linkedId);
+            if (subtask) item.completed = isCompleteStatus(subtask.Status);
+          }
+        });
+      };
+
+      const fetchTodoList = () => {
+        google.script.run
+          .withSuccessHandler((response) => {
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (result.success) {
+              todoItems.value = result.items || [];
+              todoLoaded.value = true;
+              syncTodoCompletedStates();
+            }
+          })
+          .withFailureHandler(() => {})
+          .getTodoList();
+      };
+
+      const toggleTodo = () => {
+        isTodoOpen.value = !isTodoOpen.value;
+        if (isTodoOpen.value) {
+          if (!todoLoaded.value) {
+            fetchTodoList();
+          } else {
+            syncTodoCompletedStates();
+          }
+        }
+      };
+
+      const addTodoTextItem = () => {
+        const text = todoNewItemText.value.trim();
+        if (!text || todoSaving.value) return;
+        todoNewItemText.value = '';
+        const newItem = {
+          id: 'todo-text-' + Date.now(),
+          type: 'text',
+          label: text,
+          linkedId: null,
+          completed: false
+        };
+        todoItems.value = [...todoItems.value, newItem];
+        todoSaving.value = true;
+        google.script.run
+          .withSuccessHandler(() => { todoSaving.value = false; })
+          .withFailureHandler(() => { todoSaving.value = false; })
+          .saveTodoList(JSON.stringify(todoItems.value));
+      };
+
+      const addLinkedTodoItem = (type, linkedId, label) => {
+        if (!todoLoaded.value) todoLoaded.value = true;
+        todoSaving.value = true;
+        google.script.run
+          .withSuccessHandler((response) => {
+            todoSaving.value = false;
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (result.success) {
+              todoItems.value = result.items || [];
+              if (result.alreadyLinked) {
+                showToast('Already in your To-Do list.', 'error');
+              } else {
+                showToast('Added to your To-Do list.', 'success');
+              }
+            }
+          })
+          .withFailureHandler(() => {
+            todoSaving.value = false;
+            showToast('Failed to add to To-Do list.', 'error');
+          })
+          .addLinkedTodoItem(type, linkedId, label);
+      };
+
+      const toggleTodoComplete = (item) => {
+        const newCompleted = !item.completed;
+        item.completed = newCompleted;
+        if (item.linkedId) {
+          if (item.type === 'task') {
+            const task = tasks.value.find((t) => (t.Task_ID || '').toString().trim() === item.linkedId);
+            if (task) task.Status = newCompleted ? 'Complete' : 'Not Started';
+          } else if (item.type === 'project') {
+            const project = projects.value.find((p) => (p.Project_ID || '').toString().trim() === item.linkedId);
+            if (project) project.Status = newCompleted ? 'Completed' : 'Not Started';
+          } else if (item.type === 'subtask') {
+            const subtask = subtasks.value.find((s) => (s.Subtask_ID || '').toString().trim() === item.linkedId);
+            if (subtask) subtask.Status = newCompleted ? 'Complete' : 'Incomplete';
+          }
+        }
+        google.script.run
+          .withSuccessHandler((response) => {
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (result.success) todoItems.value = result.items || [];
+          })
+          .withFailureHandler(() => {})
+          .toggleTodoItemComplete(item.id, newCompleted);
+      };
+
+      const removeTodoItem = (item) => {
+        todoItems.value = todoItems.value.filter((i) => i.id !== item.id);
+        google.script.run
+          .withSuccessHandler((response) => {
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (result.success) todoItems.value = result.items || [];
+          })
+          .withFailureHandler(() => {})
+          .removeTodoItem(item.id);
+      };
+
+      const resetTodoList = () => {
+        if (!confirm('Clear your entire To-Do list? This cannot be undone.')) return;
+        todoItems.value = [];
+        google.script.run
+          .withSuccessHandler((response) => {
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (result.success) todoItems.value = result.items || [];
+          })
+          .withFailureHandler(() => {})
+          .resetTodoList();
+      };
+
       watch(loading, (isLoading) => {
         if (!isLoading && currentTab.value === 'calendar' && calendarViewMode.value === 'scroll') {
           goToCurrentCalendarMonth();
@@ -4074,6 +4215,19 @@
         getAgendaContentPreview,
         getAgendaSectionCount,
         getAgendaTextPreview,
+
+        isTodoOpen,
+        todoItems,
+        todoNewItemText,
+        todoLoaded,
+        todoSaving,
+        isTodoItemInList,
+        toggleTodo,
+        addTodoTextItem,
+        addLinkedTodoItem,
+        toggleTodoComplete,
+        removeTodoItem,
+        resetTodoList,
 
         isChatOpen,
         isChatLoading,
