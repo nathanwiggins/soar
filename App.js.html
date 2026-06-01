@@ -2656,7 +2656,6 @@
           Priority: newTaskForm.value.priority || '',
           Due_Date: newTaskForm.value.dueDate || '',
           Creator_ID: currentUser.value?.User_ID || '',
-          Sort_Order: 0,
           _syncing: true
         };
         const tempAssignments = newTaskForm.value.assigneeIds.map((assigneeId) => ({
@@ -2728,7 +2727,6 @@
           Due_Date: newProjectForm.value.dueDate || '',
           Creator_ID: currentUser.value?.User_ID || '',
           Color_Scheme: newProjectForm.value.colorScheme || 'default',
-          Sort_Order: 0,
           _syncing: true
         };
 
