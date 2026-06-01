@@ -2729,15 +2729,22 @@
           Color_Scheme: newProjectForm.value.colorScheme || 'default',
           _syncing: true
         };
+        const tempAssignment = {
+          Assignment_ID: tempId,
+          Assignee_ID: currentUser.value?.User_ID || '',
+          _syncing: true
+        };
 
         creatingProject.value = true;
         projects.value.push(tempProject);
+        assignments.value.push(tempAssignment);
         closeAddProject();
 
         google.script.run
           .withSuccessHandler((response) => {
             creatingProject.value = false;
             projects.value = projects.value.filter((p) => !idsMatch(p.Project_ID, tempId));
+            assignments.value = assignments.value.filter((a) => !idsMatch(a.Assignment_ID, tempId));
 
             const result = parseRunResponse(response);
             if (!result || !result.success) {
@@ -2757,6 +2764,7 @@
           .withFailureHandler((error) => {
             creatingProject.value = false;
             projects.value = projects.value.filter((p) => !idsMatch(p.Project_ID, tempId));
+            assignments.value = assignments.value.filter((a) => !idsMatch(a.Assignment_ID, tempId));
             console.error('Failed to add project:', error);
             showToast('Failed to create project. Please try again.');
           })
