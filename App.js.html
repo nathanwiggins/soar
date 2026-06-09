@@ -2968,6 +2968,7 @@
       const draggingTaskSourceProjectId = ref(null);
       const draggingOverProjectId = ref(null);
       const draggingMoveBlocked = ref(false);
+      const draggingTask = ref(null);
       const taskMoveUndoStack = ref([]);
 
       const stopKanbanAutoScroll = () => {
@@ -3014,11 +3015,16 @@
       };
 
       const onTaskDragStart = (evt, projectId) => {
+        const taskList = currentTab.value === 'supervisor-view'
+          ? getSupervisorTasksForProject(projectId)
+          : getTasksForProject(projectId);
+        draggingTask.value = taskList[evt.oldIndex] || null;
         draggingTaskSourceProjectId.value = projectId;
         startKanbanAutoScroll();
       };
 
       const onTaskDragEnd = () => {
+        draggingTask.value = null;
         draggingTaskSourceProjectId.value = null;
         draggingOverProjectId.value = null;
         draggingMoveBlocked.value = false;
@@ -3028,11 +3034,28 @@
       const onDragEnterProject = (projectId) => {
         if (draggingTaskSourceProjectId.value === null) return;
         draggingOverProjectId.value = projectId;
+        if (idsMatch(draggingTaskSourceProjectId.value, projectId)) {
+          draggingMoveBlocked.value = false;
+          return;
+        }
+        const task = draggingTask.value;
+        if (!task || !idsMatch(task.Creator_ID, currentUserId.value)) {
+          draggingMoveBlocked.value = true;
+          return;
+        }
+        const targetProject = getProjectById(projectId);
+        if (!idsMatch(targetProject?.Creator_ID, currentUserId.value)) {
+          draggingMoveBlocked.value = true;
+          return;
+        }
+        const sourceProject = getProjectById(draggingTaskSourceProjectId.value);
+        draggingMoveBlocked.value = !idsMatch(sourceProject?.Creator_ID, currentUserId.value);
       };
 
-      const canDropTaskHere = (evt, targetProjectId) => {
-        const draggedTask = evt.draggedContext?.element;
+      const canDropTaskHere = (evt, columnProjectId) => {
+        const draggedTask = evt.draggedContext?.element || draggingTask.value;
         const sourceProjectId = draggingTaskSourceProjectId.value || normalizeId(draggedTask?.Project_ID);
+        const targetProjectId = draggingOverProjectId.value || columnProjectId;
         if (!sourceProjectId || idsMatch(sourceProjectId, targetProjectId)) {
           draggingMoveBlocked.value = false;
           return true;
@@ -3104,19 +3127,24 @@
 
            if (evt.added) {
              const fromProjectId = draggingTaskSourceProjectId.value || normalizeId(element?.Project_ID);
-             if (!idsMatch(element?.Creator_ID, currentUserId.value)) {
+             const revertMove = () => {
+               memoCache.delete('filteredTasks');
+               memoCache.delete('projectSummaries');
                tasks.value = [...tasks.value];
+             };
+             if (!idsMatch(element?.Creator_ID, currentUserId.value)) {
+               revertMove();
                return;
              }
              const targetProject = getProjectById(targetProjectId);
              if (!idsMatch(targetProject?.Creator_ID, currentUserId.value)) {
-               tasks.value = [...tasks.value];
+               revertMove();
                return;
              }
              if (fromProjectId && !idsMatch(fromProjectId, targetProjectId)) {
                const sourceProject = getProjectById(fromProjectId);
                if (!idsMatch(sourceProject?.Creator_ID, currentUserId.value)) {
-                 tasks.value = [...tasks.value];
+                 revertMove();
                  return;
                }
              }
@@ -4180,6 +4208,7 @@
         draggingTaskSourceProjectId,
         draggingOverProjectId,
         draggingMoveBlocked,
+        draggingTask,
         startKanbanAutoScroll,
         endKanbanAutoScroll,
         handleKanbanDragPointerMove,
