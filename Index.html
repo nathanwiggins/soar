@@ -26,6 +26,9 @@
       max-width: 150px;
       height: auto;
     }
+    .toast-enter-active, .toast-leave-active { transition: all 0.25s ease; }
+    .toast-enter-from { opacity: 0; transform: translateY(8px); }
+    .toast-leave-to { opacity: 0; transform: translateX(16px); }
   </style>
 </head>
 <body class="h-screen flex overflow-hidden">
@@ -435,6 +438,17 @@
               </div>
             </div>
           </template>
+
+          <button
+            @click="toggleTodo"
+            :class="isTodoOpen
+              ? 'bg-[#DB0000] text-white'
+              : (isDarkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200')"
+            class="h-9 px-3 rounded-lg inline-flex items-center gap-2 text-sm font-medium transition-colors"
+            title="My To-Do List">
+            <i class="fa-solid fa-list-check"></i>
+            <span class="hidden sm:inline">To-Do</span>
+          </button>
         </div>
       </header>
 
@@ -933,6 +947,107 @@
 </div>
     </main>
 
+    <aside
+      v-show="isTodoOpen"
+      :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'"
+      class="w-80 flex-shrink-0 border-l flex flex-col h-full">
+
+      <div
+        :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'"
+        class="px-4 py-3 border-b flex items-center justify-between flex-shrink-0">
+        <h3 :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'" class="text-sm font-semibold flex items-center gap-2">
+          <i class="fa-solid fa-list-check text-[#DB0000]"></i> My To-Do List
+        </h3>
+        <div class="flex items-center gap-3">
+          <button
+            @click="resetTodoList"
+            :disabled="todoItems.length === 0"
+            :class="isDarkMode ? 'text-gray-500 hover:text-red-400 disabled:opacity-30' : 'text-gray-400 hover:text-red-500 disabled:opacity-30'"
+            class="transition-colors disabled:cursor-not-allowed text-sm"
+            title="Clear all items">
+            <i class="fa-solid fa-rotate-left"></i>
+          </button>
+          <button
+            @click="isTodoOpen = false"
+            :class="isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'"
+            class="transition-colors">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto py-2">
+        <p v-if="!todoLoaded" :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-sm italic text-center py-8">
+          Loading...
+        </p>
+        <p v-else-if="todoItems.length === 0" :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-sm italic text-center py-8">
+          Your To-Do list is empty.
+        </p>
+        <draggable v-else :list="todoItems" item-key="id" handle=".todo-drag-handle" @end="saveTodoOrder" class="space-y-px">
+          <template #item="{ element: item }">
+            <div
+              :class="isDarkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'"
+              class="flex items-start gap-3 px-4 py-2.5 group transition-colors">
+              <i
+                class="todo-drag-handle fa-solid fa-grip-vertical cursor-grab active:cursor-grabbing flex-shrink-0 mt-1 text-xs"
+                :class="isDarkMode ? 'text-gray-600 group-hover:text-gray-500' : 'text-gray-300 group-hover:text-gray-400'"></i>
+              <input
+                type="checkbox"
+                :checked="item.completed"
+                @change="toggleTodoComplete(item)"
+                class="h-4 w-4 flex-shrink-0 mt-0.5 text-[#DB0000] rounded border-gray-300 focus:ring-[#DB0000] cursor-pointer">
+              <div class="flex-1 min-w-0">
+                <p
+                  :class="[
+                    item.completed ? 'line-through opacity-50' : '',
+                    isDarkMode ? 'text-gray-200' : 'text-gray-800'
+                  ]"
+                  class="text-sm leading-snug break-words">
+                  {{ item.label }}
+                </p>
+                <span
+                  v-if="item.type !== 'text'"
+                  class="inline-flex items-center mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide"
+                  :class="item.type === 'project'
+                    ? (isDarkMode ? 'bg-blue-900/50 text-blue-300' : 'bg-blue-50 text-blue-600')
+                    : item.type === 'task'
+                    ? (isDarkMode ? 'bg-purple-900/50 text-purple-300' : 'bg-purple-50 text-purple-600')
+                    : (isDarkMode ? 'bg-green-900/50 text-green-300' : 'bg-green-50 text-green-600')">
+                  {{ item.type }}
+                </span>
+              </div>
+              <button
+                @click="removeTodoItem(item)"
+                :class="isDarkMode ? 'text-gray-600 hover:text-red-400' : 'text-gray-300 hover:text-red-500'"
+                class="transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0 mt-0.5"
+                title="Remove">
+                <i class="fa-solid fa-trash-can text-xs"></i>
+              </button>
+            </div>
+          </template>
+        </draggable>
+      </div>
+
+      <div
+        :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'"
+        class="border-t p-3 flex-shrink-0">
+        <form @submit.prevent="addTodoTextItem" class="flex gap-2">
+          <input
+            v-model="todoNewItemText"
+            type="text"
+            placeholder="Add an item..."
+            :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300 text-gray-800'"
+            class="flex-1 rounded-lg px-3 py-2 text-sm border focus:outline-none focus:ring-2 focus:ring-[#DB0000]/50">
+          <button
+            type="submit"
+            :disabled="!todoNewItemText.trim() || todoSaving"
+            class="bg-[#DB0000] hover:bg-[#C41425] text-white w-9 h-9 rounded-lg flex items-center justify-center disabled:opacity-50 transition-colors flex-shrink-0">
+            <i class="fa-solid fa-plus text-sm"></i>
+          </button>
+        </form>
+      </div>
+    </aside>
+
     <div
       v-if="showCreateAccountModal"
       class="fixed inset-0 bg-gray-900/50 flex items-center justify-center z-50 px-4">
@@ -1316,6 +1431,17 @@
           <div class="flex items-center gap-2">
             <button
               v-if="!isEditingProject"
+              :class="isTodoItemInList('project', projectDetailsForm.projectId)
+                ? (isDarkMode ? 'bg-green-900/40 text-green-300 border-green-700' : 'bg-green-50 text-green-700 border-green-200')
+                : (isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-800' : 'border-gray-300 text-gray-600 hover:bg-gray-50')"
+              class="px-3 py-2 rounded-lg text-sm font-medium border transition-colors"
+              @click="!isTodoItemInList('project', projectDetailsForm.projectId) && addLinkedTodoItem('project', projectDetailsForm.projectId, projectDetailsForm.projectTitle)"
+              :disabled="todoSaving || isTodoItemInList('project', projectDetailsForm.projectId)">
+              <i class="fa-solid fa-list-check mr-1"></i>
+              {{ isTodoItemInList('project', projectDetailsForm.projectId) ? 'In To-Do' : 'Add to To-Do' }}
+            </button>
+            <button
+              v-if="!isEditingProject"
               class="btn-action-red px-3 py-2 rounded-lg text-sm font-medium transition-colors"
               @click="enableProjectEdit">
               Edit Project
@@ -1462,6 +1588,17 @@
           <div class="flex items-center gap-2">
             <button
               v-if="!isEditingTask"
+              :class="isTodoItemInList('task', taskDetailsForm.taskId)
+                ? (isDarkMode ? 'bg-green-900/40 text-green-300 border-green-700' : 'bg-green-50 text-green-700 border-green-200')
+                : (isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-800' : 'border-gray-300 text-gray-600 hover:bg-gray-50')"
+              class="px-3 py-2 rounded-lg text-sm font-medium border transition-colors"
+              @click="!isTodoItemInList('task', taskDetailsForm.taskId) && addLinkedTodoItem('task', taskDetailsForm.taskId, taskDetailsForm.taskTitle)"
+              :disabled="todoSaving || isTodoItemInList('task', taskDetailsForm.taskId)">
+              <i class="fa-solid fa-list-check mr-1"></i>
+              {{ isTodoItemInList('task', taskDetailsForm.taskId) ? 'In To-Do' : 'Add to To-Do' }}
+            </button>
+            <button
+              v-if="!isEditingTask"
               class="btn-action-red px-3 py-2 rounded-lg text-sm font-medium transition-colors"
               @click="enableTaskEdit">
               Edit Task
@@ -1507,7 +1644,7 @@
                        @change="onExistingSubtaskChange">
               <template #item="{ element: subtask, index }">
                 <div :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'"
-                     class="flex items-center gap-3 p-2 rounded-lg border">
+                     class="flex items-center gap-3 p-2 rounded-lg border group">
                   
                   <i v-if="isEditingTask" class="fa-solid fa-grip-vertical subtask-drag-handle cursor-grab active:cursor-grabbing px-1" :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'"></i>
                   
@@ -1541,6 +1678,18 @@
                       <i v-else class="fa-solid fa-xmark text-sm"></i>
                     </button>
                   </div>
+                  <button
+                    v-if="!isEditingTask"
+                    type="button"
+                    @click.stop="!isTodoItemInList('subtask', subtask.Subtask_ID) && addLinkedTodoItem('subtask', subtask.Subtask_ID, subtask.Subtask_Title)"
+                    :disabled="todoSaving || isTodoItemInList('subtask', subtask.Subtask_ID)"
+                    :class="isTodoItemInList('subtask', subtask.Subtask_ID)
+                      ? (isDarkMode ? 'text-green-400' : 'text-green-600')
+                      : (isDarkMode ? 'text-gray-600 hover:text-gray-300' : 'text-gray-300 hover:text-gray-500')"
+                    class="transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0 h-7 w-7 rounded-md flex items-center justify-center"
+                    :title="isTodoItemInList('subtask', subtask.Subtask_ID) ? 'In To-Do list' : 'Add to To-Do list'">
+                    <i class="fa-solid fa-list-check text-xs"></i>
+                  </button>
                 </div>
               </template>
             </draggable>
@@ -2122,7 +2271,7 @@
     <div v-if="isCalendarAutoScrollActive" class="fixed inset-x-0 top-0 h-24 z-[9998] pointer-events-auto" @dragover.prevent="handleCalendarDragPointerMove($event)"></div>
     <div v-if="isCalendarAutoScrollActive" class="fixed inset-x-0 bottom-0 h-24 z-[9998] pointer-events-auto" @dragover.prevent="handleCalendarDragPointerMove($event)"></div>
 
-    <div class="fixed bottom-6 right-6 z-50 flex flex-col items-end">
+    <div class="fixed bottom-6 z-50 flex flex-col items-end transition-all duration-300" :style="{ right: isTodoOpen ? 'calc(320px + 1.5rem)' : '1.5rem' }">
       <div v-if="isChatOpen" 
            :style="{ transform: `translate3d(${chatOffsetX}px, ${chatOffsetY}px, 0)` }"
            :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'" 
@@ -2187,6 +2336,20 @@
       </button>
     </div>
 
+    <div class="fixed bottom-5 flex flex-col gap-2 z-[9999] pointer-events-none transition-all duration-300" :style="{ right: isTodoOpen ? 'calc(320px + 1.25rem)' : '1.25rem', maxWidth: '22rem' }">
+      <transition-group name="toast">
+        <div
+          v-for="toast in toasts"
+          :key="toast.id"
+          class="pointer-events-auto flex items-start gap-3 rounded-xl px-4 py-3 shadow-xl text-sm font-medium leading-snug"
+          :class="toast.type === 'error'
+            ? (isDarkMode ? 'bg-red-900 text-red-100' : 'bg-red-600 text-white')
+            : (isDarkMode ? 'bg-green-900 text-green-100' : 'bg-green-600 text-white')">
+          <i class="mt-0.5 shrink-0" :class="toast.type === 'error' ? 'fa-solid fa-circle-exclamation' : 'fa-solid fa-circle-check'"></i>
+          <span>{{ toast.message }}</span>
+        </div>
+      </transition-group>
+    </div>
   </div> <?!= include('App.js.html'); ?>
 </body>
 </html>

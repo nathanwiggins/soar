@@ -85,6 +85,7 @@ function saveUserSortOrder(entityType, orderedIds) {
   const key = getUserSortOrderPropertyKey(currentUserEmail, entityType);
   if (!key) return JSON.stringify({ success: false, error: 'Invalid user email.' });
   PropertiesService.getScriptProperties().setProperty(key, JSON.stringify(orderedIds));
+  bumpDataVersion();
   return JSON.stringify({ success: true });
 }
 

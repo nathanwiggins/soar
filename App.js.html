@@ -38,6 +38,12 @@
 
       const isChatOpen = ref(false);
       const isChatLoading = ref(false);
+
+      const isTodoOpen = ref(false);
+      const todoItems = ref([]);
+      const todoNewItemText = ref('');
+      const todoLoaded = ref(false);
+      const todoSaving = ref(false);
       const chatInput = ref('');
       const CHAT_HISTORY_KEY = 'soar_chat_history_v1';
       const CHAT_WELCOME_MESSAGE = { role: 'assistant', content: 'Hi there! I am your SOAR AI Assistant. How can I help you use SOAR today?' };
@@ -819,6 +825,7 @@
         }
         applyNotificationSettings(payload.currentUserSettings?.notifications);
         loading.value = false;
+        syncTodoCompletedStates();
 
         if (payload.requiresAccountSetup) {
           const fallbackName = currentUserEmail.value.split('@')[0] || '';
@@ -1742,6 +1749,7 @@
       };
 
       const openTaskInfo = (task) => {
+        if (task._syncing) return;
         taskDetailsForm.value = buildTaskDetailsForm(task);
         isEditingTask.value = false;
         showTaskDetailsAssigneeDropdown.value = false;
@@ -1783,7 +1791,6 @@
       };
 
       const closeProjectInfo = () => {
-        if (deletingProject.value || savingProject.value) return;
         showProjectDetailsModal.value = false;
         isEditingProject.value = false;
         projectDetailsForm.value = null;
@@ -1803,7 +1810,6 @@
       };
 
       const closeTaskInfo = () => {
-        if (savingTask.value) return;
         showTaskDetailsModal.value = false;
         showTaskDetailsAssigneeDropdown.value = false;
         isEditingTask.value = false;
@@ -1859,6 +1865,15 @@
 
 
       const makeClientId = (prefix) => `${prefix}-local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      const toasts = ref([]);
+      const showToast = (message, type = 'error') => {
+        const id = makeClientId('toast');
+        toasts.value.push({ id, message, type });
+        setTimeout(() => {
+          toasts.value = toasts.value.filter((t) => t.id !== id);
+        }, 4500);
+      };
 
       const parseRunResponse = (response) => {
         if (typeof response !== 'string') return response || null;
@@ -2180,6 +2195,8 @@
         if (taskIndex >= 0) tasks.value.splice(taskIndex, 1, optimisticTask);
         assignments.value = assignments.value.filter((a) => !idsMatch(a.Assignment_ID, taskId));
         assignments.value.push(...optimisticAssignments);
+        isEditingTask.value = false;
+        showTaskDetailsAssigneeDropdown.value = false;
 
         google.script.run
           .withSuccessHandler((response) => {
@@ -2189,14 +2206,20 @@
             if (!result || !result.success) {
               if (previousTask && taskIndex >= 0) tasks.value.splice(taskIndex, 1, previousTask);
               assignments.value = previousAssignments;
-              alert(result?.error || 'Failed to update task.');
+              if (taskDetailsForm.value && idsMatch(taskDetailsForm.value.taskId, taskId)) {
+                taskDetailsForm.value = previousTask ? buildTaskDetailsForm(previousTask) : taskDetailsForm.value;
+              }
+              showToast(result?.error || 'Failed to save task — your changes were not saved.');
               return;
             }
 
             if (!result.task) {
               if (previousTask && taskIndex >= 0) tasks.value.splice(taskIndex, 1, previousTask);
               assignments.value = previousAssignments;
-              alert('The server updated the task but did not return the updated task data. Please refresh and try again.');
+              if (taskDetailsForm.value && idsMatch(taskDetailsForm.value.taskId, taskId)) {
+                taskDetailsForm.value = previousTask ? buildTaskDetailsForm(previousTask) : taskDetailsForm.value;
+              }
+              showToast('Failed to save task — your changes were not saved.');
               return;
             }
 
@@ -2217,17 +2240,19 @@
               subtasks.value.push(...result.newSubtasks);
             }
 
-            taskDetailsForm.value = buildTaskDetailsForm(updatedTask);
-            isEditingTask.value = false;
-            showTaskDetailsAssigneeDropdown.value = false;
+            if (taskDetailsForm.value && idsMatch(taskDetailsForm.value.taskId, updatedTask.Task_ID)) {
+              taskDetailsForm.value = buildTaskDetailsForm(updatedTask);
+            }
           })
           .withFailureHandler((error) => {
             savingTask.value = false;
             if (previousTask && taskIndex >= 0) tasks.value.splice(taskIndex, 1, previousTask);
             assignments.value = previousAssignments;
-            taskDetailsForm.value = previousTask ? buildTaskDetailsForm(previousTask) : taskDetailsForm.value;
+            if (taskDetailsForm.value && idsMatch(taskDetailsForm.value.taskId, taskId)) {
+              taskDetailsForm.value = previousTask ? buildTaskDetailsForm(previousTask) : taskDetailsForm.value;
+            }
             console.error('Failed to update task:', error);
-            alert('Error updating task.');
+            showToast('Failed to save task — your changes were not saved.');
           })
           .updateTask(taskId, {
             taskTitle: trimmedTitle,
@@ -2332,23 +2357,29 @@
         const confirmed = confirm('Delete this completed task permanently? This action cannot be undone.');
         if (!confirmed) return;
 
+        const previousTasks = tasks.value.slice();
+        const previousAssignments = assignments.value.slice();
+
         permanentlyDeletingTaskIds.value.push(taskId);
+        tasks.value = tasks.value.filter((t) => !idsMatch(t.Task_ID, taskId));
+        assignments.value = assignments.value.filter((a) => !idsMatch(a.Assignment_ID, taskId));
+
         google.script.run
           .withSuccessHandler((response) => {
             permanentlyDeletingTaskIds.value = permanentlyDeletingTaskIds.value.filter((id) => !idsMatch(id, taskId));
-            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            const result = parseRunResponse(response);
             if (!result || !result.success) {
-              alert(result?.error || 'Failed to delete task.');
-              return;
+              tasks.value = previousTasks;
+              assignments.value = previousAssignments;
+              showToast(result?.error || 'Failed to delete task — it has been restored.');
             }
-
-            tasks.value = tasks.value.filter((item) => !idsMatch(item.Task_ID, taskId));
-            assignments.value = assignments.value.filter((assignment) => !idsMatch(assignment.Assignment_ID, taskId));
           })
           .withFailureHandler((error) => {
             permanentlyDeletingTaskIds.value = permanentlyDeletingTaskIds.value.filter((id) => !idsMatch(id, taskId));
+            tasks.value = previousTasks;
+            assignments.value = previousAssignments;
             console.error('Failed to delete task:', error);
-            alert('Error deleting task.');
+            showToast('Failed to delete task — it has been restored.');
           })
           .deleteTask(taskId);
       };
@@ -2361,38 +2392,41 @@
         );
         if (!confirmed) return;
 
+        const projectId = projectDetailsForm.value.projectId;
+        const previousProjects = projects.value.slice();
+        const previousTasks = tasks.value.slice();
+        const previousAssignments = assignments.value.slice();
+        const removedTaskIds = tasks.value.filter((t) => idsMatch(t.Project_ID, projectId)).map((t) => t.Task_ID);
+
         deletingProject.value = true;
+        projects.value = projects.value.filter((p) => !idsMatch(p.Project_ID, projectId));
+        tasks.value = tasks.value.filter((t) => !idsMatch(t.Project_ID, projectId));
+        assignments.value = assignments.value.filter(
+          (a) => !removedTaskIds.some((taskId) => idsMatch(a.Assignment_ID, taskId))
+        );
+        closeProjectInfo();
 
         google.script.run
           .withSuccessHandler((response) => {
             deletingProject.value = false;
 
-            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            const result = parseRunResponse(response);
             if (!result || !result.success) {
-              alert(result?.error || 'Failed to delete project.');
-              return;
+              projects.value = previousProjects;
+              tasks.value = previousTasks;
+              assignments.value = previousAssignments;
+              showToast(result?.error || 'Failed to delete project — it has been restored.');
             }
-
-            const deletedProjectId = result.projectId;
-            projects.value = projects.value.filter((project) => !idsMatch(project.Project_ID, deletedProjectId));
-
-            if (Array.isArray(result.deletedTaskIds) && result.deletedTaskIds.length > 0) {
-              tasks.value = tasks.value.filter(
-                (task) => !result.deletedTaskIds.some((taskId) => idsMatch(task.Task_ID, taskId))
-              );
-              assignments.value = assignments.value.filter(
-                (assignment) => !result.deletedTaskIds.some((taskId) => idsMatch(assignment.Assignment_ID, taskId))
-              );
-            }
-
-            closeProjectInfo();
           })
           .withFailureHandler((error) => {
             deletingProject.value = false;
+            projects.value = previousProjects;
+            tasks.value = previousTasks;
+            assignments.value = previousAssignments;
             console.error('Failed to delete project:', error);
-            alert('Error deleting project.');
+            showToast('Failed to delete project — it has been restored.');
           })
-          .deleteProject(projectDetailsForm.value.projectId);
+          .deleteProject(projectId);
       };
 
       const saveProjectEdits = () => {
@@ -2404,33 +2438,58 @@
           return;
         }
 
+        const projectId = projectDetailsForm.value.projectId;
+        const projectIndex = projects.value.findIndex((p) => idsMatch(p.Project_ID, projectId));
+        const previousProject = projectIndex >= 0 ? { ...projects.value[projectIndex] } : null;
+        const optimisticProject = {
+          ...(previousProject || {}),
+          Project_ID: projectId,
+          Project_Title: trimmedTitle,
+          Due_Date: projectDetailsForm.value.dueDate,
+          Status: projectDetailsForm.value.status,
+          Description: projectDetailsForm.value.description,
+          Color_Scheme: projectDetailsForm.value.colorScheme,
+          _syncing: true
+        };
+
         savingProject.value = true;
+        if (projectIndex >= 0) projects.value.splice(projectIndex, 1, optimisticProject);
+        isEditingProject.value = false;
 
         google.script.run
           .withSuccessHandler((response) => {
             savingProject.value = false;
 
-            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            const result = parseRunResponse(response);
             if (!result || !result.success || !result.project) {
-              alert(result?.error || 'Failed to update project.');
+              if (previousProject && projectIndex >= 0) projects.value.splice(projectIndex, 1, previousProject);
+              if (projectDetailsForm.value && idsMatch(projectDetailsForm.value.projectId, projectId)) {
+                projectDetailsForm.value = previousProject ? buildProjectDetailsForm(previousProject) : projectDetailsForm.value;
+              }
+              showToast(result?.error || 'Failed to save project — your changes were not saved.');
               return;
             }
 
-            const updatedProject = result.project;
-            const projectIndex = projects.value.findIndex((p) => idsMatch(p.Project_ID, updatedProject.Project_ID));
-            if (projectIndex >= 0) {
-              projects.value.splice(projectIndex, 1, updatedProject);
+            const updatedProject = stripSyncFlag(result.project);
+            const updatedIndex = projects.value.findIndex((p) => idsMatch(p.Project_ID, updatedProject.Project_ID));
+            if (updatedIndex >= 0) {
+              projects.value.splice(updatedIndex, 1, updatedProject);
             }
 
-            projectDetailsForm.value = buildProjectDetailsForm(updatedProject);
-            isEditingProject.value = false;
+            if (projectDetailsForm.value && idsMatch(projectDetailsForm.value.projectId, updatedProject.Project_ID)) {
+              projectDetailsForm.value = buildProjectDetailsForm(updatedProject);
+            }
           })
           .withFailureHandler((error) => {
             savingProject.value = false;
+            if (previousProject && projectIndex >= 0) projects.value.splice(projectIndex, 1, previousProject);
+            if (projectDetailsForm.value && idsMatch(projectDetailsForm.value.projectId, projectId)) {
+              projectDetailsForm.value = previousProject ? buildProjectDetailsForm(previousProject) : projectDetailsForm.value;
+            }
             console.error('Failed to update project:', error);
-            alert('Error updating project.');
+            showToast('Failed to save project — your changes were not saved.');
           })
-          .updateProject(projectDetailsForm.value.projectId, {
+          .updateProject(projectId, {
             projectTitle: trimmedTitle,
             dueDate: projectDetailsForm.value.dueDate,
             status: projectDetailsForm.value.status,
@@ -2534,7 +2593,6 @@
       };
 
       const closeAddProject = () => {
-        if (creatingProject.value) return;
         showAddProjectModal.value = false;
       };
 
@@ -2548,7 +2606,6 @@
       };
 
       const closeAddTask = () => {
-        if (creatingTask.value) return;
         showAssigneeDropdown.value = false;
         showAddTaskModal.value = false;
         selectedProject.value = null;
@@ -2588,21 +2645,45 @@
           return;
         }
 
+        const projectId = selectedProject.value.Project_ID;
+        const tempId = makeClientId('TASK');
+        const tempTask = {
+          Task_ID: tempId,
+          Project_ID: projectId,
+          Task_Title: trimmedTitle,
+          Description: newTaskForm.value.description || '',
+          Status: 'Not Started',
+          Priority: newTaskForm.value.priority || '',
+          Due_Date: newTaskForm.value.dueDate || '',
+          Creator_ID: currentUser.value?.User_ID || '',
+          _syncing: true
+        };
+        const tempAssignments = newTaskForm.value.assigneeIds.map((assigneeId) => ({
+          Assignment_ID: tempId,
+          Assignee_ID: assigneeId,
+          _syncing: true
+        }));
+        const subtaskTitles = newTaskForm.value.subtasks.map((s) => s.title.trim()).filter(Boolean);
+
         creatingTask.value = true;
+        tasks.value.push(tempTask);
+        assignments.value.push(...tempAssignments);
+        closeAddTask();
 
         google.script.run
           .withSuccessHandler((response) => {
             creatingTask.value = false;
+            tasks.value = tasks.value.filter((t) => !idsMatch(t.Task_ID, tempId));
+            assignments.value = assignments.value.filter((a) => !idsMatch(a.Assignment_ID, tempId));
 
-            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            const result = parseRunResponse(response);
             if (!result || !result.success) {
-              alert(result?.error || 'Failed to create task.');
+              showToast(result?.error || 'Failed to create task.');
               return;
             }
 
             if (result.task) {
               tasks.value.push(result.task);
-
               if (Array.isArray(result.assignments)) {
                 assignments.value.push(...result.assignments);
               }
@@ -2612,20 +2693,21 @@
             } else {
               fetchData();
             }
-            closeAddTask();
           })
           .withFailureHandler((error) => {
             creatingTask.value = false;
+            tasks.value = tasks.value.filter((t) => !idsMatch(t.Task_ID, tempId));
+            assignments.value = assignments.value.filter((a) => !idsMatch(a.Assignment_ID, tempId));
             console.error('Failed to add task:', error);
-            alert('Error creating task.');
+            showToast('Failed to create task. Please try again.');
           })
-          .createTask(selectedProject.value.Project_ID, {
+          .createTask(projectId, {
             taskTitle: trimmedTitle,
             dueDate: newTaskForm.value.dueDate,
             description: newTaskForm.value.description,
             priority: newTaskForm.value.priority,
             assigneeIds: newTaskForm.value.assigneeIds,
-            subtasks: newTaskForm.value.subtasks.map((s) => s.title.trim()).filter(Boolean)
+            subtasks: subtaskTitles
           });
       };
 
@@ -2636,15 +2718,37 @@
           return;
         }
 
+        const tempId = makeClientId('PROJ');
+        const tempProject = {
+          Project_ID: tempId,
+          Project_Title: trimmedTitle,
+          Description: newProjectForm.value.description || '',
+          Status: newProjectForm.value.status || 'Not Started',
+          Due_Date: newProjectForm.value.dueDate || '',
+          Creator_ID: currentUser.value?.User_ID || '',
+          Color_Scheme: newProjectForm.value.colorScheme || 'default',
+          _syncing: true
+        };
+        const tempAssignment = {
+          Assignment_ID: tempId,
+          Assignee_ID: currentUser.value?.User_ID || '',
+          _syncing: true
+        };
+
         creatingProject.value = true;
+        projects.value.push(tempProject);
+        assignments.value.push(tempAssignment);
+        closeAddProject();
 
         google.script.run
           .withSuccessHandler((response) => {
             creatingProject.value = false;
+            projects.value = projects.value.filter((p) => !idsMatch(p.Project_ID, tempId));
+            assignments.value = assignments.value.filter((a) => !idsMatch(a.Assignment_ID, tempId));
 
-            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            const result = parseRunResponse(response);
             if (!result || !result.success) {
-              alert(result?.error || 'Failed to create project.');
+              showToast(result?.error || 'Failed to create project.');
               return;
             }
 
@@ -2656,13 +2760,13 @@
             } else {
               fetchData();
             }
-
-            closeAddProject();
           })
           .withFailureHandler((error) => {
             creatingProject.value = false;
+            projects.value = projects.value.filter((p) => !idsMatch(p.Project_ID, tempId));
+            assignments.value = assignments.value.filter((a) => !idsMatch(a.Assignment_ID, tempId));
             console.error('Failed to add project:', error);
-            alert('Error creating project.');
+            showToast('Failed to create project. Please try again.');
           })
           .createProject({
             projectTitle: trimmedTitle,
@@ -2720,25 +2824,21 @@
         const settingsToSave = JSON.parse(JSON.stringify(settingsForm.value));
         localStorage.setItem('soar_user_settings_v1', JSON.stringify(settingsToSave));
         savingSettings.value = true;
+        applyNotificationSettings(settingsToSave.notifications);
+        closeSettingsModal();
 
         google.script.run
           .withSuccessHandler((response) => {
-            const payload = JSON.parse(response);
             savingSettings.value = false;
-
-            if (!payload.success) {
-              alert(payload.error || 'Failed to save settings.');
-              return;
+            const payload = parseRunResponse(response);
+            if (!payload || !payload.success) {
+              showToast('Settings could not be saved to the server — they may revert on next page load.');
             }
-
-            applyNotificationSettings(payload.settings?.notifications);
-            localStorage.setItem('soar_user_settings_v1', JSON.stringify(settingsForm.value));
-            closeSettingsModal();
           })
           .withFailureHandler((error) => {
             savingSettings.value = false;
             console.error('Failed to save settings:', error);
-            alert('Error saving settings.');
+            showToast('Settings could not be saved to the server — they may revert on next page load.');
           })
           .persistCurrentUserSettings(settingsToSave);
       };
@@ -2776,12 +2876,10 @@
       };
 
       const closeSettingsModal = () => {
-        if (savingSettings.value) return;
         showSettingsModal.value = false;
       };
 
       const closeProfileModal = () => {
-        if (savingProfile.value) return;
         showProfileModal.value = false;
         isEditingProfile.value = false;
       };
@@ -2807,32 +2905,50 @@
           return;
         }
 
+        const userIndex = users.value.findIndex((u) => idsMatch(u.User_ID, currentUser.value?.User_ID));
+        const previousUser = userIndex >= 0 ? { ...users.value[userIndex] } : null;
+        const previousEmail = currentUserEmail.value;
+        const optimisticUser = {
+          ...(previousUser || {}),
+          Name: trimmedName,
+          Email: trimmedEmail,
+          _syncing: true
+        };
+
         savingProfile.value = true;
+        if (userIndex >= 0) users.value.splice(userIndex, 1, optimisticUser);
+        currentUserEmail.value = trimmedEmail;
+        isEditingProfile.value = false;
+
         google.script.run
           .withSuccessHandler((response) => {
             savingProfile.value = false;
-            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            const result = parseRunResponse(response);
             if (!result || !result.success || !result.user) {
-              alert(result?.error || 'Failed to update profile.');
+              if (previousUser && userIndex >= 0) users.value.splice(userIndex, 1, previousUser);
+              currentUserEmail.value = previousEmail;
+              isEditingProfile.value = true;
+              showToast(result?.error || 'Failed to update profile — your changes were not saved.');
               return;
             }
 
-            const updatedUser = result.user;
-            const userIndex = users.value.findIndex((u) => idsMatch(u.User_ID, updatedUser.User_ID));
-            if (userIndex >= 0) {
-              users.value.splice(userIndex, 1, updatedUser);
+            const updatedUser = stripSyncFlag(result.user);
+            const currentIndex = users.value.findIndex((u) => idsMatch(u.User_ID, updatedUser.User_ID));
+            if (currentIndex >= 0) {
+              users.value.splice(currentIndex, 1, updatedUser);
             } else {
               users.value.push(updatedUser);
             }
-
             currentUserEmail.value = updatedUser.Email || trimmedEmail;
             profileForm.value = buildProfileForm();
-            isEditingProfile.value = false;
           })
           .withFailureHandler((error) => {
             savingProfile.value = false;
+            if (previousUser && userIndex >= 0) users.value.splice(userIndex, 1, previousUser);
+            currentUserEmail.value = previousEmail;
+            isEditingProfile.value = true;
             console.error('Failed to update profile:', error);
-            alert('Error updating profile.');
+            showToast('Failed to update profile — your changes were not saved.');
           })
           .updateCurrentUserProfile({
             name: trimmedName,
@@ -2915,12 +3031,12 @@
       };
 
       const canDropTaskHere = (evt, targetProjectId) => {
-        const sourceProjectId = draggingTaskSourceProjectId.value;
+        const draggedTask = evt.draggedContext?.element;
+        const sourceProjectId = draggingTaskSourceProjectId.value || normalizeId(draggedTask?.Project_ID);
         if (!sourceProjectId || idsMatch(sourceProjectId, targetProjectId)) {
           draggingMoveBlocked.value = false;
           return true;
         }
-        const draggedTask = evt.draggedContext?.element;
         if (!idsMatch(draggedTask?.Creator_ID, currentUserId.value)) {
           draggingMoveBlocked.value = true;
           return false;
@@ -2987,13 +3103,22 @@
            const newIndex = evt.added ? evt.added.newIndex : evt.moved.newIndex;
 
            if (evt.added) {
-             if (!idsMatch(element?.Creator_ID, currentUserId.value)) return;
+             const fromProjectId = draggingTaskSourceProjectId.value || normalizeId(element?.Project_ID);
+             if (!idsMatch(element?.Creator_ID, currentUserId.value)) {
+               tasks.value = [...tasks.value];
+               return;
+             }
              const targetProject = getProjectById(targetProjectId);
-             if (!idsMatch(targetProject?.Creator_ID, currentUserId.value)) return;
-             const fromProjectId = draggingTaskSourceProjectId.value;
+             if (!idsMatch(targetProject?.Creator_ID, currentUserId.value)) {
+               tasks.value = [...tasks.value];
+               return;
+             }
              if (fromProjectId && !idsMatch(fromProjectId, targetProjectId)) {
                const sourceProject = getProjectById(fromProjectId);
-               if (!idsMatch(sourceProject?.Creator_ID, currentUserId.value)) return;
+               if (!idsMatch(sourceProject?.Creator_ID, currentUserId.value)) {
+                 tasks.value = [...tasks.value];
+                 return;
+               }
              }
              const fromProjectTaskIds = tasks.value
                .filter(t => idsMatch(t.Project_ID, fromProjectId))
@@ -3004,16 +3129,27 @@
            const globalTaskIndex = tasks.value.findIndex(t => idsMatch(t.Task_ID, element.Task_ID));
            const globalTask = tasks.value[globalTaskIndex];
            tasks.value.splice(globalTaskIndex, 1);
-           
+
            globalTask.Project_ID = targetProjectId;
-           
+
            const currentProjectTasks = tasks.value.filter(t => idsMatch(t.Project_ID, targetProjectId));
            if (newIndex === 0) {
               if (currentProjectTasks.length > 0) {
                  const insertIndex = tasks.value.findIndex(t => idsMatch(t.Task_ID, currentProjectTasks[0].Task_ID));
                  tasks.value.splice(insertIndex, 0, globalTask);
               } else {
-                 tasks.value.push(globalTask);
+                 const visibleProjectOrder = visibleProjects.value.map(p => normalizeId(p.Project_ID));
+                 const targetOrder = visibleProjectOrder.indexOf(normalizeId(targetProjectId));
+                 let insertBeforeIndex = -1;
+                 for (let i = 0; i < tasks.value.length; i++) {
+                   const projOrder = visibleProjectOrder.indexOf(normalizeId(tasks.value[i].Project_ID));
+                   if (projOrder > targetOrder) { insertBeforeIndex = i; break; }
+                 }
+                 if (insertBeforeIndex >= 0) {
+                   tasks.value.splice(insertBeforeIndex, 0, globalTask);
+                 } else {
+                   tasks.value.push(globalTask);
+                 }
               }
            } else {
               const precedingTask = currentProjectTasks[newIndex - 1];
@@ -3141,22 +3277,40 @@
 
       const submitNewAgenda = () => {
         const trimmedTitle = newAgendaForm.value.title.trim();
+        const trimmedDescription = newAgendaForm.value.description.trim();
         if (!trimmedTitle) return;
+
+        const tempId = makeClientId('AGENDA');
+        const tempAgenda = {
+          Agenda_ID: tempId,
+          Title: trimmedTitle,
+          Description: trimmedDescription,
+          Creator_ID: currentUser.value?.User_ID || '',
+          _syncing: true
+        };
+
         creatingAgenda.value = true;
+        agendas.value.push(tempAgenda);
+        showAddAgendaModal.value = false;
+
         google.script.run
           .withSuccessHandler((res) => {
             creatingAgenda.value = false;
+            agendas.value = agendas.value.filter((a) => !idsMatch(a.Agenda_ID, tempId));
             const result = parseRunResponse(res);
-            if (result.success) {
+            if (result && result.success) {
               agendas.value.push(result.agenda);
-              showAddAgendaModal.value = false;
               openAgendaModal(result.agenda);
+            } else {
+              showToast(result?.error || 'Failed to create agenda.');
             }
           })
           .withFailureHandler(() => {
             creatingAgenda.value = false;
+            agendas.value = agendas.value.filter((a) => !idsMatch(a.Agenda_ID, tempId));
+            showToast('Failed to create agenda. Please try again.');
           })
-          .createAgenda(trimmedTitle, newAgendaForm.value.description.trim());
+          .createAgenda(trimmedTitle, trimmedDescription);
       };
 
       const getSessionsForAgenda = (agendaId) => {
@@ -3255,75 +3409,113 @@
         const contentStr = JSON.stringify(activeAgenda.value.headers);
         const title = activeAgenda.value.Title;
         const description = activeAgenda.value.Description || '';
+        const sharesSnapshot = activeAgendaShares.value.slice();
 
-        const finishAgendaUpdate = (callback) => {
+        const agendaIdx = agendas.value.findIndex((a) => idsMatch(a.Agenda_ID, agendaId));
+        const previousAgenda = agendaIdx >= 0 ? { ...agendas.value[agendaIdx] } : null;
+        const previousShares = agendaShares.value.filter((s) => idsMatch(s.Agenda_ID, agendaId)).slice();
+
+        const applyOptimisticAgenda = () => {
+          const optimisticAgenda = { ...(previousAgenda || {}), Agenda_ID: agendaId, Title: title, Description: description, _syncing: true };
+          if (agendaIdx >= 0) agendas.value.splice(agendaIdx, 1, optimisticAgenda);
+          agendaShares.value = agendaShares.value.filter((s) => !idsMatch(s.Agenda_ID, agendaId));
+          agendaShares.value.push(...sharesSnapshot.map((userId) => ({ Agenda_ID: agendaId, User_ID: userId })));
+        };
+
+        const rollbackAgenda = () => {
+          if (previousAgenda) {
+            const idx = agendas.value.findIndex((a) => idsMatch(a.Agenda_ID, agendaId));
+            if (idx >= 0) agendas.value.splice(idx, 1, previousAgenda);
+          }
+          agendaShares.value = agendaShares.value.filter((s) => !idsMatch(s.Agenda_ID, agendaId));
+          agendaShares.value.push(...previousShares);
+        };
+
+        const finalizeAgendaUpdate = () => {
           google.script.run
-            .withSuccessHandler((res) => {
-              const result = parseRunResponse(res);
-              if (result && result.success) {
-                const idx = agendas.value.findIndex(a => idsMatch(a.Agenda_ID, result.agenda.Agenda_ID));
-                if (idx >= 0) agendas.value.splice(idx, 1, result.agenda);
-                agendaShares.value = agendaShares.value.filter(s => !idsMatch(s.Agenda_ID, result.agenda.Agenda_ID));
-                agendaShares.value.push(...(result.shares || []));
+            .withSuccessHandler((agendaRes) => {
+              savingSession.value = false;
+              const agendaResult = parseRunResponse(agendaRes);
+              if (agendaResult && agendaResult.success) {
+                const idx = agendas.value.findIndex((a) => idsMatch(a.Agenda_ID, agendaResult.agenda.Agenda_ID));
+                if (idx >= 0) agendas.value.splice(idx, 1, agendaResult.agenda);
+                agendaShares.value = agendaShares.value.filter((s) => !idsMatch(s.Agenda_ID, agendaResult.agenda.Agenda_ID));
+                agendaShares.value.push(...(agendaResult.shares || []));
+              } else {
+                showToast('Session saved but agenda details could not be updated.');
               }
-              if (callback) callback(result);
             })
             .withFailureHandler(() => {
               savingSession.value = false;
-              alert('Error saving agenda details.');
+              showToast('Session saved but agenda details could not be updated.');
             })
-            .updateAgenda(agendaId, title, description, activeAgendaShares.value);
+            .updateAgenda(agendaId, title, description, sharesSnapshot);
         };
 
         if (activeSessionIndex.value === -1) {
+          const tempSessionId = makeClientId('SESSION');
+          const tempSession = { Session_ID: tempSessionId, Agenda_ID: agendaId, Session_Date: sessionDate, Content_JSON: contentStr, _syncing: true };
+          applyOptimisticAgenda();
+          agendaSessions.value.push(tempSession);
+          closeAgendaModal();
+
           google.script.run
             .withSuccessHandler((res) => {
+              agendaSessions.value = agendaSessions.value.filter((s) => !idsMatch(s.Session_ID, tempSessionId));
               const result = parseRunResponse(res);
               if (!result || !result.success) {
                 savingSession.value = false;
-                alert(result?.error || 'Failed to create session.');
+                rollbackAgenda();
+                showToast(result?.error || 'Failed to create session.');
                 return;
               }
               agendaSessions.value.push(result.session);
-              activeSession.value = result.session;
-              finishAgendaUpdate(() => {
-                savingSession.value = false;
-                const sessions = getSessionsForAgenda(agendaId);
-                activeSessionIndex.value = sessions.findIndex(s => idsMatch(s.Session_ID, result.session.Session_ID));
-                if (activeSessionIndex.value < 0) activeSessionIndex.value = 0;
-                closeAgendaModal();
-              });
+              finalizeAgendaUpdate();
             })
             .withFailureHandler(() => {
               savingSession.value = false;
-              alert('Error creating session.');
+              agendaSessions.value = agendaSessions.value.filter((s) => !idsMatch(s.Session_ID, tempSessionId));
+              rollbackAgenda();
+              showToast('Failed to create session.');
             })
             .createAgendaSession(agendaId, sessionDate, contentStr);
         } else {
           const sessionId = activeSession.value?.Session_ID;
-          if (!sessionId) {
-            savingSession.value = false;
-            return;
-          }
+          if (!sessionId) { savingSession.value = false; return; }
+
+          const sessionIdx = agendaSessions.value.findIndex((s) => idsMatch(s.Session_ID, sessionId));
+          const previousSession = sessionIdx >= 0 ? { ...agendaSessions.value[sessionIdx] } : null;
+          const optimisticSession = { ...(previousSession || {}), Session_ID: sessionId, Session_Date: sessionDate, Content_JSON: contentStr, _syncing: true };
+
+          applyOptimisticAgenda();
+          if (sessionIdx >= 0) agendaSessions.value.splice(sessionIdx, 1, optimisticSession);
+          closeAgendaModal();
+
           google.script.run
             .withSuccessHandler((res) => {
               const result = parseRunResponse(res);
               if (!result || !result.success) {
                 savingSession.value = false;
-                alert(result?.error || 'Failed to update session.');
+                if (previousSession) {
+                  const idx = agendaSessions.value.findIndex((s) => idsMatch(s.Session_ID, sessionId));
+                  if (idx >= 0) agendaSessions.value.splice(idx, 1, previousSession);
+                }
+                rollbackAgenda();
+                showToast(result?.error || 'Failed to update session.');
                 return;
               }
-              const idx = agendaSessions.value.findIndex(s => idsMatch(s.Session_ID, sessionId));
+              const idx = agendaSessions.value.findIndex((s) => idsMatch(s.Session_ID, sessionId));
               if (idx >= 0) agendaSessions.value.splice(idx, 1, result.session);
-              activeSession.value = result.session;
-              finishAgendaUpdate(() => {
-                savingSession.value = false;
-                closeAgendaModal();
-              });
+              finalizeAgendaUpdate();
             })
             .withFailureHandler(() => {
               savingSession.value = false;
-              alert('Error updating session.');
+              if (previousSession) {
+                const idx = agendaSessions.value.findIndex((s) => idsMatch(s.Session_ID, sessionId));
+                if (idx >= 0) agendaSessions.value.splice(idx, 1, previousSession);
+              }
+              rollbackAgenda();
+              showToast('Failed to update session.');
             })
             .updateAgendaSession(sessionId, sessionDate, contentStr);
         }
@@ -3334,44 +3526,81 @@
       const deleteActiveSession = () => {
         if (!activeSession.value?.Session_ID) return;
         if (!confirm('Are you sure you want to delete this session?')) return;
+
         const sessionId = activeSession.value.Session_ID;
+        const previousSessions = agendaSessions.value.slice();
+        const previousActiveSession = activeSession.value;
+        const previousActiveSessionIndex = activeSessionIndex.value;
+        const previousHeaders = activeAgenda.value.headers ? JSON.parse(JSON.stringify(activeAgenda.value.headers)) : [];
+        const previousAgendaDate = activeAgenda.value.agendaDate;
+
+        agendaSessions.value = agendaSessions.value.filter((s) => !idsMatch(s.Session_ID, sessionId));
+        const remaining = getSessionsForAgenda(activeAgenda.value?.Agenda_ID);
+        if (remaining.length > 0) {
+          const next = remaining[0];
+          let headers = [];
+          try { headers = JSON.parse(next.Content_JSON || '[]'); } catch (e) { headers = []; }
+          activeSession.value = next;
+          activeSessionIndex.value = 0;
+          activeAgenda.value.headers = headers;
+          activeAgenda.value.agendaDate = formatDateForInput(next.Session_Date || '');
+        } else {
+          activeSession.value = null;
+          activeSessionIndex.value = 0;
+          activeAgenda.value.headers = [];
+          activeAgenda.value.agendaDate = '';
+        }
+
         google.script.run
           .withSuccessHandler((res) => {
             const result = parseRunResponse(res);
             if (!result || !result.success) {
-              alert(result?.error || 'Failed to delete session.');
-              return;
-            }
-            agendaSessions.value = agendaSessions.value.filter(s => !idsMatch(s.Session_ID, sessionId));
-            const remaining = getSessionsForAgenda(activeAgenda.value?.Agenda_ID);
-            if (remaining.length > 0) {
-              const next = remaining[0];
-              let headers = [];
-              try { headers = JSON.parse(next.Content_JSON || '[]'); } catch (e) { headers = []; }
-              activeSession.value = next;
-              activeSessionIndex.value = 0;
-              activeAgenda.value.headers = headers;
-              activeAgenda.value.agendaDate = formatDateForInput(next.Session_Date || '');
-            } else {
-              activeSession.value = null;
-              activeSessionIndex.value = 0;
-              activeAgenda.value.headers = [];
-              activeAgenda.value.agendaDate = '';
+              agendaSessions.value = previousSessions;
+              activeSession.value = previousActiveSession;
+              activeSessionIndex.value = previousActiveSessionIndex;
+              activeAgenda.value.headers = previousHeaders;
+              activeAgenda.value.agendaDate = previousAgendaDate;
+              showToast(result?.error || 'Failed to delete session — it has been restored.');
             }
           })
           .withFailureHandler(() => {
-            alert('Error deleting session.');
+            agendaSessions.value = previousSessions;
+            activeSession.value = previousActiveSession;
+            activeSessionIndex.value = previousActiveSessionIndex;
+            activeAgenda.value.headers = previousHeaders;
+            activeAgenda.value.agendaDate = previousAgendaDate;
+            showToast('Failed to delete session — it has been restored.');
           })
           .deleteAgendaSession(sessionId);
       };
 
       const deleteAgenda = (id) => {
         if (!confirm("Are you sure you want to delete this agenda? All sessions will also be deleted.")) return;
+
+        const previousAgendas = agendas.value.slice();
+        const previousSessions = agendaSessions.value.slice();
+        const previousShares = agendaShares.value.slice();
+
+        agendas.value = agendas.value.filter((a) => !idsMatch(a.Agenda_ID, id));
+        agendaSessions.value = agendaSessions.value.filter((s) => !idsMatch(s.Agenda_ID, id));
+        agendaShares.value = agendaShares.value.filter((s) => !idsMatch(s.Agenda_ID, id));
+        if (activeAgenda.value && idsMatch(activeAgenda.value.Agenda_ID, id)) closeAgendaModal();
+
         google.script.run
-          .withSuccessHandler(() => {
-            agendas.value = agendas.value.filter(a => !idsMatch(a.Agenda_ID, id));
-            agendaSessions.value = agendaSessions.value.filter(s => !idsMatch(s.Agenda_ID, id));
-            if (activeAgenda.value && idsMatch(activeAgenda.value.Agenda_ID, id)) closeAgendaModal();
+          .withSuccessHandler((res) => {
+            const result = parseRunResponse(res);
+            if (result && !result.success) {
+              agendas.value = previousAgendas;
+              agendaSessions.value = previousSessions;
+              agendaShares.value = previousShares;
+              showToast(result.error || 'Failed to delete agenda — it has been restored.');
+            }
+          })
+          .withFailureHandler(() => {
+            agendas.value = previousAgendas;
+            agendaSessions.value = previousSessions;
+            agendaShares.value = previousShares;
+            showToast('Failed to delete agenda — it has been restored.');
           })
           .deleteAgenda(id);
       };
@@ -3573,6 +3802,147 @@
         if (!confirm('Reset chat history? This cannot be undone.')) return;
         chatMessages.value = [CHAT_WELCOME_MESSAGE];
         localStorage.removeItem(CHAT_HISTORY_KEY);
+      };
+
+      const isTodoItemInList = (type, linkedId) =>
+        todoItems.value.some((item) => item.type === type && item.linkedId === (linkedId || '').toString().trim());
+
+      const syncTodoCompletedStates = () => {
+        if (!todoLoaded.value) return;
+        todoItems.value.forEach((item) => {
+          if (!item.linkedId) return;
+          if (item.type === 'task') {
+            const task = tasksById.value.get(normalizeId(item.linkedId));
+            if (task) item.completed = isCompleteStatus(task.Status);
+          } else if (item.type === 'project') {
+            const project = projectsById.value.get(normalizeId(item.linkedId));
+            if (project) item.completed = ['Completed', 'Complete'].includes((project.Status || '').trim());
+          } else if (item.type === 'subtask') {
+            const subtask = subtasks.value.find((s) => (s.Subtask_ID || '').toString().trim() === item.linkedId);
+            if (subtask) item.completed = isCompleteStatus(subtask.Status);
+          }
+        });
+      };
+
+      const fetchTodoList = () => {
+        google.script.run
+          .withSuccessHandler((response) => {
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (result.success) {
+              todoItems.value = result.items || [];
+              todoLoaded.value = true;
+              syncTodoCompletedStates();
+            }
+          })
+          .withFailureHandler(() => {})
+          .getTodoList();
+      };
+
+      const toggleTodo = () => {
+        isTodoOpen.value = !isTodoOpen.value;
+        if (isTodoOpen.value) {
+          if (!todoLoaded.value) {
+            fetchTodoList();
+          } else {
+            syncTodoCompletedStates();
+          }
+        }
+      };
+
+      const addTodoTextItem = () => {
+        const text = todoNewItemText.value.trim();
+        if (!text || todoSaving.value) return;
+        todoNewItemText.value = '';
+        const newItem = {
+          id: 'todo-text-' + Date.now(),
+          type: 'text',
+          label: text,
+          linkedId: null,
+          completed: false
+        };
+        todoItems.value = [...todoItems.value, newItem];
+        todoSaving.value = true;
+        google.script.run
+          .withSuccessHandler(() => { todoSaving.value = false; })
+          .withFailureHandler(() => { todoSaving.value = false; })
+          .saveTodoList(JSON.stringify(todoItems.value));
+      };
+
+      const addLinkedTodoItem = (type, linkedId, label) => {
+        if (!todoLoaded.value) todoLoaded.value = true;
+        todoSaving.value = true;
+        google.script.run
+          .withSuccessHandler((response) => {
+            todoSaving.value = false;
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (result.success) {
+              todoItems.value = result.items || [];
+              if (result.alreadyLinked) {
+                showToast('Already in your To-Do list.', 'error');
+              } else {
+                showToast('Added to your To-Do list.', 'success');
+              }
+            }
+          })
+          .withFailureHandler(() => {
+            todoSaving.value = false;
+            showToast('Failed to add to To-Do list.', 'error');
+          })
+          .addLinkedTodoItem(type, linkedId, label);
+      };
+
+      const toggleTodoComplete = (item) => {
+        const newCompleted = !item.completed;
+        item.completed = newCompleted;
+        if (item.linkedId) {
+          if (item.type === 'task') {
+            const task = tasks.value.find((t) => (t.Task_ID || '').toString().trim() === item.linkedId);
+            if (task) task.Status = newCompleted ? 'Complete' : 'Not Started';
+          } else if (item.type === 'project') {
+            const project = projects.value.find((p) => (p.Project_ID || '').toString().trim() === item.linkedId);
+            if (project) project.Status = newCompleted ? 'Completed' : 'Not Started';
+          } else if (item.type === 'subtask') {
+            const subtask = subtasks.value.find((s) => (s.Subtask_ID || '').toString().trim() === item.linkedId);
+            if (subtask) subtask.Status = newCompleted ? 'Complete' : 'Incomplete';
+          }
+        }
+        google.script.run
+          .withSuccessHandler((response) => {
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (result.success) todoItems.value = result.items || [];
+          })
+          .withFailureHandler(() => {})
+          .toggleTodoItemComplete(item.id, newCompleted);
+      };
+
+      const removeTodoItem = (item) => {
+        todoItems.value = todoItems.value.filter((i) => i.id !== item.id);
+        google.script.run
+          .withSuccessHandler((response) => {
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (result.success) todoItems.value = result.items || [];
+          })
+          .withFailureHandler(() => {})
+          .removeTodoItem(item.id);
+      };
+
+      const resetTodoList = () => {
+        if (!confirm('Clear your entire To-Do list? This cannot be undone.')) return;
+        todoItems.value = [];
+        google.script.run
+          .withSuccessHandler((response) => {
+            const result = typeof response === 'string' ? JSON.parse(response) : response;
+            if (result.success) todoItems.value = result.items || [];
+          })
+          .withFailureHandler(() => {})
+          .resetTodoList();
+      };
+
+      const saveTodoOrder = () => {
+        google.script.run
+          .withSuccessHandler(() => {})
+          .withFailureHandler(() => {})
+          .saveTodoList(JSON.stringify(todoItems.value));
       };
 
       watch(loading, (isLoading) => {
@@ -3859,6 +4229,20 @@
         getAgendaSectionCount,
         getAgendaTextPreview,
 
+        isTodoOpen,
+        todoItems,
+        todoNewItemText,
+        todoLoaded,
+        todoSaving,
+        isTodoItemInList,
+        toggleTodo,
+        addTodoTextItem,
+        addLinkedTodoItem,
+        toggleTodoComplete,
+        removeTodoItem,
+        resetTodoList,
+        saveTodoOrder,
+
         isChatOpen,
         isChatLoading,
         chatInput,
@@ -3871,7 +4255,9 @@
         chatOffsetX,
         chatOffsetY,
         isDraggingChat,
-        startChatDrag
+        startChatDrag,
+        toasts,
+        showToast
       };
     }
   });
