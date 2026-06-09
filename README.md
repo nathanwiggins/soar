@@ -101,7 +101,7 @@
 
 - **Create a project**: On **Project Board**, click **New Project**, fill **Project Title**, optional **Due Date**, **Status**, **Color Scheme**, and optional **Description**, then click **Create Project**.
 - **Create a task**: Inside a project column, click **+ Add Task** (not “New Task”), fill the **Add Task** modal, select at least one user under **Assigned To**, then click **Create Task**.
-- **Update a task quickly**: Use the status pill/dropdown on a task card to choose `Not Started`, `Upcoming`, `Review`, `In Progress`, `Ongoing`, `On Hold`, `Cancelled`, or `Complete`.
+- **Update a task quickly**: Use the status pill/dropdown on a task card to choose `Not Started`, `Upcoming`, `Review`, `In Progress`, `Ongoing`, `On Hold`, `Cancelled`, `Closeout`, or `Complete`.
 - **Open details**: Click a project title to open **Project Details**. Click a task card to open **Task Details**.
 - **Comment on tasks**: Click the speech-bubble icon on a task card to open **Comments**, type in **Write a comment...**, optionally use `@` mentions, then click **Post Comment**.
 - **Create an agenda**: Go to **Meeting Agendas**, click **New Agenda**. The agenda editor opens with no sessions. Click **New Session** and choose blank or copy-from-previous, add headers/items/tasks, optionally click **Share**, then click **Save Session**.
@@ -293,7 +293,7 @@ Controls and fields:
 - **Task Name**: task title.
 - **Description**
 - **Subtasks**: checkboxes (always clickable to toggle complete/incomplete), editable titles in edit mode, drag handles in edit mode, and delete controls.
-- **Task Status**: `Not Started`, `Upcoming`, `Review`, `In Progress`, `Ongoing`, `On Hold`, `Cancelled`, or `Complete`.
+- **Task Status**: `Not Started`, `Upcoming`, `Review`, `In Progress`, `Ongoing`, `On Hold`, `Cancelled`, `Closeout`, or `Complete`.
 - **Associated Project**: project dropdown available while editing.
 - **Priority**: dropdown with `None`, `High`, `Medium`, `Low`.
 - **Date Created**: display-only.
@@ -531,7 +531,7 @@ Footer buttons:
 
 ✅ **Organize Work with Tasks**
 - Create tasks inside projects with the **+ Add Task** button.
-- Task status options: `Not Started`, `Upcoming`, `Review`, `In Progress`, `Ongoing`, `On Hold`, `Cancelled`, `Complete`.
+- Task status options: `Not Started`, `Upcoming`, `Review`, `In Progress`, `Ongoing`, `On Hold`, `Cancelled`, `Closeout`, `Complete`.
 - New tasks always begin as `Not Started`.
 - Set optional priority: `High`, `Medium`, `Low`, or no priority.
 - Due date management with visual indicators and due-tomorrow emphasis.

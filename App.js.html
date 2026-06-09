@@ -170,6 +170,7 @@
         'Ongoing',
         'On Hold',
         'Cancelled',
+        'Closeout',
         taskCompleteStatus
       ];
       const isCompleteStatus = (status) => ['Complete', 'Completed'].includes((status || '').toString().trim());
@@ -1067,6 +1068,7 @@
           Ongoing: 'bg-teal-100 text-teal-700',
           'On Hold': 'bg-slate-100 text-slate-700',
           Cancelled: 'bg-red-100 text-red-700',
+          Closeout: 'bg-amber-100 text-amber-700',
           [taskCompleteStatus]: 'bg-green-100 text-green-700',
           Completed: 'bg-green-100 text-green-700'
         };

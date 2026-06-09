@@ -8,6 +8,7 @@ const TASK_STATUS_OPTIONS = [
   'Ongoing',
   'On Hold',
   'Cancelled',
+  'Closeout',
   TASK_COMPLETE_STATUS
 ];
 function isTaskCompleteStatus(status) {
