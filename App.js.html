@@ -3052,9 +3052,10 @@
         draggingMoveBlocked.value = !idsMatch(sourceProject?.Creator_ID, currentUserId.value);
       };
 
-      const canDropTaskHere = (evt, targetProjectId) => {
+      const canDropTaskHere = (evt, columnProjectId) => {
         const draggedTask = evt.draggedContext?.element || draggingTask.value;
         const sourceProjectId = draggingTaskSourceProjectId.value || normalizeId(draggedTask?.Project_ID);
+        const targetProjectId = draggingOverProjectId.value || columnProjectId;
         if (!sourceProjectId || idsMatch(sourceProjectId, targetProjectId)) {
           draggingMoveBlocked.value = false;
           return true;
