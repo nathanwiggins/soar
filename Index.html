@@ -651,6 +651,7 @@
                 <i class="fa-regular fa-clock mr-1"></i> {{ formatDate(task.Due_Date) }}
               </span>
               <button
+                v-if="idsMatch(task.Creator_ID, currentUserId)"
                 class="px-3 py-2 rounded-lg text-xs font-semibold border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-60"
                 @click="deleteTaskPermanently(task)"
                 @click.stop
@@ -678,7 +679,7 @@
                     class="text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider border">
                 {{ getAgendaSectionCount(agenda) }} {{ getAgendaSectionCount(agenda) === 1 ? 'section' : 'sections' }}
               </span>
-              <button @click.stop="deleteAgenda(agenda.Agenda_ID)" class="text-gray-300 hover:text-red-500 transition-colors">
+              <button v-if="idsMatch(agenda.Creator_ID, currentUserId)" @click.stop="deleteAgenda(agenda.Agenda_ID)" class="text-gray-300 hover:text-red-500 transition-colors">
                 <i class="fa-solid fa-trash text-sm"></i>
               </button>
             </div>
@@ -1892,6 +1893,7 @@
               {{ completingTask ? 'Syncing...' : (isCompleteStatus(taskDetailsForm.status) ? taskCompleteStatus : 'Complete Task') }}
             </button>
             <button
+              v-if="idsMatch(taskDetailsForm.creatorId, currentUserId)"
               class="px-4 py-2 rounded-lg text-sm font-medium border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-60"
               @click="deleteTask"
               :disabled="savingTask || deletingTask || completingTask">
@@ -2157,7 +2159,7 @@
           <div v-for="(header, hIndex) in activeAgenda.headers" :key="header.id" :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'" class="p-4 rounded-xl border">
             <div class="flex justify-between items-center mb-3">
               <input v-model="header.title" type="text" :disabled="activeSessionIndex > 0" :class="isDarkMode ? 'bg-gray-900 text-gray-200 border-gray-600 disabled:opacity-60' : 'bg-white text-gray-800 border-gray-300 disabled:opacity-60'" class="font-bold border rounded px-2 py-1 w-1/2">
-              <button v-if="activeSessionIndex <= 0 || activeSessionIndex === -1" @click="activeAgenda.headers.splice(hIndex, 1)" class="text-red-500 hover:text-red-700"><i class="fa-solid fa-trash"></i></button>
+              <button v-if="(activeSessionIndex <= 0 || activeSessionIndex === -1) && idsMatch(activeAgenda.Creator_ID, currentUserId)" @click="activeAgenda.headers.splice(hIndex, 1)" class="text-red-500 hover:text-red-700"><i class="fa-solid fa-trash"></i></button>
             </div>
 
             <draggable :list="header.items" item-key="id" handle=".agenda-drag-handle" class="space-y-2 mb-3">
@@ -2246,7 +2248,7 @@
                 </div>
               </div>
               <button
-                v-if="activeSession && getSessionsForAgenda(activeAgenda.Agenda_ID).length > 1"
+                v-if="activeSession"
                 @click="deleteActiveSession"
                 class="px-3 py-2 rounded-lg text-sm border font-medium transition-colors text-red-500 border-red-300 hover:bg-red-50"
                 :class="isDarkMode ? 'border-red-800 hover:bg-red-900/20' : ''">

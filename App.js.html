@@ -1613,6 +1613,7 @@
           assigneeIds: getAssigneesForTask(task.Task_ID).map((u) => u.User_ID),
           completedById: task.Completed_By || '',
           completedAt: task.Completed_At || '',
+          creatorId: task.Creator_ID || '',
           newSubtasks: []
         };
       };
