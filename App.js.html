@@ -193,7 +193,6 @@
         deep_indigo: buildProjectColorScheme('Deep Indigo', '#4F46E5', '#E0E7FF', 'rgba(67, 56, 202, 0.28)', '#C7D2FE'),
         soft_violet: buildProjectColorScheme('Soft Violet', '#7C3AED', '#EDE9FE', 'rgba(91, 33, 182, 0.28)', '#DDD6FE'),
         rose_pink: buildProjectColorScheme('Rose Pink', '#EC4899', '#FCE7F3', 'rgba(157, 23, 77, 0.28)', '#FBCFE8'),
-        slate_gray: buildProjectColorScheme('Slate Gray', '#475569', '#E2E8F0', 'rgba(51, 65, 85, 0.28)', '#94A3B8'),
         pearl_white: buildProjectColorScheme('Pearl White', '#6B7280', '#FFFFFF', 'rgba(75, 85, 99, 0.28)', '#E5E7EB')
       };
       const projectColorSchemeOptions = Object.entries(projectColorSchemes).map(([value, scheme]) => ({
@@ -2433,7 +2432,7 @@
       };
 
       const saveProjectEdits = () => {
-        if (!projectDetailsForm.value?.projectId) return;
+        if (!projectDetailsForm.value?.projectId || savingProject.value || deletingProject.value) return;
 
         const trimmedTitle = projectDetailsForm.value.projectTitle.trim();
         if (!trimmedTitle) {
@@ -2465,7 +2464,8 @@
 
             const result = parseRunResponse(response);
             if (!result || !result.success || !result.project) {
-              if (previousProject && projectIndex >= 0) projects.value.splice(projectIndex, 1, previousProject);
+              const revertIndex = projects.value.findIndex((p) => idsMatch(p.Project_ID, projectId));
+              if (revertIndex >= 0) projects.value.splice(revertIndex, 1, previousProject || stripSyncFlag(projects.value[revertIndex]));
               if (projectDetailsForm.value && idsMatch(projectDetailsForm.value.projectId, projectId)) {
                 projectDetailsForm.value = previousProject ? buildProjectDetailsForm(previousProject) : projectDetailsForm.value;
               }
@@ -2477,6 +2477,9 @@
             const updatedIndex = projects.value.findIndex((p) => idsMatch(p.Project_ID, updatedProject.Project_ID));
             if (updatedIndex >= 0) {
               projects.value.splice(updatedIndex, 1, updatedProject);
+            } else {
+              const fallbackIndex = projects.value.findIndex((p) => idsMatch(p.Project_ID, projectId));
+              if (fallbackIndex >= 0) projects.value.splice(fallbackIndex, 1, updatedProject);
             }
 
             if (projectDetailsForm.value && idsMatch(projectDetailsForm.value.projectId, updatedProject.Project_ID)) {
@@ -2485,7 +2488,8 @@
           })
           .withFailureHandler((error) => {
             savingProject.value = false;
-            if (previousProject && projectIndex >= 0) projects.value.splice(projectIndex, 1, previousProject);
+            const revertIndex = projects.value.findIndex((p) => idsMatch(p.Project_ID, projectId));
+            if (revertIndex >= 0) projects.value.splice(revertIndex, 1, previousProject || stripSyncFlag(projects.value[revertIndex]));
             if (projectDetailsForm.value && idsMatch(projectDetailsForm.value.projectId, projectId)) {
               projectDetailsForm.value = previousProject ? buildProjectDetailsForm(previousProject) : projectDetailsForm.value;
             }
@@ -3079,6 +3083,27 @@
       };
 
       const canReorderProject = () => true;
+
+      const startCalendarTitleScroll = (event) => {
+        const btn = event.currentTarget;
+        const inner = btn.firstElementChild;
+        if (!inner) return;
+        const overflow = inner.scrollWidth - btn.clientWidth;
+        if (overflow <= 4) return;
+        const duration = Math.max(1, overflow / 80);
+        inner.style.transitionDelay = '0.25s';
+        inner.style.transition = `transform ${duration}s ease-in-out`;
+        inner.style.transform = `translateX(-${overflow}px)`;
+      };
+
+      const stopCalendarTitleScroll = (event) => {
+        const btn = event.currentTarget;
+        const inner = btn.firstElementChild;
+        if (!inner) return;
+        inner.style.transitionDelay = '0s';
+        inner.style.transition = 'transform 0.25s ease-in-out';
+        inner.style.transform = 'translateX(0)';
+      };
 
       const startKanbanAutoScroll = () => {
         if (isKanbanAutoScrollActive.value) return;
@@ -4214,6 +4239,8 @@
         onDragEnterProject,
         canDropTaskHere,
         canReorderProject,
+        startCalendarTitleScroll,
+        stopCalendarTitleScroll,
         draggingTaskSourceProjectId,
         draggingOverProjectId,
         draggingMoveBlocked,
