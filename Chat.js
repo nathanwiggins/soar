@@ -68,13 +68,12 @@ function askGeminiAssistant(conversationHistory, userContext) {
     let aiResponseText = json.candidates[0].content.parts[0].text;
 
     const ticketMarkerMatch = aiResponseText.match(/<!--SOAR_TICKET:([\s\S]*?)-->/);
-    let ticketLogged = false;
+    let issueSummary = null;
     if (ticketMarkerMatch) {
       try {
         const ticketData = JSON.parse(ticketMarkerMatch[1]);
         if (ticketData.log_ticket && ticketData.issue_summary) {
-          logSupportTicket(ticketData.issue_summary);
-          ticketLogged = true;
+          issueSummary = ticketData.issue_summary;
         }
       } catch (e) {
         Logger.log(`askGeminiAssistant: Failed to parse ticket marker: ${e.message}`);
@@ -85,7 +84,7 @@ function askGeminiAssistant(conversationHistory, userContext) {
     return JSON.stringify({
       success: true,
       text: aiResponseText,
-      ticketLogged: ticketLogged,
+      issueSummary: issueSummary,
       debugPayload: payload
     });
 

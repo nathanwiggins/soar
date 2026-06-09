@@ -3793,14 +3793,20 @@
 
         const context = `The user is currently viewing the '${currentTab.value}' tab. They currently have ${directReportUsers.value.length} direct reports (meaning they ${directReportUsers.value.length > 0 ? 'CAN' : 'CANNOT'} use Supervisor Tools).`;
 
+        let ticketHandled = false;
         google.script.run
           .withSuccessHandler((response) => {
             isChatLoading.value = false;
             const result = typeof response === 'string' ? JSON.parse(response) : response;
-            
+
             if (result && result.success) {
               chatMessages.value.push({ role: 'assistant', content: result.text });
-              
+
+              if (result.issueSummary && !ticketHandled) {
+                ticketHandled = true;
+                google.script.run.logSupportTicket(result.issueSummary);
+              }
+
               if (result.debugPayload) {
                 console.log('=== DEBUG: Last API Payload ===', result.debugPayload);
               }
