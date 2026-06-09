@@ -305,7 +305,7 @@ Footer buttons:
 
 - **Complete Task**: sets the task status to `Complete`, records `Completed_By`, and records `Completed_At`.
 - **Complete**: displayed in the same button position when the task is already complete.
-- **Delete Task**: deletes the task and related assignments.
+- **Delete Task**: deletes the task and related assignments. Only visible to the task creator.
 - **Save Changes**: saves edits.
 - **Cancel**: cancels edit mode.
 - **Close**: closes the modal when not editing.
@@ -402,9 +402,9 @@ Calendar entries (both views):
 The **Past Assignments** tab shows completed tasks assigned to the current user.
 
 - If there are none, SOAR displays **No past assignments yet.** and **Completed tasks will appear here automatically.**
-- Each completed task card shows task title, project title, a `Completed` badge, due date, and **Delete Permanently**.
+- Each completed task card shows task title, project title, a `Completed` badge, due date, and **Delete Permanently** (task creator only).
 - Click a card to open **Task Details**.
-- Click **Delete Permanently** to delete the completed task and related assignments.
+- Click **Delete Permanently** to delete the completed task and related assignments. Only the task creator sees this button.
 
 ### Meeting Agendas
 
@@ -450,7 +450,7 @@ Navigating sessions:
 Managing sessions:
 
 - **New Session** button (owner only): creates a new session, either blank or pre-filled from the previous session's content. The new session date defaults to today.
-- **Delete Session** button (owner only): deletes the currently viewed session. Only visible when more than one session exists.
+- **Delete Session** button (owner only): deletes the currently viewed session. The agenda creator can delete any session, including the last one.
 - Deleting an agenda deletes all its sessions.
 
 Sharing an agenda:

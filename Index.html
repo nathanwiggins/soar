@@ -2248,7 +2248,7 @@
                 </div>
               </div>
               <button
-                v-if="activeSession"
+                v-if="activeSession && idsMatch(activeAgenda.Creator_ID, currentUserId)"
                 @click="deleteActiveSession"
                 class="px-3 py-2 rounded-lg text-sm border font-medium transition-colors text-red-500 border-red-300 hover:bg-red-50"
                 :class="isDarkMode ? 'border-red-800 hover:bg-red-900/20' : ''">

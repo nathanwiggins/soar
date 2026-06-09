@@ -278,9 +278,9 @@ Calendar entries (both views):
 The **Past Assignments** tab shows completed tasks assigned to the current user.
 
 - If there are none, SOAR displays **No past assignments yet.** and **Completed tasks will appear here automatically.**
-- Each completed task card shows task title, project title, a `Completed` badge, due date, and **Delete Permanently**.
+- Each completed task card shows task title, project title, a `Completed` badge, due date, and **Delete Permanently** (task creator only).
 - Click a card to open **Task Details**.
-- Click **Delete Permanently** to delete the completed task and related assignments.
+- Click **Delete Permanently** to delete the completed task and related assignments. Only the task creator sees this button.
 
 ### Meeting Agendas
 
@@ -326,7 +326,7 @@ Navigating sessions:
 Managing sessions:
 
 - **New Session** button (owner only): creates a new session blank or copied from the previous one. The date defaults to today.
-- **Delete Session** button (creator only): deletes the currently viewed session. Only the agenda creator can delete sessions; non-creators see an error toast if they attempt it.
+- **Delete Session** button (creator only): deletes the currently viewed session, including the last remaining one. Only the agenda creator can delete sessions; non-creators do not see this button.
 - Deleting an agenda deletes all its sessions.
 
 Sharing an agenda:
