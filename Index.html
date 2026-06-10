@@ -114,7 +114,7 @@
     <div
       v-if="showSettingsModal"
       class="fixed inset-0 bg-gray-900/50 flex items-center justify-center z-50 px-4"
-      @click.self="closeSettingsModal">
+      @click.self="cancelSettingsModal">
       <div :class="isDarkMode ? 'bg-gray-900 border-gray-700 text-gray-100' : 'bg-white border-gray-100 text-gray-800'" class="w-full max-w-2xl rounded-2xl shadow-2xl border">
         <div :class="isDarkMode ? 'border-gray-700' : 'border-gray-100'" class="px-6 py-4 border-b flex items-center justify-between">
           <div>
@@ -124,7 +124,7 @@
           <button
             :class="isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'"
             class="transition-colors"
-            @click="closeSettingsModal"
+            @click="cancelSettingsModal"
             :disabled="savingSettings">
             <i class="fa-solid fa-xmark text-lg"></i>
           </button>
@@ -228,7 +228,7 @@
           <button
             :class="isDarkMode ? 'border-gray-600 text-gray-200 hover:bg-gray-800' : 'border-gray-300 text-gray-700 hover:bg-gray-50'"
             class="px-4 py-2 rounded-lg text-sm font-medium border"
-            @click="closeSettingsModal"
+            @click="cancelSettingsModal"
             :disabled="savingSettings">
             Cancel
           </button>
@@ -1698,7 +1698,7 @@
                     :disabled="todoSaving || isTodoItemInList('subtask', subtask.Subtask_ID)"
                     :class="isTodoItemInList('subtask', subtask.Subtask_ID)
                       ? (isDarkMode ? 'text-green-400' : 'text-green-600')
-                      : (isDarkMode ? 'text-gray-600 hover:text-gray-300' : 'text-gray-300 hover:text-gray-500')"
+                      : (isDarkMode ? 'text-gray-500 hover:text-gray-200' : 'text-gray-400 hover:text-gray-700')"
                     class="transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0 h-7 w-7 rounded-md flex items-center justify-center"
                     :title="isTodoItemInList('subtask', subtask.Subtask_ID) ? 'In To-Do list' : 'Add to To-Do list'">
                     <i class="fa-solid fa-list-check text-xs"></i>
