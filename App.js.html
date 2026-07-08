@@ -141,6 +141,8 @@
       const selectedSupervisorUserIds = ref([]);
       const showHideProjectsDropdown = ref(false);
       const hiddenProjectIds = ref(new Set());
+      const showHideCalendarProjectsDropdown = ref(false);
+      const calendarHiddenProjectIds = ref(new Set());
       const INITIAL_PAYLOAD_CACHE_KEY = 'soar_initial_payload_v5';
       const SORT_ORDER_LOCAL_KEY = 'soar_sort_orders_v1';
       const LOGO_CACHE_KEY = 'soar_processed_logo_v1';
@@ -872,6 +874,8 @@
         applyNotificationSettings(payload.currentUserSettings?.notifications);
         const savedHidden = payload.currentUserSettings?.hiddenProjectIds;
         hiddenProjectIds.value = new Set(Array.isArray(savedHidden) ? savedHidden.map(normalizeId) : []);
+        const savedCalendarHidden = payload.currentUserSettings?.calendarHiddenProjectIds;
+        calendarHiddenProjectIds.value = new Set(Array.isArray(savedCalendarHidden) ? savedCalendarHidden.map(normalizeId) : []);
         loading.value = false;
         syncTodoCompletedStates();
 
@@ -1090,6 +1094,9 @@
         if (tabId !== 'project-board') {
           showHideProjectsDropdown.value = false;
         }
+        if (tabId !== 'calendar') {
+          showHideCalendarProjectsDropdown.value = false;
+        }
         if (tabId === 'calendar') {
           goToCurrentCalendarMonth();
         }
@@ -1181,10 +1188,11 @@
       };
 
       const calendarTaskEntries = computed(() => {
-        const signature = getCollectionSignature(visibleTasks.value, 'Task_ID', ['Due_Date', 'Project_ID', 'Task_Title']);
+        const hiddenSignature = Array.from(calendarHiddenProjectIds.value).sort().join(',');
+        const signature = `${getCollectionSignature(visibleTasks.value, 'Task_ID', ['Due_Date', 'Project_ID', 'Task_Title'])}::${hiddenSignature}`;
         return memoizeBySignature('calendarTaskEntries', signature, () => {
           return visibleTasks.value
-            .filter((task) => task?.Due_Date)
+            .filter((task) => task?.Due_Date && !calendarHiddenProjectIds.value.has(normalizeId(task?.Project_ID)))
             .map((task) => {
               const dateKey = toCalendarDateKey(task.Due_Date);
               if (!dateKey) return null;
@@ -1202,10 +1210,11 @@
       });
 
       const calendarProjectEntries = computed(() => {
-        const signature = getCollectionSignature(visibleProjects.value, 'Project_ID', ['Due_Date', 'Project_Title']);
+        const hiddenSignature = Array.from(calendarHiddenProjectIds.value).sort().join(',');
+        const signature = `${getCollectionSignature(visibleProjects.value, 'Project_ID', ['Due_Date', 'Project_Title'])}::${hiddenSignature}`;
         return memoizeBySignature('calendarProjectEntries', signature, () => {
           return visibleProjects.value
-            .filter((project) => project?.Due_Date)
+            .filter((project) => project?.Due_Date && !calendarHiddenProjectIds.value.has(normalizeId(project?.Project_ID)))
             .map((project) => {
               const dateKey = toCalendarDateKey(project.Due_Date);
               if (!dateKey) return null;
@@ -2919,6 +2928,24 @@
           .persistCurrentUserSettings({ hiddenProjectIds: Array.from(next) });
       };
 
+      const toggleHiddenCalendarProject = (projectId) => {
+        const id = normalizeId(projectId);
+        if (!id) return;
+        const next = new Set(calendarHiddenProjectIds.value);
+        if (next.has(id)) {
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+        calendarHiddenProjectIds.value = next;
+        google.script.run
+          .withFailureHandler((error) => {
+            console.error('Failed to save calendar visibility settings:', error);
+            showToast('Could not save visibility settings — they may revert on next load.');
+          })
+          .persistCurrentUserSettings({ calendarHiddenProjectIds: Array.from(next) });
+      };
+
       const loadSettings = () => {
         const raw = localStorage.getItem('soar_user_settings_v1');
         if (!raw) return;
@@ -4130,6 +4157,9 @@
         hiddenProjectIds,
         showHideProjectsDropdown,
         toggleHiddenProject,
+        calendarHiddenProjectIds,
+        showHideCalendarProjectsDropdown,
+        toggleHiddenCalendarProject,
         directReportUsers,
         canAccessSupervisorTools,
         supervisorVisibleProjects,

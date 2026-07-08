@@ -29,14 +29,14 @@ function getUserSettingsPropertyKey(email) {
 function getUserSettingsByEmail(email, scriptPropertiesCache) {
   const propertyKey = getUserSettingsPropertyKey(email);
   if (!propertyKey) {
-    return { notifications: getDefaultNotificationSettings() };
+    return { notifications: getDefaultNotificationSettings(), hiddenProjectIds: [], calendarHiddenProjectIds: [] };
   }
 
   const rawSettings = scriptPropertiesCache
     ? scriptPropertiesCache[propertyKey]
     : PropertiesService.getScriptProperties().getProperty(propertyKey);
   if (!rawSettings) {
-    return { notifications: getDefaultNotificationSettings() };
+    return { notifications: getDefaultNotificationSettings(), hiddenProjectIds: [], calendarHiddenProjectIds: [] };
   }
 
   try {
@@ -44,13 +44,17 @@ function getUserSettingsByEmail(email, scriptPropertiesCache) {
     const hiddenProjectIds = Array.isArray(parsedSettings && parsedSettings.hiddenProjectIds)
       ? parsedSettings.hiddenProjectIds.filter(id => typeof id === 'string')
       : [];
+    const calendarHiddenProjectIds = Array.isArray(parsedSettings && parsedSettings.calendarHiddenProjectIds)
+      ? parsedSettings.calendarHiddenProjectIds.filter(id => typeof id === 'string')
+      : [];
     return {
       notifications: normalizeNotificationSettings(parsedSettings && parsedSettings.notifications),
-      hiddenProjectIds
+      hiddenProjectIds,
+      calendarHiddenProjectIds
     };
   } catch (error) {
     Logger.log(`Failed to parse settings for ${normalizeEmail(email)}: ${error && error.message ? error.message : error}`);
-    return { notifications: getDefaultNotificationSettings(), hiddenProjectIds: [] };
+    return { notifications: getDefaultNotificationSettings(), hiddenProjectIds: [], calendarHiddenProjectIds: [] };
   }
 }
 function isNotificationEnabledForEmail(email, notificationKey, scriptPropertiesCache) {
@@ -104,13 +108,17 @@ function persistCurrentUserSettings(settingsInput) {
   const hiddenProjectIds = Object.prototype.hasOwnProperty.call(requestedSettings, 'hiddenProjectIds')
     ? (Array.isArray(requestedSettings.hiddenProjectIds) ? requestedSettings.hiddenProjectIds.filter(id => typeof id === 'string') : [])
     : (existingSettings.hiddenProjectIds || []);
+  const calendarHiddenProjectIds = Object.prototype.hasOwnProperty.call(requestedSettings, 'calendarHiddenProjectIds')
+    ? (Array.isArray(requestedSettings.calendarHiddenProjectIds) ? requestedSettings.calendarHiddenProjectIds.filter(id => typeof id === 'string') : [])
+    : (existingSettings.calendarHiddenProjectIds || []);
   const settingsToSave = {
     notifications: normalizeNotificationSettings(
       Object.prototype.hasOwnProperty.call(requestedSettings, 'notifications')
         ? requestedSettings.notifications
         : existingSettings.notifications
     ),
-    hiddenProjectIds
+    hiddenProjectIds,
+    calendarHiddenProjectIds
   };
 
   PropertiesService

@@ -130,7 +130,7 @@ SOAR has a left sidebar, a top header, a main work area, a lower-left user menu,
 - On **Project Board**, the header has a **Hide/Show Projects** button (to hide or reveal individual project columns, per user) and a **New Project** red button.
 - On **Meeting Agendas**, the primary red button is **New Agenda**.
 - On **Supervisor Tools**, the header has a team-member selector whose default text is **Select team members**.
-- On **Calendar**, the header has previous-month and next-month arrow buttons (month view only), a **Today** button, the current month label (month view only), and a **Month / Multi-month** toggle.
+- On **Calendar**, the header has previous-month and next-month arrow buttons (month view only), a **Today** button, the current month label (month view only), a **Month / Multi-month** toggle, and a **Hide/Show Projects** button (to hide or reveal whole projects on the calendar, per user).
 - The **To-Do** button (checkmark icon with "To-Do" label) is always visible in the top header and opens the **To-Do List** sidebar on the right side.
 
 #### To-Do List sidebar
@@ -196,7 +196,7 @@ By default, a user sees:
 
 Completed tasks are not shown on the main **Project Board** after they are complete; they appear in **Past Assignments** for assigned users.
 
-Users can further control which projects appear on their board using the **Hide/Show Projects** button in the top header (to the left of **New Project**). Clicking it opens a dropdown listing every visible project with a checkbox. Unchecking a project hides its column from the board; checking it restores it. Hidden projects still appear on the **Calendar**. This preference is saved per user in `PropertiesService` and does not affect other users' boards.
+Users can further control which projects appear on their board using the **Hide/Show Projects** button in the top header (to the left of **New Project**). Clicking it opens a dropdown listing every visible project with a checkbox. Unchecking a project hides its column from the board; checking it restores it. Hidden projects still appear on the **Calendar**, since calendar visibility is controlled separately by its own **Hide/Show Projects** setting (see [Calendar](#calendar)). This preference is saved per user in `PropertiesService` and does not affect other users' boards.
 
 #### Project columns
 
@@ -388,6 +388,8 @@ Header controls:
 Header controls:
 
 - **Today**: smoothly scrolls back to the current month.
+
+Users can control which projects appear on the calendar using the **Hide/Show Projects** button in the top header. Clicking it opens a dropdown listing every visible project with a checkbox. Unchecking a project hides its due-date entry and all of its tasks' due-date entries from the calendar; checking it restores them. This only hides whole projects — individual tasks cannot be hidden separately. This preference is saved per user in `PropertiesService`, is completely independent of the **Hide/Show Projects** setting on the **Project Board** (a project can be hidden on one view and shown on the other), and does not affect other users' calendars.
 
 Calendar entries (both views):
 

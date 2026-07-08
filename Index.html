@@ -467,6 +467,35 @@
                   <i class="fa-solid fa-table-list mr-1.5"></i>Multi-month
                 </button>
               </div>
+              <div class="relative ml-1" @click.stop>
+                <button
+                  @click="showHideCalendarProjectsDropdown = !showHideCalendarProjectsDropdown"
+                  :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 hover:bg-gray-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'"
+                  class="px-4 py-2 rounded-lg border text-sm font-medium transition-colors shadow-sm flex items-center gap-2">
+                  <i class="fa-solid fa-eye-slash text-xs"></i>
+                  <span>Hide/Show Projects</span>
+                  <span v-if="calendarHiddenProjectIds.size > 0" class="bg-[#DB0000] text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center leading-none">{{ calendarHiddenProjectIds.size }}</span>
+                </button>
+                <div
+                  v-if="showHideCalendarProjectsDropdown"
+                  :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'"
+                  class="absolute right-0 mt-2 w-72 rounded-xl border shadow-lg z-30 p-2 max-h-72 overflow-y-auto">
+                  <p v-if="visibleProjects.length === 0" :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-sm px-3 py-2">No projects to show.</p>
+                  <label
+                    v-for="project in visibleProjects"
+                    :key="'hide-calendar-proj-' + project.Project_ID"
+                    :class="isDarkMode ? 'hover:bg-gray-800 text-gray-100' : 'hover:bg-gray-100 text-gray-700'"
+                    class="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer">
+                    <input
+                      type="checkbox"
+                      :checked="!calendarHiddenProjectIds.has(project.Project_ID)"
+                      @change="toggleHiddenCalendarProject(project.Project_ID)"
+                      class="rounded accent-[#DB0000]" />
+                    <span class="w-2 h-2 rounded-full flex-shrink-0" :style="getProjectDotStyle(project)"></span>
+                    <span class="text-sm truncate">{{ project.Project_Title }}</span>
+                  </label>
+                </div>
+              </div>
             </div>
           </template>
 
