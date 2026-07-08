@@ -127,7 +127,7 @@ SOAR has a left sidebar, a top header, a main work area, a lower-left user menu,
 
 #### Top header actions
 
-- On **Project Board**, the primary red button is **New Project**.
+- On **Project Board**, the header has a **Hide/Show Projects** button (to hide or reveal individual project columns, per user) and a **New Project** red button.
 - On **Meeting Agendas**, the primary red button is **New Agenda**.
 - On **Supervisor Tools**, the header has a team-member selector whose default text is **Select team members**.
 - On **Calendar**, the header has previous-month and next-month arrow buttons (month view only), a **Today** button, the current month label (month view only), and a **Month / Multi-month** toggle.
@@ -194,7 +194,9 @@ By default, a user sees:
 - projects directly assigned to them, and
 - projects containing open tasks assigned to them.
 
-Completed tasks are not shown on the main **Project Board** after they are complete; they appear in **Past Assignments** for assigned users. Project visibility can expand when the app's internal `showAllWorkItems` state is enabled, but there is no visible button in the current UI for end users to toggle that state.
+Completed tasks are not shown on the main **Project Board** after they are complete; they appear in **Past Assignments** for assigned users.
+
+Users can further control which projects appear on their board using the **Hide/Show Projects** button in the top header (to the left of **New Project**). Clicking it opens a dropdown listing every visible project with a checkbox. Unchecking a project hides its column from the board; checking it restores it. Hidden projects still appear on the **Calendar**. This preference is saved per user in `PropertiesService` and does not affect other users' boards.
 
 #### Project columns
 

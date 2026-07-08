@@ -354,11 +354,42 @@
             </button>
           </template>
           <template v-if="currentTab === 'project-board'">
-            <button
-              class="bg-[#DB0000] hover:bg-[#C41425] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
-              @click="openAddProject">
-              <i class="fa-solid fa-plus mr-1" v-once></i> <span v-once>New Project</span>
-            </button>
+            <div class="flex items-center gap-2">
+              <div class="relative" @click.stop>
+                <button
+                  @click="showHideProjectsDropdown = !showHideProjectsDropdown"
+                  :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-100 hover:bg-gray-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'"
+                  class="px-4 py-2 rounded-lg border text-sm font-medium transition-colors shadow-sm flex items-center gap-2">
+                  <i class="fa-solid fa-eye-slash text-xs"></i>
+                  <span>Hide/Show Projects</span>
+                  <span v-if="hiddenProjectIds.size > 0" class="bg-[#DB0000] text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center leading-none">{{ hiddenProjectIds.size }}</span>
+                </button>
+                <div
+                  v-if="showHideProjectsDropdown"
+                  :class="isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'"
+                  class="absolute right-0 mt-2 w-72 rounded-xl border shadow-lg z-30 p-2 max-h-72 overflow-y-auto">
+                  <p v-if="visibleProjects.length === 0" :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-sm px-3 py-2">No projects to show.</p>
+                  <label
+                    v-for="project in visibleProjects"
+                    :key="'hide-proj-' + project.Project_ID"
+                    :class="isDarkMode ? 'hover:bg-gray-800 text-gray-100' : 'hover:bg-gray-100 text-gray-700'"
+                    class="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer">
+                    <input
+                      type="checkbox"
+                      :checked="!hiddenProjectIds.has(project.Project_ID)"
+                      @change="toggleHiddenProject(project.Project_ID)"
+                      class="rounded accent-[#DB0000]" />
+                    <span class="w-2 h-2 rounded-full flex-shrink-0" :style="getProjectDotStyle(project)"></span>
+                    <span class="text-sm truncate">{{ project.Project_Title }}</span>
+                  </label>
+                </div>
+              </div>
+              <button
+                class="bg-[#DB0000] hover:bg-[#C41425] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
+                @click="openAddProject">
+                <i class="fa-solid fa-plus mr-1" v-once></i> <span v-once>New Project</span>
+              </button>
+            </div>
           </template>
           <div v-else-if="currentTab === 'supervisor-view'" class="relative" @click.stop>
             <button
@@ -769,7 +800,7 @@
   <div class="flex space-x-6 h-full items-start">
 
     <draggable
-      :list="currentTab === 'supervisor-view' ? supervisorVisibleProjects : visibleProjects"
+      :list="currentTab === 'supervisor-view' ? supervisorVisibleProjects : boardProjects"
       item-key="Project_ID"
       class="flex space-x-6 h-full items-start"
       handle=".project-drag-handle"
@@ -939,7 +970,7 @@
     </draggable>
 
     <div
-      v-if="(currentTab === 'supervisor-view' ? supervisorVisibleProjects : visibleProjects).length === 0"
+      v-if="(currentTab === 'supervisor-view' ? supervisorVisibleProjects : boardProjects).length === 0"
       :class="isDarkMode ? 'bg-gray-900 border-gray-700 text-gray-300' : 'bg-white border-gray-200 text-gray-600'"
       class="w-full max-w-xl rounded-xl border p-6 shadow-sm">
       <template v-if="currentTab === 'supervisor-view'">

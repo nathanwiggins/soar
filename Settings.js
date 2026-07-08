@@ -41,12 +41,16 @@ function getUserSettingsByEmail(email, scriptPropertiesCache) {
 
   try {
     const parsedSettings = JSON.parse(rawSettings);
+    const hiddenProjectIds = Array.isArray(parsedSettings && parsedSettings.hiddenProjectIds)
+      ? parsedSettings.hiddenProjectIds.filter(id => typeof id === 'string')
+      : [];
     return {
-      notifications: normalizeNotificationSettings(parsedSettings && parsedSettings.notifications)
+      notifications: normalizeNotificationSettings(parsedSettings && parsedSettings.notifications),
+      hiddenProjectIds
     };
   } catch (error) {
-    Logger.log(`Failed to parse notification settings for ${normalizeEmail(email)}: ${error && error.message ? error.message : error}`);
-    return { notifications: getDefaultNotificationSettings() };
+    Logger.log(`Failed to parse settings for ${normalizeEmail(email)}: ${error && error.message ? error.message : error}`);
+    return { notifications: getDefaultNotificationSettings(), hiddenProjectIds: [] };
   }
 }
 function isNotificationEnabledForEmail(email, notificationKey, scriptPropertiesCache) {
@@ -97,12 +101,16 @@ function persistCurrentUserSettings(settingsInput) {
 
   const existingSettings = getUserSettingsByEmail(currentUserEmail);
   const requestedSettings = settingsInput && typeof settingsInput === 'object' ? settingsInput : {};
+  const hiddenProjectIds = Object.prototype.hasOwnProperty.call(requestedSettings, 'hiddenProjectIds')
+    ? (Array.isArray(requestedSettings.hiddenProjectIds) ? requestedSettings.hiddenProjectIds.filter(id => typeof id === 'string') : [])
+    : (existingSettings.hiddenProjectIds || []);
   const settingsToSave = {
     notifications: normalizeNotificationSettings(
       Object.prototype.hasOwnProperty.call(requestedSettings, 'notifications')
         ? requestedSettings.notifications
         : existingSettings.notifications
-    )
+    ),
+    hiddenProjectIds
   };
 
   PropertiesService

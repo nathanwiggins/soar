@@ -139,7 +139,9 @@
       const calendarViewMode = ref(localStorage.getItem('soar_calendar_view') || 'month');
       const showSupervisorUserDropdown = ref(false);
       const selectedSupervisorUserIds = ref([]);
-      const INITIAL_PAYLOAD_CACHE_KEY = 'soar_initial_payload_v4';
+      const showHideProjectsDropdown = ref(false);
+      const hiddenProjectIds = ref(new Set());
+      const INITIAL_PAYLOAD_CACHE_KEY = 'soar_initial_payload_v5';
       const LOGO_CACHE_KEY = 'soar_processed_logo_v1';
       const memoCache = new Map();
 
@@ -478,6 +480,11 @@
         });
       });
 
+      const boardProjects = computed(() => {
+        if (hiddenProjectIds.value.size === 0) return visibleProjects.value;
+        return visibleProjects.value.filter(p => !hiddenProjectIds.value.has(normalizeId(p.Project_ID)));
+      });
+
       const myAgendas = computed(() => {
         return agendas.value.filter(a => idsMatch(a.Creator_ID, currentUserId.value));
       });
@@ -776,6 +783,7 @@
               agendaSessions: payload.agendaSessions || [],
               comments: payload.comments || [],
               currentUserSettings: payload.currentUserSettings || {},
+              userSortOrders: payload.userSortOrders || {},
               versionHash: payload.versionHash,
               lastUpdated: payload.lastUpdated || ''
             }
@@ -825,6 +833,8 @@
           });
         }
         applyNotificationSettings(payload.currentUserSettings?.notifications);
+        const savedHidden = payload.currentUserSettings?.hiddenProjectIds;
+        hiddenProjectIds.value = new Set(Array.isArray(savedHidden) ? savedHidden.map(normalizeId) : []);
         loading.value = false;
         syncTodoCompletedStates();
 
@@ -1039,6 +1049,9 @@
         currentTab.value = tabId;
         if (tabId !== 'supervisor-view') {
           showSupervisorUserDropdown.value = false;
+        }
+        if (tabId !== 'project-board') {
+          showHideProjectsDropdown.value = false;
         }
         if (tabId === 'calendar') {
           goToCurrentCalendarMonth();
@@ -2851,6 +2864,24 @@
           .persistCurrentUserSettings(settingsToSave);
       };
 
+      const toggleHiddenProject = (projectId) => {
+        const id = normalizeId(projectId);
+        if (!id) return;
+        const next = new Set(hiddenProjectIds.value);
+        if (next.has(id)) {
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+        hiddenProjectIds.value = next;
+        google.script.run
+          .withFailureHandler((error) => {
+            console.error('Failed to save hidden projects:', error);
+            showToast('Could not save visibility settings — they may revert on next load.');
+          })
+          .persistCurrentUserSettings({ hiddenProjectIds: Array.from(next) });
+      };
+
       const loadSettings = () => {
         const raw = localStorage.getItem('soar_user_settings_v1');
         if (!raw) return;
@@ -3135,7 +3166,7 @@
           const globalProject = projects.value[globalIndex];
           projects.value.splice(globalIndex, 1);
           
-          const visibleList = currentTab.value === 'supervisor-view' ? supervisorVisibleProjects.value : visibleProjects.value;
+          const visibleList = currentTab.value === 'supervisor-view' ? supervisorVisibleProjects.value : boardProjects.value;
           
           if (newIndex === 0) {
             if (visibleList.length > 0) {
@@ -4056,6 +4087,10 @@
         userStats,
         pastAssignments,
         visibleProjects,
+        boardProjects,
+        hiddenProjectIds,
+        showHideProjectsDropdown,
+        toggleHiddenProject,
         directReportUsers,
         canAccessSupervisorTools,
         supervisorVisibleProjects,
