@@ -142,6 +142,7 @@
       const showHideProjectsDropdown = ref(false);
       const hiddenProjectIds = ref(new Set());
       const INITIAL_PAYLOAD_CACHE_KEY = 'soar_initial_payload_v5';
+      const SORT_ORDER_LOCAL_KEY = 'soar_sort_orders_v1';
       const LOGO_CACHE_KEY = 'soar_processed_logo_v1';
       const memoCache = new Map();
 
@@ -741,6 +742,29 @@
         scheduleIdle(processWhenReady, { timeout: 2000 });
       };
 
+      const readLocalSortOrders = (userEmail) => {
+        try {
+          const raw = localStorage.getItem(SORT_ORDER_LOCAL_KEY);
+          if (!raw) return { projects: [], tasks: [] };
+          const parsed = JSON.parse(raw);
+          const key = normalizeEmail(userEmail);
+          return parsed?.[key] || { projects: [], tasks: [] };
+        } catch (e) {
+          return { projects: [], tasks: [] };
+        }
+      };
+
+      const writeLocalSortOrders = (userEmail, entityType, orderedIds) => {
+        try {
+          const raw = localStorage.getItem(SORT_ORDER_LOCAL_KEY);
+          const parsed = (raw ? JSON.parse(raw) : {}) || {};
+          const key = normalizeEmail(userEmail);
+          if (!parsed[key]) parsed[key] = {};
+          parsed[key][entityType] = orderedIds;
+          localStorage.setItem(SORT_ORDER_LOCAL_KEY, JSON.stringify(parsed));
+        } catch (e) {}
+      };
+
       const readInitialPayloadCache = () => {
         try {
           const rawCache = localStorage.getItem(INITIAL_PAYLOAD_CACHE_KEY);
@@ -815,17 +839,30 @@
         ];
         loadingCommentTopicIds.value = [];
         dataVersionHash.value = payload.versionHash || '';
-        const sortOrders = payload.userSortOrders;
-        if (sortOrders?.projects?.length) {
-          const orderMap = new Map(sortOrders.projects.map((id, i) => [normalizeId(id), i]));
+        const serverSortOrders = payload.userSortOrders || {};
+        const localSortOrders = readLocalSortOrders(payload.currentUserEmail);
+        const projectOrder = localSortOrders.projects?.length
+          ? localSortOrders.projects
+          : serverSortOrders.projects || [];
+        const taskOrder = localSortOrders.tasks?.length
+          ? localSortOrders.tasks
+          : serverSortOrders.tasks || [];
+        if (!localSortOrders.projects?.length && serverSortOrders.projects?.length) {
+          writeLocalSortOrders(payload.currentUserEmail, 'projects', serverSortOrders.projects);
+        }
+        if (!localSortOrders.tasks?.length && serverSortOrders.tasks?.length) {
+          writeLocalSortOrders(payload.currentUserEmail, 'tasks', serverSortOrders.tasks);
+        }
+        if (projectOrder.length) {
+          const orderMap = new Map(projectOrder.map((id, i) => [normalizeId(id), i]));
           projects.value.sort((a, b) => {
             const ai = orderMap.has(normalizeId(a.Project_ID)) ? orderMap.get(normalizeId(a.Project_ID)) : Infinity;
             const bi = orderMap.has(normalizeId(b.Project_ID)) ? orderMap.get(normalizeId(b.Project_ID)) : Infinity;
             return ai - bi;
           });
         }
-        if (sortOrders?.tasks?.length) {
-          const orderMap = new Map(sortOrders.tasks.map((id, i) => [normalizeId(id), i]));
+        if (taskOrder.length) {
+          const orderMap = new Map(taskOrder.map((id, i) => [normalizeId(id), i]));
           tasks.value.sort((a, b) => {
             const ai = orderMap.has(normalizeId(a.Task_ID)) ? orderMap.get(normalizeId(a.Task_ID)) : Infinity;
             const bi = orderMap.has(normalizeId(b.Task_ID)) ? orderMap.get(normalizeId(b.Task_ID)) : Infinity;
@@ -3182,6 +3219,7 @@
           }
 
           const orderedIds = projects.value.map(p => p.Project_ID);
+          writeLocalSortOrders(currentUserEmail.value, 'projects', orderedIds);
           google.script.run.saveUserSortOrder('projects', orderedIds);
         }
       };
@@ -3252,6 +3290,7 @@
            }
            
            const allTaskIds = tasks.value.map(t => t.Task_ID);
+           writeLocalSortOrders(currentUserEmail.value, 'tasks', allTaskIds);
            if (evt.added) {
              google.script.run.moveTaskToProject(globalTask.Task_ID, targetProjectId);
            }
