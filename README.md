@@ -1582,17 +1582,6 @@ To add a feature or fix a bug:
 6. Update [Tutorial.html](Tutorial.html) if assistant-facing guidance changes.
 7. Submit a pull request with a description of changes.
 
-### Roadmap
-
-Potential future enhancements:
-- [ ] File attachments on tasks/comments
-- [ ] Recurring tasks
-- [ ] Time tracking / Kanban burn-down charts
-- [ ] Mobile app
-- [ ] Slack integration for notifications
-- [ ] Saved filters
-- [ ] Bulk import from CSV
-
 ---
 
 ## License
