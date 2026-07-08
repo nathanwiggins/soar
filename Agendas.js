@@ -35,8 +35,11 @@ function createAgendaSession(agendaId, sessionDate, contentJson) {
     return JSON.stringify({ success: false, error: 'Only the agenda creator may create sessions.' });
   }
 
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Sessions');
-  if (!sheet) return JSON.stringify({ success: false, error: 'Sessions sheet not found.' });
+  let sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Sessions');
+  if (!sheet) {
+    sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet('Sessions');
+    sheet.appendRow(['Session_ID', 'Agenda_ID', 'Session_Date', 'Content_JSON', 'Created_Date']);
+  }
 
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   const headerIndex = getHeaderIndex(headers);
@@ -62,7 +65,7 @@ function createAgendaSession(agendaId, sessionDate, contentJson) {
 
 function updateAgendaSession(sessionId, sessionDate, contentJson) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Sessions');
-  if (!sheet) return JSON.stringify({ success: false, error: 'Sessions sheet not found.' });
+  if (!sheet) return JSON.stringify({ success: false, error: 'Session not found.' });
 
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
@@ -106,7 +109,7 @@ function getAgendaSessions(agendaId) {
 
 function deleteAgendaSession(sessionId) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Sessions');
-  if (!sheet) return JSON.stringify({ success: false, error: 'Sessions sheet not found.' });
+  if (!sheet) return JSON.stringify({ success: false, error: 'Session not found.' });
 
   const data = sheet.getDataRange().getValues();
   const headers = data[0];

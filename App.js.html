@@ -3504,7 +3504,7 @@
           agendaDate = '';
         }
 
-        activeSessionIndex.value = 0;
+        activeSessionIndex.value = sessions.length > 0 ? 0 : -1;
         activeAgenda.value = {
           ...agenda,
           headers,
