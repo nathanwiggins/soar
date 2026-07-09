@@ -86,8 +86,8 @@ ${formatTaskNotificationBody(details)}
     safeSendEmail(email, subject, body);
   });
 }
-function sendManagerTaskCompletedNotifications(task, assigneeIds, completedByUserId) {
-  if (!task || !Array.isArray(assigneeIds) || assigneeIds.length === 0) return;
+function sendTaskCompletedNotifications(task, assigneeIds, completedByUserId) {
+  if (!task) return;
 
   const users = getTableData('Users');
   const usersById = users.reduce((acc, user) => {
@@ -96,30 +96,38 @@ function sendManagerTaskCompletedNotifications(task, assigneeIds, completedByUse
     return acc;
   }, {});
 
-  const managerIds = new Set();
-  assigneeIds.forEach((assigneeId) => {
-    const worker = usersById[(assigneeId || '').toString().trim()];
-    const managerId = (worker && worker.Manager_ID ? worker.Manager_ID : '').toString().trim();
-    if (managerId) managerIds.add(managerId);
+  const normalizedCompletedByUserId = (completedByUserId || '').toString().trim();
+  const recipientIds = new Set();
+  (Array.isArray(assigneeIds) ? assigneeIds : []).forEach((assigneeId) => {
+    const normalizedAssigneeId = (assigneeId || '').toString().trim();
+    if (normalizedAssigneeId) recipientIds.add(normalizedAssigneeId);
   });
-  if (managerIds.size === 0) return;
+  const creatorId = (task.Creator_ID || '').toString().trim();
+  if (creatorId) recipientIds.add(creatorId);
+  recipientIds.delete(normalizedCompletedByUserId);
+  if (recipientIds.size === 0) return;
 
   const scriptPropertiesCache = PropertiesService.getScriptProperties().getProperties();
   const details = getTaskNotificationDetails(task);
-  const completedBy = usersById[(completedByUserId || '').toString().trim()];
+  const completedBy = usersById[normalizedCompletedByUserId];
   const completedByName = completedBy && completedBy.Name ? completedBy.Name : 'A user';
   const subject = `Task completed: ${details.taskTitle}`;
-  const body = `${completedByName} marked a task as completed.
+
+  const sentEmails = new Set();
+  recipientIds.forEach((recipientId) => {
+    const recipient = usersById[recipientId];
+    const email = normalizeEmail(recipient && recipient.Email);
+    if (!email || sentEmails.has(email)) return;
+    if (!isNotificationEnabledForUser(recipient, 'taskCompletion', scriptPropertiesCache)) return;
+
+    const recipientName = recipient && recipient.Name ? recipient.Name : 'there';
+    const body = `Hi ${recipientName},
+
+${completedByName} marked a task as completed.
 
 ${formatTaskNotificationBody(details)}
 `;
 
-  const sentEmails = new Set();
-  managerIds.forEach((managerId) => {
-    const manager = usersById[managerId];
-    const email = normalizeEmail(manager && manager.Email);
-    if (!email || sentEmails.has(email)) return;
-    if (!isNotificationEnabledForUser(manager, 'taskCompletion', scriptPropertiesCache)) return;
     sentEmails.add(email);
     safeSendEmail(email, subject, body);
   });

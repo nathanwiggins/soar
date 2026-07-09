@@ -171,7 +171,7 @@
                   @change="updateNotificationSetting('taskAssignments', $event.target.checked)"
                   class="rounded border-gray-300 text-[#DB0000] focus:ring-[#DB0000]">
               </label>
-              <label v-if="directReportUsers.length > 0" :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'" class="flex items-center justify-between rounded-lg border px-4 py-3">
+              <label :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'" class="flex items-center justify-between rounded-lg border px-4 py-3">
                 <span class="text-sm">Task completion</span>
                 <input
                   type="checkbox"

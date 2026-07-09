@@ -185,7 +185,7 @@ function updateTaskStatus(taskId, newStatus) {
         .filter((assignment) => (assignment.Assignment_ID || '').toString().trim() === normalizedTaskId)
         .map((assignment) => (assignment.Assignee_ID || '').toString().trim())
         .filter(Boolean);
-      sendManagerTaskCompletedNotifications(updatedTask, assigneeIds, currentUserId);
+      sendTaskCompletedNotifications(updatedTask, assigneeIds, currentUserId);
     }
 
     return JSON.stringify({ success: true, task: updatedTask });
@@ -520,7 +520,7 @@ function updateTask(taskId, taskInput) {
     const newlyAssignedIds = assigneeIds.filter((assigneeId) => !previousAssigneeSet.has(assigneeId));
     sendTaskAssignmentNotifications(updatedTask, newlyAssignedIds, currentUserId);
     if (isMarkingCompleted) {
-      sendManagerTaskCompletedNotifications(updatedTask, assigneeIds, currentUserId);
+      sendTaskCompletedNotifications(updatedTask, assigneeIds, currentUserId);
     }
 
     const subtaskTitles = Array.isArray(taskInput?.newSubtasks) ? taskInput.newSubtasks : [];
@@ -632,7 +632,7 @@ function completeTask(taskId) {
       .filter((assignment) => (assignment.Assignment_ID || '').toString().trim() === normalizedTaskId)
       .map((assignment) => (assignment.Assignee_ID || '').toString().trim())
       .filter(Boolean);
-    sendManagerTaskCompletedNotifications(completedTask, assigneeIds, currentUserId);
+    sendTaskCompletedNotifications(completedTask, assigneeIds, currentUserId);
 
     return JSON.stringify({ success: true, task: completedTask });
   } catch (error) {

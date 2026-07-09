@@ -316,7 +316,7 @@ Completed-task behavior:
 
 - Completed tasks assigned to you appear in **Past Assignments**.
 - Completed tasks with due dates in the past can be purged by `purgeCompletedTasksPastDue()`.
-- Managers can receive task-completion notifications for work completed by reports.
+- Assignees and the task creator can receive task-completion notifications, excluding whoever completed the task.
 
 ### Subtasks
 
@@ -500,7 +500,7 @@ Open the lower-left user menu and click **Settings**.
 **Notifications** toggles:
 
 - **Task assignments**
-- **Task completion** (only shown to users who have direct reports; notifies managers when a report completes a task)
+- **Task completion** (notifies assignees and the task creator when a task is completed, excluding whoever completed it)
 - **Comments and mentions**
 - **Due-date reminders**
 - **Weekly digest**
@@ -576,7 +576,7 @@ Footer buttons:
 ✅ **Smart Notifications**
 1. **Task assignments**: users can be notified when assigned to a task.
 2. **Comments and mentions**: users can be notified when mentioned in task comments.
-3. **Task completion**: managers can be notified when assigned tasks are completed by their reports.
+3. **Task completion**: assignees and the task creator can be notified when a task is completed, excluding whoever completed it.
 4. **Due-date reminders**: users can be alerted for open tasks due today or tomorrow.
 5. **Weekly digest**: weekly summary of open assigned tasks.
 6. **Agenda shares**: users can be notified when a teammate shares a meeting agenda.
@@ -1252,7 +1252,7 @@ These functions are normally called internally:
 
 - `sendTaskAssignmentNotifications(task, assigneeIds, assignedByUserId)`
 - `sendMentionNotifications(comment, topicId, commenter, mentionedUsers)`
-- `sendManagerTaskCompletedNotifications(task, assigneeIds, completedByUserId)`
+- `sendTaskCompletedNotifications(task, assigneeIds, completedByUserId)`
 - `sendManagerAccountCreatedNotification(createdUser)`
 - `sendDueDateReminderNotifications()`
 - `sendWeeklyDigestNotifications()`
