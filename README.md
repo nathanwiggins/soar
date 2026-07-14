@@ -217,6 +217,7 @@ Each task card shows:
 
 - status dropdown/pill with title **Update task status**;
 - subtask count indicator (list-check icon and number) next to the status pill, shown only when the task has subtasks;
+- a duplicate (copy icon) button that creates an independent copy of the task via `duplicateTask()`;
 - speech-bubble comments button with the number of unresolved comments;
 - task title;
 - assignee avatars or initials;
@@ -224,6 +225,8 @@ Each task card shows:
 - due date when set, color-coded: yellow if due within 7 days, orange if due within 1 day, red if overdue (gray for completed tasks).
 
 Task cards can be dragged between project columns. Only the task creator can drag a task. Moving a task to a different project additionally requires the user to be the creator of both the source and target project. When dragging over an unauthorized project, a red "Not authorized to move here" banner appears; authorized targets show a blue "Move to: [Project]" banner. Cross-project moves persist the task's new `Project_ID` via `moveTaskToProject()`, and the user's task order is saved per-user via `saveUserSortOrder()`. Press **Cmd/Ctrl+Z** to undo the last cross-project move.
+
+Hover a task card and press **Cmd/Ctrl+C** to copy it, then press **Cmd/Ctrl+V** to paste a duplicate. The same shortcut works while **Task Details** is open, copying/pasting the task currently shown in the modal. Both shortcuts are ignored while typing in a text field.
 
 ### Creating a Project
 
@@ -308,6 +311,7 @@ Footer buttons:
 - **Complete Task**: sets the task status to `Complete`, records `Completed_By`, and records `Completed_At`.
 - **Complete**: displayed in the same button position when the task is already complete.
 - **Delete Task**: deletes the task and related assignments. Only visible to the task creator.
+- **Duplicate Task**: creates an independent copy of the task, including its assignees and subtasks, via `duplicateTask()`.
 - **Save Changes**: saves edits.
 - **Cancel**: cancels edit mode.
 - **Close**: closes the modal when not editing.
@@ -1112,6 +1116,16 @@ Creates a new task inside a project.
 - `taskInput.dueDate` (string, optional): `YYYY-MM-DD`.
 - `taskInput.assigneeIds` (array): required list of `User_ID` values.
 - `taskInput.subtasks` (array, optional): list of subtask title strings.
+
+**Returns**: `{success: true, task: {...}, assignments: [...], subtasks: [...]}`
+
+#### `duplicateTask(taskId)`
+Creates an independent copy of a task in the same project, including its assignees and subtasks.
+
+**Parameters**:
+- `taskId` (string): Task_ID to duplicate.
+
+**Net Effect**: Copies `Task_Title`, `Description`, `Priority`, `Due_Date`, `Project_ID`, assignees, and subtask titles into a new task with a new `Task_ID`. Resets `Status` to `Not Started` and subtasks to `Incomplete`, clears completion fields, and sets `Creator_ID` to the current user. Comments are not copied. Sends task-assignment notifications to the copied assignees, same as `createTask`.
 
 **Returns**: `{success: true, task: {...}, assignments: [...], subtasks: [...]}`
 

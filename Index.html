@@ -885,7 +885,9 @@
               <template #item="{ element: task }">
                 <div :class="isDarkMode ? 'bg-gray-900 border-gray-700 hover:shadow-gray-900' : 'bg-white border-gray-100'" class="p-4 rounded-xl shadow-sm border hover:shadow-md transition-shadow cursor-grab group"
                      :style="getProjectTaskCardStyle(project)"
-                     @click="openTaskInfo(task)">
+                     @click="openTaskInfo(task)"
+                     @mouseenter="hoveredTaskId = task.Task_ID"
+                     @mouseleave="hoveredTaskId = null">
 
                   <div class="flex justify-between items-start mb-2">
                     <div class="inline-flex items-center gap-2" @click.stop>
@@ -917,19 +919,29 @@
                         <span :class="isDarkMode ? 'text-gray-300' : 'text-gray-500'" class="font-medium">{{ getSubtaskCountForTask(task.Task_ID) }}</span>
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      class="text-gray-300 hover:text-[#C41425] transition-colors inline-flex items-center gap-1"
-                      @click.stop="openTaskComments(task)"
-                      title="Open comments">
-                      <i class="fa-regular fa-comments"></i>
-                      <span
-                        v-if="getCommentCountForTask(task.Task_ID) > 0"
-                        :class="isDarkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'"
-                        class="min-w-5 h-5 px-1 rounded-full text-[10px] font-semibold flex items-center justify-center">
-                        {{ getCommentCountForTask(task.Task_ID) }}
-                      </span>
-                    </button>
+                    <div class="inline-flex items-center gap-2" @click.stop>
+                      <button
+                        type="button"
+                        class="text-gray-300 hover:text-[#C41425] transition-colors disabled:opacity-50"
+                        @click.stop="duplicateTaskById(task.Task_ID)"
+                        :disabled="isDuplicatingTask(task.Task_ID)"
+                        title="Duplicate task">
+                        <i class="fa-regular fa-copy"></i>
+                      </button>
+                      <button
+                        type="button"
+                        class="text-gray-300 hover:text-[#C41425] transition-colors inline-flex items-center gap-1"
+                        @click.stop="openTaskComments(task)"
+                        title="Open comments">
+                        <i class="fa-regular fa-comments"></i>
+                        <span
+                          v-if="getCommentCountForTask(task.Task_ID) > 0"
+                          :class="isDarkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'"
+                          class="min-w-5 h-5 px-1 rounded-full text-[10px] font-semibold flex items-center justify-center">
+                          {{ getCommentCountForTask(task.Task_ID) }}
+                        </span>
+                      </button>
+                    </div>
                   </div>
 
                   <h4
@@ -1970,6 +1982,13 @@
               @click="deleteTask"
               :disabled="savingTask || deletingTask || completingTask">
               {{ deletingTask ? 'Deleting...' : 'Delete Task' }}
+            </button>
+            <button
+              :class="isDarkMode ? 'border-gray-600 text-gray-200 hover:bg-gray-800' : 'border-gray-300 text-gray-700 hover:bg-gray-50'"
+              class="px-4 py-2 rounded-lg text-sm font-medium border disabled:opacity-60"
+              @click="duplicateTaskById(taskDetailsForm.taskId)"
+              :disabled="savingTask || deletingTask || completingTask || isDuplicatingTask(taskDetailsForm.taskId)">
+              {{ isDuplicatingTask(taskDetailsForm.taskId) ? 'Duplicating...' : 'Duplicate Task' }}
             </button>
           </div>
 

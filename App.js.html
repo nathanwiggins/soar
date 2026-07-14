@@ -243,6 +243,9 @@
       const completingTask = ref(false);
       const updatingTaskStatusIds = ref([]);
       const permanentlyDeletingTaskIds = ref([]);
+      const duplicatingTaskIds = ref([]);
+      const hoveredTaskId = ref(null);
+      const copiedTaskId = ref(null);
       const showProjectDetailsModal = ref(false);
       const projectDetailsForm = ref(null);
       const deletingProject = ref(false);
@@ -2412,6 +2415,45 @@
           .completeTask(taskId);
       };
 
+      const isDuplicatingTask = (taskId) => duplicatingTaskIds.value.some((id) => idsMatch(id, taskId));
+
+      const duplicateTaskById = (taskId) => {
+        const normalizedTaskId = normalizeId(taskId);
+        if (!normalizedTaskId || isDuplicatingTask(normalizedTaskId)) return;
+
+        duplicatingTaskIds.value.push(normalizedTaskId);
+
+        google.script.run
+          .withSuccessHandler((response) => {
+            duplicatingTaskIds.value = duplicatingTaskIds.value.filter((id) => !idsMatch(id, normalizedTaskId));
+
+            const result = parseRunResponse(response);
+            if (!result || !result.success) {
+              showToast(result?.error || 'Failed to duplicate task.');
+              return;
+            }
+
+            if (result.task) {
+              tasks.value.push(result.task);
+              if (Array.isArray(result.assignments)) {
+                assignments.value.push(...result.assignments);
+              }
+              if (Array.isArray(result.subtasks) && result.subtasks.length > 0) {
+                subtasks.value.push(...result.subtasks);
+              }
+              showToast('Task duplicated.', 'success');
+            } else {
+              fetchData();
+            }
+          })
+          .withFailureHandler((error) => {
+            duplicatingTaskIds.value = duplicatingTaskIds.value.filter((id) => !idsMatch(id, normalizedTaskId));
+            console.error('Failed to duplicate task:', error);
+            showToast('Failed to duplicate task. Please try again.');
+          })
+          .duplicateTask(normalizedTaskId);
+      };
+
       const deleteTaskPermanently = (task) => {
         const taskId = normalizeId(task?.Task_ID);
         if (!taskId || permanentlyDeletingTaskIds.value.includes(taskId)) return;
@@ -3412,9 +3454,12 @@
       };
 
       const handleGlobalKeyDown = (event) => {
-        if ((event.metaKey || event.ctrlKey) && event.key === 'z') {
-          const tag = document.activeElement?.tagName;
-          if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
+        if (!event.metaKey && !event.ctrlKey) return;
+
+        const tag = document.activeElement?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
+
+        if (event.key === 'z') {
           if (calendarDateUndoStack.value.length) {
             event.preventDefault();
             undoLastCalendarDateChange();
@@ -3422,6 +3467,22 @@
             event.preventDefault();
             undoLastTaskMove();
           }
+          return;
+        }
+
+        if (event.key === 'c' || event.key === 'C') {
+          const targetTaskId = showTaskDetailsModal.value ? taskDetailsForm.value?.taskId : hoveredTaskId.value;
+          if (!targetTaskId) return;
+          event.preventDefault();
+          copiedTaskId.value = targetTaskId;
+          showToast('Task copied — press Cmd/Ctrl+V to paste a duplicate.', 'success');
+          return;
+        }
+
+        if (event.key === 'v' || event.key === 'V') {
+          if (!copiedTaskId.value) return;
+          event.preventDefault();
+          duplicateTaskById(copiedTaskId.value);
         }
       };
 
@@ -4215,6 +4276,10 @@
         completingTask,
         updatingTaskStatusIds,
         permanentlyDeletingTaskIds,
+        duplicatingTaskIds,
+        hoveredTaskId,
+        isDuplicatingTask,
+        duplicateTaskById,
         showProjectDetailsModal,
         projectDetailsForm,
         deletingProject,
