@@ -413,7 +413,6 @@ function duplicateTask(taskId) {
         .map((assignment) => assignment.Assignee_ID)
     );
     ensureTaskHasAssignees(assigneeIds);
-    validateAssigneePermissions(assigneeIds, creatorId, assigneeIds);
 
     const now = new Date();
     const newRow = new Array(headers.length).fill('');

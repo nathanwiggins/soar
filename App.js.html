@@ -3471,6 +3471,7 @@
         }
 
         if (event.key === 'c' || event.key === 'C') {
+          if (window.getSelection && window.getSelection().toString().length > 0) return;
           const targetTaskId = showTaskDetailsModal.value ? taskDetailsForm.value?.taskId : hoveredTaskId.value;
           if (!targetTaskId) return;
           event.preventDefault();
