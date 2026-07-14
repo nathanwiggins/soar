@@ -382,6 +382,120 @@ function createTask(projectId, taskInput) {
     });
   }
 }
+function duplicateTask(taskId) {
+  const normalizedTaskId = taskId ? taskId.toString().trim() : '';
+  if (!normalizedTaskId) {
+    return JSON.stringify({ success: false, error: 'Task ID is required.' });
+  }
+
+  const sourceTask = getTaskById(normalizedTaskId);
+  if (!sourceTask) {
+    return JSON.stringify({ success: false, error: 'Task not found.' });
+  }
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Tasks');
+  if (!sheet) {
+    return JSON.stringify({ success: false, error: 'Tasks sheet was not found.' });
+  }
+
+  try {
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const headerIndex = getHeaderIndex(headers);
+
+    const creatorId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
+    if (!creatorId) {
+      throw new Error('Could not determine Creator_ID from current user email.');
+    }
+
+    const assigneeIds = getValidAssigneeIds(
+      getTableData('Assignments')
+        .filter((assignment) => (assignment.Assignment_ID || '').toString().trim() === normalizedTaskId)
+        .map((assignment) => assignment.Assignee_ID)
+    );
+    ensureTaskHasAssignees(assigneeIds);
+
+    const now = new Date();
+    const newRow = new Array(headers.length).fill('');
+    const newTaskId = generateNextId('Tasks', 'T');
+
+    if (headerIndex.Task_ID !== undefined) newRow[headerIndex.Task_ID] = newTaskId;
+    if (headerIndex.Project_ID !== undefined) newRow[headerIndex.Project_ID] = sourceTask.Project_ID;
+    if (headerIndex.Task_Title !== undefined) newRow[headerIndex.Task_Title] = sourceTask.Task_Title;
+    if (headerIndex.Due_Date !== undefined) newRow[headerIndex.Due_Date] = parseDateInput(sourceTask.Due_Date) || '';
+    if (headerIndex.Status !== undefined) newRow[headerIndex.Status] = TASK_DEFAULT_STATUS;
+    if (headerIndex.Created_Date !== undefined) newRow[headerIndex.Created_Date] = now;
+    if (headerIndex.Description !== undefined) newRow[headerIndex.Description] = sourceTask.Description || '';
+    if (headerIndex.Priority !== undefined) newRow[headerIndex.Priority] = sourceTask.Priority || '';
+    if (headerIndex.Creator_ID !== undefined) newRow[headerIndex.Creator_ID] = creatorId;
+
+    appendRows(sheet, [newRow]);
+    invalidateTableCache('Tasks');
+
+    let createdAssignments = [];
+    if (assigneeIds.length > 0 && headerIndex.Task_ID !== undefined) {
+      const assignmentsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Assignments');
+      if (!assignmentsSheet) {
+        throw new Error('Assignments sheet was not found.');
+      }
+
+      createdAssignments = assigneeIds.map(assigneeId => ({
+        Assignment_ID: newTaskId,
+        Assignee_ID: assigneeId
+      }));
+
+      const assignmentRows = createdAssignments.map(assignment => [assignment.Assignment_ID, assignment.Assignee_ID]);
+      appendRows(assignmentsSheet, assignmentRows);
+      invalidateTableCache('Assignments');
+    }
+
+    const createdTask = {};
+    headers.forEach((header, index) => {
+      const value = newRow[index];
+      createdTask[header] = header === 'Due_Date'
+        ? serializeDateOnlyForClient(value)
+        : (value instanceof Date ? value.toISOString() : value);
+    });
+    sendTaskAssignmentNotifications(createdTask, assigneeIds, creatorId);
+
+    const sourceSubtasks = getTableData('Subtasks').filter(
+      (subtask) => (subtask.Task_ID || '').toString().trim() === normalizedTaskId
+    );
+    let createdSubtasks = [];
+
+    if (sourceSubtasks.length > 0) {
+      const subtasksSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Subtasks');
+      if (subtasksSheet) {
+        const subtaskHeaders = subtasksSheet.getRange(1, 1, 1, subtasksSheet.getLastColumn()).getValues()[0];
+        const subHeaderIdx = getHeaderIndex(subtaskHeaders);
+
+        const subtaskRows = sourceSubtasks.map(subtask => {
+          const row = new Array(subtaskHeaders.length).fill('');
+          if (subHeaderIdx.Subtask_ID !== undefined) row[subHeaderIdx.Subtask_ID] = generateNextId('Subtasks', 'S');
+          if (subHeaderIdx.Task_ID !== undefined) row[subHeaderIdx.Task_ID] = newTaskId;
+          if (subHeaderIdx.Subtask_Title !== undefined) row[subHeaderIdx.Subtask_Title] = subtask.Subtask_Title;
+          if (subHeaderIdx.Status !== undefined) row[subHeaderIdx.Status] = 'Incomplete';
+          return row;
+        });
+
+        appendRows(subtasksSheet, subtaskRows);
+        invalidateTableCache('Subtasks');
+
+        createdSubtasks = subtaskRows.map(row => {
+          const obj = {};
+          subtaskHeaders.forEach((h, i) => obj[h] = row[i]);
+          return obj;
+        });
+      }
+    }
+
+    return JSON.stringify({ success: true, task: createdTask, assignments: createdAssignments, subtasks: createdSubtasks });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: error && error.message ? error.message : 'Failed to duplicate task.'
+    });
+  }
+}
 function normalizeTaskStatus(status) {
   const allowedStatuses = TASK_STATUS_OPTIONS;
   const normalizedStatus = normalizeLegacyTaskStatus(status);
