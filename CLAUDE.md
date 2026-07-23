@@ -121,6 +121,7 @@ IDs are generated via `generateNextId(sheetName, prefix)` (e.g., `TASK-00000042`
 | `Notifications.js` | Email notification dispatch on task/comment events |
 | `Agendas.js` | Agenda CRUD and sharing |
 | `Chat.js` | Gemini AI assistant integration (requires `GEMINI_API_KEY` in Script Properties) |
+| `Triggers.js` | Bundled `runDailyTriggers`/`runWeeklyTriggers`/`runMonthlyTriggers` entry points for time-driven triggers |
 
 ### Adding a New Data Entity
 

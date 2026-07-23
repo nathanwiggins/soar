@@ -149,6 +149,7 @@ Other buttons:
    - **Task Title**: required; placeholder **Enter task title**.
    - **Due Date**: optional date picker.
    - **Priority**: optional button selection: `High`, `Medium`, or `Low`.
+   - **Repeats**: optional button selection: `None`, `Daily`, `Weekly`, `Monthly`, or `Yearly`. Choosing anything but `None` reveals an **Every** interval number (e.g. every 2 weeks) and an optional **Ends on** date, and requires a due date.
    - **Assigned To**: required by backend validation; opens a checkbox dropdown of assignable users.
    - **Description**: optional; placeholder **Describe the task**.
    - **Subtasks**: optional; type into **Type a subtask and press enter...** and press Enter or click **Add**.
@@ -174,6 +175,7 @@ Controls and fields:
 - **Task Status**: `Not Started`, `Upcoming`, `Review`, `In Progress`, `Ongoing`, `On Hold`, `Cancelled`, `Closeout`, or `Complete`.
 - **Associated Project**: project dropdown available while editing.
 - **Priority**: dropdown with `None`, `High`, `Medium`, `Low`.
+- **Repeats**: dropdown with `None`, `Daily`, `Weekly`, `Monthly`, `Yearly`. Choosing anything but `None` reveals an **Every** interval number and an optional **Ends on** date, and requires a due date. Setting it back to `None` turns recurrence off.
 - **Date Created**: display-only.
 - **Date Due**: editable date picker in edit mode.
 - **Completed By** and **Completed At**: only visible and populated when the task status is `Complete`.
@@ -191,7 +193,7 @@ Footer buttons:
 Completed-task behavior:
 
 - Completed tasks assigned to you appear in **Past Assignments**.
-- Completed tasks with due dates in the past can be purged by `purgeCompletedTasksPastDue()`.
+- Completed tasks with due dates in the past can be purged by `purgeCompletedTasksPastDue()`; this depends on the daily time-driven trigger for `runDailyTriggers()` being configured in the Apps Script project, so ask your SOAR administrator if old completed tasks aren't being cleared.
 - Assignees and the task creator can receive task-completion notifications, excluding whoever completed the task.
 
 ### Subtasks
@@ -207,6 +209,17 @@ In **Task Details**:
 
 - Click **Edit Task** to edit subtask titles, add new subtasks, delete subtasks, or drag to reorder subtasks.
 - A subtask checkbox toggles status between `Incomplete` and `Complete`.
+
+### Recurring Tasks
+
+Any task can be set to repeat using the **Repeats** field in **Add Task** or **Task Details**: `None`, `Daily`, `Weekly`, `Monthly`, or `Yearly`, with a custom **Every** interval (e.g. every 2 weeks) and an optional **Ends on** date. A due date is required to enable recurrence.
+
+How it actually advances:
+
+- Generation is due-date based, not completion based. Once a recurring task's due date arrives, SOAR automatically creates the next occurrence: due date advanced by the interval, status reset to `Not Started`, and assignees and subtasks copied over (subtasks reset to incomplete).
+- The original task's **Repeats** setting is cleared once it spawns its successor, so it won't create duplicates — only the newest occurrence in the series keeps recurring.
+- If an **Ends on** date is set and the next occurrence would fall after it, the series stops instead of creating a new task.
+- This depends on the daily time-driven trigger for `runDailyTriggers()` (which calls `processRecurringTasks()`) being configured in the Apps Script project; ask your SOAR administrator if recurring tasks aren't advancing.
 
 ### Comments and Mentions
 
@@ -424,6 +437,11 @@ Footer buttons:
 - Toggle each subtask between `Incomplete` and `Complete`.
 - Edit, delete, and reorder subtasks in task edit mode.
 
+✅ **Recurring Tasks**
+- Set **Repeats** to `Daily`, `Weekly`, `Monthly`, or `Yearly`, plus a custom interval and optional end date.
+- Due-date based generation: the next occurrence is created automatically once the current due date arrives, independent of completion.
+- Requires the daily time-driven trigger for `runDailyTriggers()` (which calls `processRecurringTasks()`).
+
 ### Personal To-Do List
 
 ✅ **To-Do List**
@@ -472,10 +490,10 @@ Footer buttons:
 1. **Task assignments**: users can be notified when assigned to a task.
 2. **Comments and mentions**: users can be notified when mentioned in task comments.
 3. **Task completion**: assignees and the task creator can be notified when a task is completed, excluding whoever completed it.
-4. **Due-date reminders**: users can be alerted for open tasks due today or tomorrow.
-5. **Weekly digest**: weekly summary of open assigned tasks.
+4. **Due-date reminders**: users can be alerted for open tasks due today or tomorrow. Depends on the daily time-driven trigger for `runDailyTriggers()` being configured; ask your SOAR administrator if reminders aren't arriving.
+5. **Weekly digest**: weekly summary of open assigned tasks. Depends on the weekly time-driven trigger for `runWeeklyTriggers()` being configured.
 6. **Agenda shares**: users can be notified when a teammate shares a meeting agenda.
-7. **Support ticket follow-up**: users can be notified by email when a support ticket they logged has been resolved by the development team.
+7. **Support ticket follow-up**: users can be notified by email when a support ticket they logged has been resolved by the development team. Depends on the daily time-driven trigger for `runDailyTriggers()` (which calls `syncDailyGitHubStatus()`) being configured.
 8. **Account-created manager notice**: a manager can be notified when a report creates an account.
 
 ### User Management
