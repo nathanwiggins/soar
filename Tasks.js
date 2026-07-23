@@ -11,6 +11,7 @@ const TASK_STATUS_OPTIONS = [
   'Closeout',
   TASK_COMPLETE_STATUS
 ];
+const RECURRENCE_RULE_OPTIONS = ['', 'Daily', 'Weekly', 'Monthly', 'Yearly'];
 function isTaskCompleteStatus(status) {
   return ['Complete', 'Completed'].includes((status || '').toString().trim());
 }
@@ -219,6 +220,49 @@ function normalizePriorityValue(value) {
 
   throw new Error(`Priority must be one of: ${validPriorities.join(', ')}.`);
 }
+function normalizeRecurrenceRule(value) {
+  const rule = value ? value.toString().trim() : '';
+  if (rule === 'None') return '';
+  if (RECURRENCE_RULE_OPTIONS.indexOf(rule) === -1) {
+    throw new Error(`Recurrence must be one of: ${RECURRENCE_RULE_OPTIONS.filter(Boolean).join(', ')}.`);
+  }
+  return rule;
+}
+function normalizeRecurrenceInterval(value, rule) {
+  if (!rule) return '';
+
+  const interval = value === null || value === undefined || value === '' ? 1 : parseInt(value, 10);
+  if (!Number.isInteger(interval) || interval < 1) {
+    throw new Error('Recurrence interval must be a whole number of 1 or more.');
+  }
+  return interval;
+}
+function normalizeRecurrenceEndDate(value, rule) {
+  if (!rule) return '';
+
+  const parsedEndDate = parseDateInput(value);
+  return parsedEndDate && parsedEndDate.toString() !== 'Invalid Date' ? parsedEndDate : '';
+}
+function daysInMonth(year, month) {
+  return new Date(year, month + 1, 0).getDate();
+}
+function computeNextRecurrenceDueDate(baseDate, rule, interval) {
+  const year = baseDate.getFullYear();
+  const month = baseDate.getMonth();
+  const day = baseDate.getDate();
+
+  if (rule === 'Daily') return new Date(year, month, day + interval);
+  if (rule === 'Weekly') return new Date(year, month, day + interval * 7);
+  if (rule === 'Monthly' || rule === 'Yearly') {
+    const normalized = rule === 'Yearly' ? new Date(year + interval, month, 1) : new Date(year, month + interval, 1);
+    const targetYear = normalized.getFullYear();
+    const targetMonth = normalized.getMonth();
+    const isLastDayOfBaseMonth = day >= daysInMonth(year, month);
+    const targetDay = isLastDayOfBaseMonth ? daysInMonth(targetYear, targetMonth) : Math.min(day, daysInMonth(targetYear, targetMonth));
+    return new Date(targetYear, targetMonth, targetDay);
+  }
+  return new Date(year, month, day);
+}
 function normalizeStatusValue(value) {
   const validStatuses = ['Not Started', 'In Progress', 'Completed', 'Delayed'];
   const status = value && value.toString().trim() ? value.toString().trim() : 'Not Started';
@@ -295,6 +339,12 @@ function createTask(projectId, taskInput) {
     const hasValidDueDate = parsedDueDate && parsedDueDate.toString() !== 'Invalid Date';
     const priority = normalizePriorityValue(taskInput ? taskInput.priority : '');
     const description = taskInput && taskInput.description ? taskInput.description.toString().trim() : '';
+    const recurrenceRule = normalizeRecurrenceRule(taskInput ? taskInput.recurrenceRule : '');
+    const recurrenceInterval = normalizeRecurrenceInterval(taskInput ? taskInput.recurrenceInterval : '', recurrenceRule);
+    const recurrenceEndDate = normalizeRecurrenceEndDate(taskInput ? taskInput.recurrenceEndDate : '', recurrenceRule);
+    if (recurrenceRule && !hasValidDueDate) {
+      throw new Error('A due date is required to set up a recurring task.');
+    }
     const assigneeIds = getValidAssigneeIds(taskInput ? taskInput.assigneeIds : []);
     ensureTaskHasAssignees(assigneeIds);
     const normalizedProjectId = ensureProjectExists(projectId);
@@ -315,6 +365,9 @@ function createTask(projectId, taskInput) {
     if (headerIndex.Description !== undefined) newRow[headerIndex.Description] = description;
     if (headerIndex.Priority !== undefined) newRow[headerIndex.Priority] = priority;
     if (headerIndex.Creator_ID !== undefined) newRow[headerIndex.Creator_ID] = creatorId;
+    if (headerIndex.Recurrence_Rule !== undefined) newRow[headerIndex.Recurrence_Rule] = recurrenceRule;
+    if (headerIndex.Recurrence_Interval !== undefined) newRow[headerIndex.Recurrence_Interval] = recurrenceInterval;
+    if (headerIndex.Recurrence_End_Date !== undefined) newRow[headerIndex.Recurrence_End_Date] = recurrenceEndDate;
 
     appendRows(sheet, [newRow]);
     invalidateTableCache('Tasks');
@@ -339,7 +392,7 @@ function createTask(projectId, taskInput) {
     const createdTask = {};
     headers.forEach((header, index) => {
       const value = newRow[index];
-      createdTask[header] = header === 'Due_Date'
+      createdTask[header] = header === 'Due_Date' || header === 'Recurrence_End_Date'
         ? serializeDateOnlyForClient(value)
         : (value instanceof Date ? value.toISOString() : value);
     });
@@ -554,6 +607,12 @@ function updateTask(taskId, taskInput) {
     const hasValidDueDate = parsedDueDate && parsedDueDate.toString() !== 'Invalid Date';
     const priority = normalizePriorityValue(taskInput ? taskInput.priority : '');
     const description = taskInput && taskInput.description ? taskInput.description.toString().trim() : '';
+    const recurrenceRule = normalizeRecurrenceRule(taskInput ? taskInput.recurrenceRule : '');
+    const recurrenceInterval = normalizeRecurrenceInterval(taskInput ? taskInput.recurrenceInterval : '', recurrenceRule);
+    const recurrenceEndDate = normalizeRecurrenceEndDate(taskInput ? taskInput.recurrenceEndDate : '', recurrenceRule);
+    if (recurrenceRule && !hasValidDueDate) {
+      throw new Error('A due date is required to set up a recurring task.');
+    }
     const assigneeIds = getValidAssigneeIds(taskInput ? taskInput.assigneeIds : []);
     ensureTaskHasAssignees(assigneeIds);
     const status = normalizeTaskStatus(taskInput ? taskInput.status : '');
@@ -571,6 +630,9 @@ function updateTask(taskId, taskInput) {
     if (headerIndex.Status !== undefined) updatedTaskRow[headerIndex.Status] = status;
     if (headerIndex.Description !== undefined) updatedTaskRow[headerIndex.Description] = description;
     if (headerIndex.Priority !== undefined) updatedTaskRow[headerIndex.Priority] = priority;
+    if (headerIndex.Recurrence_Rule !== undefined) updatedTaskRow[headerIndex.Recurrence_Rule] = recurrenceRule;
+    if (headerIndex.Recurrence_Interval !== undefined) updatedTaskRow[headerIndex.Recurrence_Interval] = recurrenceInterval;
+    if (headerIndex.Recurrence_End_Date !== undefined) updatedTaskRow[headerIndex.Recurrence_End_Date] = recurrenceEndDate;
     const completedAt = new Date();
     if (headerIndex.Completed_By !== undefined) {
       if (isMarkingCompleted) {
@@ -626,7 +688,7 @@ function updateTask(taskId, taskInput) {
     const updatedTask = {};
     headers.forEach((header, index) => {
       const value = refreshedRow[index];
-      updatedTask[header] = header === 'Due_Date'
+      updatedTask[header] = header === 'Due_Date' || header === 'Recurrence_End_Date'
         ? serializeDateOnlyForClient(value)
         : (value instanceof Date ? value.toISOString() : value);
     });
@@ -859,4 +921,140 @@ function updateTaskDueDate(taskId, dueDate) {
       error: error && error.message ? error.message : 'Failed to update task due date.'
     });
   }
+}
+
+function processRecurringTasks() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = spreadsheet.getSheetByName('Tasks');
+  if (!sheet) return 0;
+
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return 0;
+
+  const headers = data[0];
+  const headerIndex = getHeaderIndex(headers);
+  if (headerIndex.Recurrence_Rule === undefined || headerIndex.Due_Date === undefined || headerIndex.Task_ID === undefined) {
+    return 0;
+  }
+
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const assignmentsByTaskId = getAssignmentsByAssignmentId();
+  const subtasksByTaskId = getTableData('Subtasks').reduce((acc, subtask) => {
+    const taskId = (subtask.Task_ID || '').toString().trim();
+    if (!taskId) return acc;
+    if (!acc[taskId]) acc[taskId] = [];
+    acc[taskId].push(subtask);
+    return acc;
+  }, {});
+
+  const rowIndexesToClear = [];
+  const spawnedTasks = [];
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const rule = (row[headerIndex.Recurrence_Rule] || '').toString().trim();
+    if (!rule || RECURRENCE_RULE_OPTIONS.indexOf(rule) === -1) continue;
+
+    const dueDate = parseDateInput(row[headerIndex.Due_Date]);
+    if (!dueDate || dueDate.toString() === 'Invalid Date' || dueDate.getTime() > startOfToday.getTime()) continue;
+
+    const rawInterval = parseInt(row[headerIndex.Recurrence_Interval], 10);
+    const interval = Number.isInteger(rawInterval) && rawInterval >= 1 ? rawInterval : 1;
+    const endDate = headerIndex.Recurrence_End_Date !== undefined
+      ? parseDateInput(row[headerIndex.Recurrence_End_Date])
+      : '';
+
+    let nextDue = computeNextRecurrenceDueDate(dueDate, rule, interval);
+    while (nextDue.getTime() <= startOfToday.getTime()) {
+      nextDue = computeNextRecurrenceDueDate(nextDue, rule, interval);
+    }
+
+    rowIndexesToClear.push(i);
+
+    if (endDate && endDate.toString() !== 'Invalid Date' && nextDue.getTime() > endDate.getTime()) {
+      continue;
+    }
+
+    const newRow = row.slice();
+    const newTaskId = generateNextId('Tasks', 'T');
+    newRow[headerIndex.Task_ID] = newTaskId;
+    newRow[headerIndex.Due_Date] = nextDue;
+    if (headerIndex.Status !== undefined) newRow[headerIndex.Status] = TASK_DEFAULT_STATUS;
+    if (headerIndex.Created_Date !== undefined) newRow[headerIndex.Created_Date] = new Date();
+    if (headerIndex.Completed_By !== undefined) newRow[headerIndex.Completed_By] = '';
+    if (headerIndex.Completed_At !== undefined) newRow[headerIndex.Completed_At] = '';
+
+    const sourceTaskId = (row[headerIndex.Task_ID] || '').toString().trim();
+    spawnedTasks.push({
+      newRow,
+      newTaskId,
+      creatorId: headerIndex.Creator_ID !== undefined ? (row[headerIndex.Creator_ID] || '').toString().trim() : '',
+      assigneeIds: assignmentsByTaskId[sourceTaskId] || [],
+      subtasks: subtasksByTaskId[sourceTaskId] || []
+    });
+  }
+
+  if (rowIndexesToClear.length === 0) return 0;
+
+  rowIndexesToClear.forEach((rowIndex) => {
+    if (headerIndex.Recurrence_Rule !== undefined) sheet.getRange(rowIndex + 1, headerIndex.Recurrence_Rule + 1).setValue('');
+    if (headerIndex.Recurrence_Interval !== undefined) sheet.getRange(rowIndex + 1, headerIndex.Recurrence_Interval + 1).setValue('');
+    if (headerIndex.Recurrence_End_Date !== undefined) sheet.getRange(rowIndex + 1, headerIndex.Recurrence_End_Date + 1).setValue('');
+  });
+
+  if (spawnedTasks.length === 0) {
+    invalidateTableCache('Tasks');
+    return 0;
+  }
+
+  appendRows(sheet, spawnedTasks.map((spawned) => spawned.newRow));
+  invalidateTableCache('Tasks');
+
+  const assignmentsSheet = spreadsheet.getSheetByName('Assignments');
+  const subtasksSheet = spreadsheet.getSheetByName('Subtasks');
+  const subtaskHeaders = subtasksSheet ? subtasksSheet.getRange(1, 1, 1, subtasksSheet.getLastColumn()).getValues()[0] : [];
+  const subtaskHeaderIndex = getHeaderIndex(subtaskHeaders);
+
+  const assignmentRows = [];
+  const subtaskRows = [];
+
+  spawnedTasks.forEach((spawned) => {
+    spawned.assigneeIds.forEach((assigneeId) => {
+      assignmentRows.push([spawned.newTaskId, assigneeId]);
+    });
+
+    if (subtasksSheet) {
+      spawned.subtasks.forEach((subtask) => {
+        const subtaskRow = new Array(subtaskHeaders.length).fill('');
+        if (subtaskHeaderIndex.Subtask_ID !== undefined) subtaskRow[subtaskHeaderIndex.Subtask_ID] = generateNextId('Subtasks', 'S');
+        if (subtaskHeaderIndex.Task_ID !== undefined) subtaskRow[subtaskHeaderIndex.Task_ID] = spawned.newTaskId;
+        if (subtaskHeaderIndex.Subtask_Title !== undefined) subtaskRow[subtaskHeaderIndex.Subtask_Title] = subtask.Subtask_Title || '';
+        if (subtaskHeaderIndex.Status !== undefined) subtaskRow[subtaskHeaderIndex.Status] = 'Incomplete';
+        subtaskRows.push(subtaskRow);
+      });
+    }
+  });
+
+  if (assignmentsSheet && assignmentRows.length > 0) {
+    appendRows(assignmentsSheet, assignmentRows);
+    invalidateTableCache('Assignments');
+  }
+  if (subtasksSheet && subtaskRows.length > 0) {
+    appendRows(subtasksSheet, subtaskRows);
+    invalidateTableCache('Subtasks');
+  }
+
+  spawnedTasks.forEach((spawned) => {
+    const newTaskObject = {};
+    headers.forEach((header, index) => {
+      const value = spawned.newRow[index];
+      newTaskObject[header] = header === 'Due_Date' || header === 'Recurrence_End_Date'
+        ? serializeDateOnlyForClient(value)
+        : (value instanceof Date ? value.toISOString() : value);
+    });
+    sendTaskAssignmentNotifications(newTaskObject, spawned.assigneeIds, spawned.creatorId);
+  });
+
+  return spawnedTasks.length;
 }

@@ -223,6 +223,9 @@
         dueDate: '',
         description: '',
         priority: '',
+        recurrenceRule: '',
+        recurrenceInterval: 1,
+        recurrenceEndDate: '',
         assigneeIds: [],
         subtasks: []
       });
@@ -980,6 +983,16 @@
       };
 
       const priorityOptions = ['High', 'Medium', 'Low'];
+      const recurrenceRuleOptions = ['None', 'Daily', 'Weekly', 'Monthly', 'Yearly'];
+      const recurrenceUnitLabel = (rule, interval) => {
+        const unitByRule = { Daily: 'day', Weekly: 'week', Monthly: 'month', Yearly: 'year' };
+        const unit = unitByRule[rule];
+        if (!unit) return '';
+        return Number(interval) === 1 ? unit : `${unit}s`;
+      };
+      const setRecurrenceRule = (form, value) => {
+        form.recurrenceRule = value === 'None' ? '' : value;
+      };
       const legacyPriorityByScore = {
         5: 'High',
         4: 'High',
@@ -1673,6 +1686,9 @@
           priority: normalizePriority(task.Priority),
           createdDate: task.Created_Date || '',
           dueDate: formatDateForInput(task.Due_Date),
+          recurrenceRule: task.Recurrence_Rule || '',
+          recurrenceInterval: task.Recurrence_Interval || 1,
+          recurrenceEndDate: formatDateForInput(task.Recurrence_End_Date),
           projectId: task.Project_ID || '',
           assigneeIds: getAssigneesForTask(task.Task_ID).map((u) => u.User_ID),
           completedById: task.Completed_By || '',
@@ -2234,6 +2250,10 @@
           alert('Please assign at least one person to this task.');
           return;
         }
+        if (taskDetailsForm.value.recurrenceRule && !taskDetailsForm.value.dueDate) {
+          alert('A due date is required to set up a recurring task.');
+          return;
+        }
 
         const taskId = taskDetailsForm.value.taskId;
         const taskIndex = tasks.value.findIndex((t) => idsMatch(t.Task_ID, taskId));
@@ -2248,6 +2268,9 @@
           Status: taskDetailsForm.value.status,
           Description: taskDetailsForm.value.description,
           Priority: taskDetailsForm.value.priority,
+          Recurrence_Rule: taskDetailsForm.value.recurrenceRule || '',
+          Recurrence_Interval: taskDetailsForm.value.recurrenceRule ? (taskDetailsForm.value.recurrenceInterval || 1) : '',
+          Recurrence_End_Date: taskDetailsForm.value.recurrenceRule ? (taskDetailsForm.value.recurrenceEndDate || '') : '',
           _syncing: true
         };
         const optimisticAssignments = taskDetailsForm.value.assigneeIds.map((assigneeId) => ({
@@ -2325,6 +2348,9 @@
             status: taskDetailsForm.value.status,
             description: taskDetailsForm.value.description,
             priority: taskDetailsForm.value.priority,
+            recurrenceRule: taskDetailsForm.value.recurrenceRule,
+            recurrenceInterval: taskDetailsForm.value.recurrenceInterval,
+            recurrenceEndDate: taskDetailsForm.value.recurrenceEndDate,
             assigneeIds: taskDetailsForm.value.assigneeIds,
             projectId: taskDetailsForm.value.projectId,
             newSubtasks: taskDetailsForm.value.newSubtasks.map((s) => s.title.trim()).filter(Boolean)
@@ -2625,6 +2651,9 @@
           dueDate: '',
           description: '',
           priority: '',
+          recurrenceRule: '',
+          recurrenceInterval: 1,
+          recurrenceEndDate: '',
           assigneeIds: getDefaultTaskAssigneeIds(),
           subtasks: []
         };
@@ -2753,6 +2782,10 @@
           alert('Please assign at least one person to this task.');
           return;
         }
+        if (newTaskForm.value.recurrenceRule && !newTaskForm.value.dueDate) {
+          alert('A due date is required to set up a recurring task.');
+          return;
+        }
 
         const projectId = selectedProject.value.Project_ID;
         const tempId = makeClientId('TASK');
@@ -2764,6 +2797,9 @@
           Status: 'Not Started',
           Priority: newTaskForm.value.priority || '',
           Due_Date: newTaskForm.value.dueDate || '',
+          Recurrence_Rule: newTaskForm.value.recurrenceRule || '',
+          Recurrence_Interval: newTaskForm.value.recurrenceRule ? (newTaskForm.value.recurrenceInterval || 1) : '',
+          Recurrence_End_Date: newTaskForm.value.recurrenceRule ? (newTaskForm.value.recurrenceEndDate || '') : '',
           Creator_ID: currentUser.value?.User_ID || '',
           _syncing: true
         };
@@ -2815,6 +2851,9 @@
             dueDate: newTaskForm.value.dueDate,
             description: newTaskForm.value.description,
             priority: newTaskForm.value.priority,
+            recurrenceRule: newTaskForm.value.recurrenceRule,
+            recurrenceInterval: newTaskForm.value.recurrenceInterval,
+            recurrenceEndDate: newTaskForm.value.recurrenceEndDate,
             assigneeIds: newTaskForm.value.assigneeIds,
             subtasks: subtaskTitles
           });
@@ -4343,6 +4382,9 @@
         getProjectCalendarTaskStyle,
         normalizePriority,
         priorityOptions,
+        recurrenceRuleOptions,
+        recurrenceUnitLabel,
+        setRecurrenceRule,
         openTaskInfo,
         openTaskComments,
         closeCommentModal,
