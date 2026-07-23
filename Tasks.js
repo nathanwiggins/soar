@@ -243,6 +243,9 @@ function normalizeRecurrenceEndDate(value, rule) {
   const parsedEndDate = parseDateInput(value);
   return parsedEndDate && parsedEndDate.toString() !== 'Invalid Date' ? parsedEndDate : '';
 }
+function daysInMonth(year, month) {
+  return new Date(year, month + 1, 0).getDate();
+}
 function computeNextRecurrenceDueDate(baseDate, rule, interval) {
   const year = baseDate.getFullYear();
   const month = baseDate.getMonth();
@@ -250,8 +253,14 @@ function computeNextRecurrenceDueDate(baseDate, rule, interval) {
 
   if (rule === 'Daily') return new Date(year, month, day + interval);
   if (rule === 'Weekly') return new Date(year, month, day + interval * 7);
-  if (rule === 'Monthly') return new Date(year, month + interval, day);
-  if (rule === 'Yearly') return new Date(year + interval, month, day);
+  if (rule === 'Monthly' || rule === 'Yearly') {
+    const normalized = rule === 'Yearly' ? new Date(year + interval, month, 1) : new Date(year, month + interval, 1);
+    const targetYear = normalized.getFullYear();
+    const targetMonth = normalized.getMonth();
+    const isLastDayOfBaseMonth = day >= daysInMonth(year, month);
+    const targetDay = isLastDayOfBaseMonth ? daysInMonth(targetYear, targetMonth) : Math.min(day, daysInMonth(targetYear, targetMonth));
+    return new Date(targetYear, targetMonth, targetDay);
+  }
   return new Date(year, month, day);
 }
 function normalizeStatusValue(value) {
