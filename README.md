@@ -366,6 +366,8 @@ Comment controls:
 - **Resolve**: marks the comment resolved; resolved comments no longer appear in the active comments list.
 - **Delete**: permanently deletes the comment row.
 
+Comments also display read-only inside the **Task Details** modal, between the **Description** and **Subtasks** sections, showing each comment's author, timestamp, and content (newest first, unresolved only). An **Add Comment** button there opens the same **Comments** modal used from the task card to post a new comment.
+
 Mention behavior:
 
 - Mentions are recognized with handles like `@first.last` or `@jane`, not display names with spaces.
@@ -596,6 +598,7 @@ Footer buttons:
 - Resolve comments to hide them from the active list.
 - Delete comments permanently.
 - View comment timestamps and authorship.
+- Comments also display read-only inside the Task Details modal, with an Add Comment button that opens the full Comments modal.
 
 ✅ **Smart Notifications**
 1. **Task assignments**: users can be notified when assigned to a task.
@@ -667,7 +670,7 @@ Footer buttons:
 - Permanent deletion for completed tasks.
 
 ✅ **Detail Modals**
-- **Task Details**: full task editing, subtask management, assignee picker, completion, deletion.
+- **Task Details**: full task editing, subtask management, assignee picker, completion, deletion, read-only comment list with an Add Comment shortcut.
 - **Project Details**: project fields, creator display, color scheme, edit/delete actions.
 - **Add Task**: task creation form.
 - **New Project**: project creation form.

@@ -1764,6 +1764,58 @@
           </div>
 
           <div class="md:col-span-2">
+            <div class="flex items-center justify-between mb-2">
+              <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium">Comments</label>
+              <button
+                type="button"
+                :class="isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-800' : 'border-gray-300 text-gray-600 hover:bg-gray-50'"
+                class="text-xs px-2 py-1 rounded-md border font-medium transition-colors"
+                @click="openTaskDetailsComments">
+                <i class="fa-regular fa-comment mr-1"></i>Add Comment
+              </button>
+            </div>
+
+            <div class="space-y-2 max-h-56 overflow-y-auto pr-1">
+              <p
+                v-if="loadingCommentTopicIds.some((id) => idsMatch(id, taskDetailsForm.taskId))"
+                :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'"
+                class="text-sm">
+                Loading comments...
+              </p>
+              <div
+                v-for="comment in taskDetailsComments"
+                :key="`task-details-comment-${comment.Comment_ID}`"
+                :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'"
+                class="rounded-lg border p-3">
+                <div class="flex items-start gap-3">
+                  <div
+                    :class="isDarkMode ? 'bg-gray-700 border-gray-900 text-gray-200' : 'bg-gray-200 border-white text-gray-600'"
+                    class="w-7 h-7 rounded-full border-2 overflow-hidden flex items-center justify-center text-xs font-bold flex-shrink-0">
+                    <img
+                      v-if="getCommentAuthor(comment)?.Profile_Pic_Url"
+                      :src="getCommentAuthor(comment).Profile_Pic_Url"
+                      class="w-full h-full object-cover">
+                    <span v-else>{{ getInitials(getCommentAuthor(comment)?.Name) }}</span>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <p :class="isDarkMode ? 'text-gray-100' : 'text-gray-800'" class="text-sm font-medium truncate">
+                      {{ getCommentAuthor(comment)?.Name || getCommentAuthor(comment)?.Email || 'Unknown teammate' }}
+                      <span :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'" class="font-normal text-xs ml-1">{{ formatCommentTimestamp(comment.Timestamp) }}</span>
+                    </p>
+                    <p :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="text-sm mt-1 whitespace-pre-wrap">{{ comment.Content }}</p>
+                  </div>
+                </div>
+              </div>
+              <p
+                v-if="taskDetailsComments.length === 0 && !loadingCommentTopicIds.some((id) => idsMatch(id, taskDetailsForm.taskId))"
+                :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'"
+                class="text-sm italic">
+                No comments yet.
+              </p>
+            </div>
+          </div>
+
+          <div class="md:col-span-2">
             <label :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'" class="block text-sm font-medium mb-2">Subtasks</label>
 
             <draggable class="space-y-2 mb-3"
