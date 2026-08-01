@@ -313,6 +313,20 @@
           });
       });
 
+      const taskDetailsComments = computed(() => {
+        const topicId = taskDetailsForm.value?.taskId;
+        if (!topicId) return [];
+
+        return comments.value
+          .filter((comment) => !isResolvedComment(comment) && idsMatch(getCommentTopicId(comment), topicId))
+          .slice()
+          .sort((left, right) => {
+            const leftTime = new Date(left.Timestamp || 0).getTime();
+            const rightTime = new Date(right.Timestamp || 0).getTime();
+            return rightTime - leftTime;
+          });
+      });
+
       const mentionableUsers = computed(() => {
         const byHandle = new Map();
         users.value.forEach((user) => {
@@ -1835,6 +1849,15 @@
         isEditingTask.value = false;
         showTaskDetailsAssigneeDropdown.value = false;
         showTaskDetailsModal.value = true;
+        loadCommentsForTopic(task.Task_ID);
+      };
+
+      const openTaskDetailsComments = () => {
+        if (!taskDetailsForm.value?.taskId) return;
+        openTaskComments({
+          Task_ID: taskDetailsForm.value.taskId,
+          Task_Title: taskDetailsForm.value.taskTitle
+        });
       };
 
       const openTaskComments = (task) => {
@@ -4274,6 +4297,8 @@
         loadedCommentTopicIds,
         loadingCommentTopicIds,
         taskComments,
+        taskDetailsComments,
+        openTaskDetailsComments,
         commentDraft,
         creatingComment,
         showCommentModal,
