@@ -191,8 +191,10 @@ The **Project Board** displays each visible project as a column. Within each col
 
 By default, a user sees:
 
-- projects directly assigned to them, and
-- projects containing open tasks assigned to them.
+- projects directly assigned to them,
+- projects containing open tasks assigned to them,
+- projects they created, and
+- **Public Projects** they are shared on (see [Public Projects and Task Claiming](#public-projects-and-task-claiming)).
 
 Completed tasks are not shown on the main **Project Board** after they are complete; they appear in **Past Assignments** for assigned users.
 
@@ -239,13 +241,15 @@ Hover a task card and press **Cmd/Ctrl+C** to copy it, then press **Cmd/Ctrl+V**
    - **Status**: `Not Started`, `In Progress`, `Completed`, or `Delayed`.
    - **Color Scheme**: `SUU Red (Default)`, `Sunset Orange`, `Amber Gold`, `Emerald Green`, `Ocean Teal`, `Sky Blue`, `Deep Indigo`, `Soft Violet`, `Rose Pink`, or `Pearl White`.
    - **Description**: optional; placeholder **Describe the project**.
+   - **Public Project**: optional toggle. When on, a share picker (type a name or email) lets you pick which users the project is shared with. See [Public Projects and Task Claiming](#public-projects-and-task-claiming).
 5. Click **Create Project**. To exit without saving, click **Cancel** or the **X** icon.
 
 What SOAR records:
 
 - `Project_ID` generated as `P-00000001`, etc.
-- `Project_Title`, `Description`, `Status`, `Created_Date`, `Due_Date`, `Creator_ID`, and `Color_Scheme`.
+- `Project_Title`, `Description`, `Status`, `Created_Date`, `Due_Date`, `Creator_ID`, `Color_Scheme`, and `Is_Public`.
 - An assignment row assigning the project to the creator.
+- One `Project_Shares` row per shared user, when **Public Project** is on.
 
 ### Editing or Deleting a Project
 
@@ -259,13 +263,16 @@ What SOAR records:
    - **Color Scheme**
    - **Created By** (display-only)
    - **Description**
+   - **Public Project**: toggle plus share picker, same as at creation.
 5. Click **Save Changes**.
 
 Other buttons:
 
-- **Delete Project**: Deletes the project row, tasks in that project, and assignment rows for those deleted tasks. It does not currently remove the project creator assignment row from `Assignments`.
+- **Delete Project**: Deletes the project row, tasks in that project, assignment rows for those deleted tasks, and any `Project_Shares` rows for the project. It does not currently remove the project creator assignment row from `Assignments`.
 - **Cancel**: Cancels edit mode.
 - **Close**: Closes the modal when not editing.
+
+Turning **Public Project** off is blocked with an error if the project still has unclaimed tasks — assign or claim them first, then try again.
 
 ### Creating a Task
 
@@ -277,7 +284,7 @@ Other buttons:
    - **Due Date**: optional date picker.
    - **Priority**: optional button selection: `High`, `Medium`, or `Low`.
    - **Repeats**: optional button selection: `None`, `Daily`, `Weekly`, `Monthly`, or `Yearly`. Choosing anything but `None` reveals an **Every** interval number (e.g. every 2 weeks) and an optional **Ends on** date, and requires a due date.
-   - **Assigned To**: required by backend validation; opens a checkbox dropdown of assignable users.
+   - **Assigned To**: required by backend validation; opens a checkbox dropdown of assignable users. Not shown for tasks created in a **Public Project** — those tasks always start unclaimed (see [Public Projects and Task Claiming](#public-projects-and-task-claiming)).
    - **Description**: optional; placeholder **Describe the task**.
    - **Subtasks**: optional; type into **Type a subtask and press enter...** and press Enter or click **Add**.
 5. Click **Create Task**. To exit without saving, click **Cancel** or the **X** icon.
@@ -286,8 +293,20 @@ Important behavior:
 
 - New tasks always start with status `Not Started`.
 - The current user may assign tasks only to themselves and users in their reporting tree (direct and indirect reports). Existing assignees can remain during edits even if they are outside the current assignable set.
-- At least one assignee is required when creating or updating a task.
-- Creating a task can send **Task assignments** notifications to selected assignees, depending on each recipient's settings.
+- At least one assignee is required when creating or updating a task in a private project. Tasks in a **Public Project** are the exception — they can have zero assignees (unclaimed) and only ever get an assignee via claiming, never via direct assignment.
+- Creating a task can send **Task assignments** notifications to selected assignees, depending on each recipient's settings. Claiming a task does not send a notification.
+
+### Public Projects and Task Claiming
+
+A project can be marked **Public** when it is created or edited, with a list of specific users it is shared with.
+
+- **Visibility**: any user shared on a public project can see the project and its **unclaimed** tasks (tasks with no assignee) on the **Project Board**. The project creator can always see every task in a public project, claimed or not.
+- **Claiming**: a shared user clicks **Claim** on an unclaimed task to become its sole assignee. Once claimed, the task is hidden from every other shared user — only the claimer and the project creator can still see it.
+- **Unclaiming**: the claimer, or the project creator, can click **Unclaim Task** in **Task Details** to remove the assignee and return the task to the shared pool for everyone.
+- **No direct assignment**: unlike private-project tasks, public-project tasks never go through the **Assigned To** picker — claiming is the only way a task gets an assignee.
+- **Toggling back to private**: blocked while any task in the project is still unclaimed.
+
+This is a visibility convenience, not an access-control boundary — like the rest of SOAR's visibility rules, it is enforced by the client filtering a dataset the server already returned in full.
 
 ### Task Details: Editing, Completing, Deleting
 
@@ -551,6 +570,7 @@ Footer buttons:
 - Auto-populated creation date and creator tracking.
 - Project creator is automatically assigned to the project.
 - Project columns can be reordered on the board.
+- Optional **Public Project** toggle with a share picker; shared users can claim unassigned tasks, and claiming hides a task from everyone but the claimer and the creator. See [Public Projects and Task Claiming](#public-projects-and-task-claiming).
 
 ✅ **Organize Work with Tasks**
 - Create tasks inside projects with the **+ Add Task** button.
@@ -762,8 +782,9 @@ Footer buttons:
 - **Identity**: Current user is determined from the signed-in Google account email.
 - **Manager Hierarchy**: Users have optional `Manager_ID`.
 - **Task Assignment Permissions**: A user can assign tasks to themselves and users in their reporting tree. Supervisor selection UI lists direct reports.
-- **Project Visibility**: Users see assigned projects and projects containing open tasks assigned to them.
-- **Creator Ownership**: Project creators are automatically assigned to their projects.
+- **Project Visibility**: Users see assigned projects and projects containing open tasks assigned to them, plus any Public Project they created or are shared on.
+- **Creator Ownership**: Project creators are automatically assigned to their projects, and always retain visibility into every task in a Public Project regardless of claim status.
+- **Task Claiming**: In a Public Project, any shared user (or the creator) may claim an unclaimed task, making themselves its sole assignee; only the claimer or the creator may unclaim it.
 
 ### Data Flow Example: Creating a Task
 
@@ -801,11 +822,12 @@ User (U-00000001)
 Project (P-00000001)
 ├── contains → Task[] via Tasks.Project_ID
 ├── assigned to → User[] via Assignments.Assignment_ID = Project_ID
-└── has visual color via Projects.Color_Scheme
+├── has visual color via Projects.Color_Scheme
+└── when Is_Public, shared with → User[] via Project_Shares
 
 Task (T-00000001)
 ├── belongs to → Project via Tasks.Project_ID
-├── assigned to → User[] via Assignments.Assignment_ID = Task_ID
+├── assigned to → User[] via Assignments.Assignment_ID = Task_ID (zero assignees = unclaimed, only possible in a public project)
 ├── contains → Subtask[] via Subtasks.Task_ID
 ├── receives → Comment[] via Comments.Topic_ID
 └── completed by → User via Tasks.Completed_By
@@ -831,6 +853,10 @@ AgendaSession (AS-00000001)
 Assignment
 ├── Assignment_ID = Task_ID or Project_ID
 └── Assignee_ID = User_ID
+
+Project_Shares
+├── Project_ID = Project_ID
+└── User_ID = User_ID with access to a public project
 ```
 
 ### ID Generation Pattern
@@ -876,6 +902,7 @@ Generated by Apps Script with synchronized locking to prevent race conditions.
 | `Due_Date` | Date | Planned completion date | Yes |
 | `Creator_ID` | String, User_ID reference | Project creator | No |
 | `Color_Scheme` | String | One of 10 keys: `suu_red` (default), `sunset_orange`, `amber_gold`, `emerald_green`, `ocean_teal`, `sky_blue`, `deep_indigo`, `soft_violet`, `rose_pink`, `pearl_white` | Yes |
+| `Is_Public` | Boolean | Whether the project is a Public Project (see [Public Projects and Task Claiming](#public-projects-and-task-claiming)) | No |
 
 #### Tasks
 
@@ -923,6 +950,13 @@ Generated by Apps Script with synchronized locking to prevent race conditions.
 |---|---|---|---|
 | `Assignment_ID` | String | Task_ID or Project_ID | No |
 | `Assignee_ID` | String | User_ID of assigned user | No |
+
+#### Project_Shares
+
+| Field | Type | Description | Can Be Null |
+|---|---|---|---|
+| `Project_ID` | String, Project_ID reference | Shared public project | No |
+| `User_ID` | String, User_ID reference | User with access | No |
 
 #### Agendas
 
@@ -1040,8 +1074,10 @@ User_ID | Email | Name | Manager_ID | Profile_Pic_Url
 
 **Projects**:
 ```
-Project_ID | Project_Title | Description | Status | Created_Date | Due_Date | Creator_ID | Color_Scheme
+Project_ID | Project_Title | Description | Status | Created_Date | Due_Date | Creator_ID | Color_Scheme | Is_Public
 ```
+
+Note: `Is_Public` (and `Color_Scheme`) are added automatically to the sheet on first use if missing, so existing spreadsheets do not need manual migration.
 
 **Tasks**:
 ```
@@ -1077,6 +1113,13 @@ Session_ID | Agenda_ID | Session_Date | Content_JSON | Created_Date
 ```
 Agenda_ID | User_ID
 ```
+
+**Project_Shares**:
+```
+Project_ID | User_ID
+```
+
+Note: created automatically the first time a project is made public, so it does not need to be added manually in advance.
 
 **Issues**:
 ```
@@ -1121,20 +1164,24 @@ Creates a new project and assigns it to the creator.
 - `projectInput.status` (string): `Not Started`, `In Progress`, `Completed`, or `Delayed`.
 - `projectInput.dueDate` (string, optional): `YYYY-MM-DD`.
 - `projectInput.colorScheme` (string, optional): one of the 10 color scheme keys — `suu_red`, `sunset_orange`, `amber_gold`, `emerald_green`, `ocean_teal`, `sky_blue`, `deep_indigo`, `soft_violet`, `rose_pink`, `pearl_white`; defaults to `suu_red`.
+- `projectInput.isPublic` (boolean, optional): marks the project as a Public Project.
+- `projectInput.sharedUserIds` (array, optional): `User_ID` values to share the project with; only applied when `isPublic` is true.
 
-**Returns**: `{success: true, project: {...}, assignment: {...}}`
+**Returns**: `{success: true, project: {...}, assignment: {...}, shares: [...]}`
 
 #### `updateProject(projectId, projectInput)`
 Updates project metadata.
 
 **Parameters**:
 - `projectId` (string): Project_ID to update.
-- `projectInput.projectTitle`, `description`, `status`, `dueDate`, `colorScheme`.
+- `projectInput.projectTitle`, `description`, `status`, `dueDate`, `colorScheme`, `isPublic`, `sharedUserIds`.
 
-**Returns**: `{success: true, project: {...}}`
+**Net Effect**: Replaces the project's `Project_Shares` rows with `sharedUserIds` when `isPublic` is true, or clears them when false. Returns `{success: false, error: '...'}` without writing anything if `isPublic` is being turned off while the project still has unclaimed tasks (see `getUnclaimedTaskIdsForProject`).
+
+**Returns**: `{success: true, project: {...}, shares: [...]}`
 
 #### `deleteProject(projectId)`
-Deletes the project row, tasks in that project, and assignment rows for those deleted tasks. It does not currently remove the project creator assignment row from `Assignments`. Only the project creator may call this; others receive an error.
+Deletes the project row, tasks in that project, assignment rows for those deleted tasks, and any `Project_Shares` rows for the project. It does not currently remove the project creator assignment row from `Assignments`. Only the project creator may call this; others receive an error.
 
 **Returns**: `{success: true, projectId: "P-00000001"}`
 
@@ -1155,7 +1202,7 @@ Creates a new task inside a project.
 - `taskInput.recurrenceRule` (string, optional): `Daily`, `Weekly`, `Monthly`, or `Yearly`. Requires `dueDate` to be set.
 - `taskInput.recurrenceInterval` (number, optional): repeat every N days/weeks/months/years; defaults to `1`.
 - `taskInput.recurrenceEndDate` (string, optional): `YYYY-MM-DD` after which the series stops generating new occurrences.
-- `taskInput.assigneeIds` (array): required list of `User_ID` values.
+- `taskInput.assigneeIds` (array): required list of `User_ID` values for a task in a private project. Ignored for a task in a Public Project — those tasks are always created unclaimed (zero assignees).
 - `taskInput.subtasks` (array, optional): list of subtask title strings.
 
 **Returns**: `{success: true, task: {...}, assignments: [...], subtasks: [...]}`
@@ -1177,8 +1224,19 @@ Updates task metadata, project, assignees, and newly added subtasks.
 - `taskId` (string): Task_ID to update.
 - `taskInput.taskTitle`, `description`, `status`, `priority`, `dueDate`, `projectId`, `assigneeIds`, `newSubtasks`.
 - `taskInput.recurrenceRule`, `recurrenceInterval`, `recurrenceEndDate` — same rules as `createTask()`; setting `recurrenceRule` to blank turns recurrence off.
+- `assigneeIds` is ignored for a task in a Public Project — assignment changes for those tasks only happen through `claimTask()`/`unclaimTask()`.
 
 **Returns**: `{success: true, task: {...}, assignments: [...], newSubtasks: [...]}`
+
+#### `claimTask(taskId)`
+Lets the current user claim an unclaimed task in a Public Project, becoming its sole assignee. Requires the project to be public, the current user to be shared on it (or be its creator), and the task to currently have zero assignees.
+
+**Returns**: `{success: true, taskId: "T-00000001", assignment: {...}}`
+
+#### `unclaimTask(taskId)`
+Removes the assignee from a claimed task in a Public Project, returning it to the shared pool. Only the current sole assignee or the project creator may call this.
+
+**Returns**: `{success: true, taskId: "T-00000001"}`
 
 #### `updateTaskStatus(taskId, newStatus)`
 Updates only a task's status. Completion fields are populated when the new status is `Complete`.
@@ -1338,6 +1396,7 @@ Fetches initial app state.
   "assignments": [],
   "agendas": [],
   "agendaShares": [],
+  "projectShares": [],
   "agendaSessions": [],
   "comments": [],
   "currentUserSettings": {},

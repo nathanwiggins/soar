@@ -36,6 +36,7 @@ function getInitialPayload() {
     assignments: getTableData('Assignments'),
     agendas: getTableData('Agendas'),
     agendaShares: getTableData('Sharing'),
+    projectShares: getTableData('Project_Shares'),
     agendaSessions: getTableData('Sessions').map((session) => {
       const normalized = {};
       Object.keys(session).forEach((key) => {

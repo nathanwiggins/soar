@@ -67,8 +67,10 @@ The **Project Board** displays each visible project as a column. Within each col
 
 By default, a user sees:
 
-- projects directly assigned to them, and
-- projects containing open tasks assigned to them.
+- projects directly assigned to them,
+- projects containing open tasks assigned to them,
+- projects they created, and
+- **Public Projects** they are shared on (see [Public Projects and Task Claiming](#public-projects-and-task-claiming)).
 
 Completed tasks are not shown on the main **Project Board** after they are complete; they appear in **Past Assignments** for assigned users.
 
@@ -115,13 +117,15 @@ Hover a task card and press **Cmd/Ctrl+C** to copy it, then press **Cmd/Ctrl+V**
    - **Status**: `Not Started`, `In Progress`, `Completed`, or `Delayed`.
    - **Color Scheme**: `SUU Red (Default)`, `Sunset Orange`, `Amber Gold`, `Emerald Green`, `Ocean Teal`, `Sky Blue`, `Deep Indigo`, `Soft Violet`, `Rose Pink`, or `Pearl White`.
    - **Description**: optional; placeholder **Describe the project**.
+   - **Public Project**: optional toggle. When on, a share picker (type a name or email) lets you pick which users the project is shared with. See [Public Projects and Task Claiming](#public-projects-and-task-claiming).
 5. Click **Create Project**. To exit without saving, click **Cancel** or the **X** icon.
 
 What SOAR records:
 
 - `Project_ID` generated as `P-00000001`, etc.
-- `Project_Title`, `Description`, `Status`, `Created_Date`, `Due_Date`, `Creator_ID`, and `Color_Scheme`.
+- `Project_Title`, `Description`, `Status`, `Created_Date`, `Due_Date`, `Creator_ID`, `Color_Scheme`, and `Is_Public`.
 - An assignment row assigning the project to the creator.
+- One `Project_Shares` row per shared user, when **Public Project** is on.
 
 ### Editing or Deleting a Project
 
@@ -135,13 +139,16 @@ What SOAR records:
    - **Color Scheme**
    - **Created By** (display-only)
    - **Description**
+   - **Public Project**: toggle plus share picker, same as at creation.
 5. Click **Save Changes**.
 
 Other buttons:
 
-- **Delete Project**: Deletes the project row, tasks in that project, and assignment rows for those deleted tasks. Only the project creator can delete a project; non-creators see an error toast if they attempt it.
+- **Delete Project**: Deletes the project row, tasks in that project, assignment rows for those deleted tasks, and any `Project_Shares` rows for the project. Only the project creator can delete a project; non-creators see an error toast if they attempt it.
 - **Cancel**: Cancels edit mode.
 - **Close**: Closes the modal when not editing.
+
+Turning **Public Project** off is blocked with an error if the project still has unclaimed tasks — assign or claim them first, then try again.
 
 ### Creating a Task
 
@@ -153,7 +160,7 @@ Other buttons:
    - **Due Date**: optional date picker.
    - **Priority**: optional button selection: `High`, `Medium`, or `Low`.
    - **Repeats**: optional button selection: `None`, `Daily`, `Weekly`, `Monthly`, or `Yearly`. Choosing anything but `None` reveals an **Every** interval number (e.g. every 2 weeks) and an optional **Ends on** date, and requires a due date.
-   - **Assigned To**: required by backend validation; opens a checkbox dropdown of assignable users.
+   - **Assigned To**: required by backend validation; opens a checkbox dropdown of assignable users. Not shown for tasks created in a **Public Project** — those tasks always start unclaimed (see [Public Projects and Task Claiming](#public-projects-and-task-claiming)).
    - **Description**: optional; placeholder **Describe the task**.
    - **Subtasks**: optional; type into **Type a subtask and press enter...** and press Enter or click **Add**.
 5. Click **Create Task**. To exit without saving, click **Cancel** or the **X** icon.
@@ -162,8 +169,20 @@ Important behavior:
 
 - New tasks always start with status `Not Started`.
 - The current user may assign tasks only to themselves and users in their reporting tree (direct and indirect reports). Existing assignees can remain during edits even if they are outside the current assignable set.
-- At least one assignee is required when creating or updating a task.
-- Creating a task can send **Task assignments** notifications to selected assignees, depending on each recipient's settings.
+- At least one assignee is required when creating or updating a task in a private project. Tasks in a **Public Project** are the exception — they can have zero assignees (unclaimed) and only ever get an assignee via claiming, never via direct assignment.
+- Creating a task can send **Task assignments** notifications to selected assignees, depending on each recipient's settings. Claiming a task does not send a notification.
+
+### Public Projects and Task Claiming
+
+A project can be marked **Public** when it is created or edited, with a list of specific users it is shared with.
+
+- **Visibility**: any user shared on a public project can see the project and its **unclaimed** tasks (tasks with no assignee) on the **Project Board**. The project creator can always see every task in a public project, claimed or not.
+- **Claiming**: a shared user clicks **Claim** on an unclaimed task to become its sole assignee. Once claimed, the task is hidden from every other shared user — only the claimer and the project creator can still see it.
+- **Unclaiming**: the claimer, or the project creator, can click **Unclaim Task** in **Task Details** to remove the assignee and return the task to the shared pool for everyone.
+- **No direct assignment**: unlike private-project tasks, public-project tasks never go through the **Assigned To** picker — claiming is the only way a task gets an assignee.
+- **Toggling back to private**: blocked while any task in the project is still unclaimed.
+
+This is a visibility convenience, not an access-control boundary — anyone with access to the underlying data could still see it; SOAR simply doesn't show it in the interface.
 
 ### Task Details: Editing, Completing, Deleting
 
@@ -182,7 +201,7 @@ Controls and fields:
 - **Date Created**: display-only.
 - **Date Due**: editable date picker in edit mode.
 - **Completed By** and **Completed At**: only visible and populated when the task status is `Complete`.
-- **Assigned To**: assignee dropdown plus selected assignee rows.
+- **Assigned To**: assignee dropdown plus selected assignee rows. For a task in a **Public Project**, this is replaced by an "Unclaimed" note until someone claims it — there is no direct-assign picker for these tasks.
 
 Footer buttons:
 
@@ -190,6 +209,8 @@ Footer buttons:
 - **Complete**: displayed in the same button position when the task is already complete.
 - **Delete Task**: deletes the task and related assignments. Only the task creator can delete a task; non-creators see an error toast if they attempt it.
 - **Duplicate Task**: creates an independent copy of the task, including its assignees and subtasks.
+- **Claim Task**: shown only for an unclaimed task in a **Public Project** when you are shared on the project (or are its creator); makes you the task's sole assignee.
+- **Unclaim Task**: shown only when you are the current assignee of a claimed task in a **Public Project** (or are the project creator); removes the assignee and returns the task to the shared pool.
 - **Save Changes**: saves edits.
 - **Cancel**: cancels edit mode.
 - **Close**: closes the modal when not editing.
@@ -427,6 +448,7 @@ Footer buttons:
 - Auto-populated creation date and creator tracking.
 - Project creator is automatically assigned to the project.
 - Project columns can be reordered on the board.
+- Optional **Public Project** toggle with a share picker; shared users can claim unassigned tasks, and claiming hides a task from everyone but the claimer and the creator.
 
 ✅ **Organize Work with Tasks**
 - Create tasks inside projects with the **+ Add Task** button.

@@ -3,14 +3,21 @@ function normalizeProjectColorSchemeValue(value) {
   const normalizedValue = value ? value.toString().trim().toLowerCase() : 'suu_red';
   return validColorSchemes.includes(normalizedValue) ? normalizedValue : 'suu_red';
 }
-function getProjectHeadersWithColorScheme(sheet) {
+function getProjectHeadersWithMigrations(sheet) {
   const lastColumn = Math.max(sheet.getLastColumn(), 1);
-  const headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
-  if (getProjectColorSchemeColumnIndex(headers) !== -1) return headers;
+  let headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
 
-  const nextColumn = headers.length + 1;
-  sheet.getRange(1, nextColumn).setValue('Color_Scheme');
-  return headers.concat('Color_Scheme');
+  if (getProjectColorSchemeColumnIndex(headers) === -1) {
+    sheet.getRange(1, headers.length + 1).setValue('Color_Scheme');
+    headers = headers.concat('Color_Scheme');
+  }
+
+  if (getProjectIsPublicColumnIndex(headers) === -1) {
+    sheet.getRange(1, headers.length + 1).setValue('Is_Public');
+    headers = headers.concat('Is_Public');
+  }
+
+  return headers;
 }
 function getProjectColorSchemeColumnIndex(headers) {
   if (!Array.isArray(headers)) return -1;
@@ -20,6 +27,27 @@ function getProjectColorSchemeColumnIndex(headers) {
     if (columnIndex !== -1) return columnIndex;
   }
   return -1;
+}
+function getProjectIsPublicColumnIndex(headers) {
+  if (!Array.isArray(headers)) return -1;
+  return headers.indexOf('Is_Public');
+}
+function normalizeProjectPublicValue(value) {
+  return value === true || value === 'TRUE' || value === 'true' || value === 'Yes' || value === 1 || value === '1';
+}
+function getOrCreateProjectSharesSheet() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = spreadsheet.getSheetByName('Project_Shares');
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet('Project_Shares');
+    sheet.appendRow(['Project_ID', 'User_ID']);
+  }
+  return sheet;
+}
+function getNormalizedSharedUserIds(sharedUserIds) {
+  return Array.isArray(sharedUserIds)
+    ? [...new Set(sharedUserIds.map((id) => (id || '').toString().trim()).filter(Boolean))]
+    : [];
 }
 function getProjectById(projectId) {
   const normalizedProjectId = projectId ? projectId.toString().trim() : '';
@@ -40,7 +68,7 @@ function createProject(projectInput) {
   }
 
   try {
-    const headers = getProjectHeadersWithColorScheme(sheet);
+    const headers = getProjectHeadersWithMigrations(sheet);
     const headerIndex = headers.reduce((acc, header, index) => {
       acc[header] = index;
       return acc;
@@ -53,6 +81,7 @@ function createProject(projectInput) {
     const parsedDueDate = parseDateInput(projectInput ? projectInput.dueDate : '');
     const hasValidDueDate = parsedDueDate && parsedDueDate.toString() !== 'Invalid Date';
     const colorScheme = normalizeProjectColorSchemeValue(projectInput ? projectInput.colorScheme : '');
+    const isPublic = normalizeProjectPublicValue(projectInput ? projectInput.isPublic : false);
     const creatorId = getCurrentUserIdByEmail(getCurrentUser());
 
     if (!creatorId) {
@@ -66,6 +95,7 @@ function createProject(projectInput) {
     if (headerIndex.Created_Date !== undefined) newRow[headerIndex.Created_Date] = now;
     if (headerIndex.Due_Date !== undefined) newRow[headerIndex.Due_Date] = hasValidDueDate ? parsedDueDate : '';
     if (headerIndex.Creator_ID !== undefined) newRow[headerIndex.Creator_ID] = creatorId;
+    if (headerIndex.Is_Public !== undefined) newRow[headerIndex.Is_Public] = isPublic;
     const colorSchemeColumnIndex = getProjectColorSchemeColumnIndex(headers);
     if (colorSchemeColumnIndex !== -1) newRow[colorSchemeColumnIndex] = colorScheme;
 
@@ -82,6 +112,15 @@ function createProject(projectInput) {
       invalidateTableCache('Assignments');
     }
 
+    const sharedUserIds = isPublic ? getNormalizedSharedUserIds(projectInput ? projectInput.sharedUserIds : []) : [];
+    let createdShares = [];
+    if (projectId && sharedUserIds.length > 0) {
+      const sharesSheet = getOrCreateProjectSharesSheet();
+      appendRows(sharesSheet, sharedUserIds.map((userId) => [projectId, userId]));
+      invalidateTableCache('Project_Shares');
+      createdShares = sharedUserIds.map((userId) => ({ Project_ID: projectId, User_ID: userId }));
+    }
+
     const createdProject = {};
     headers.forEach((header, index) => {
       const value = newRow[index];
@@ -94,7 +133,7 @@ function createProject(projectInput) {
       ? { Assignment_ID: projectId, Assignee_ID: creatorId }
       : null;
 
-    return JSON.stringify({ success: true, project: createdProject, assignment: createdAssignment });
+    return JSON.stringify({ success: true, project: createdProject, assignment: createdAssignment, shares: createdShares });
   } catch (error) {
     return JSON.stringify({
       success: false,
@@ -132,7 +171,7 @@ function updateProject(projectId, projectInput) {
   }
 
   try {
-    getProjectHeadersWithColorScheme(projectsSheet);
+    getProjectHeadersWithMigrations(projectsSheet);
     const dataRange = projectsSheet.getDataRange();
     const data = dataRange.getValues();
     if (data.length <= 1) {
@@ -160,16 +199,47 @@ function updateProject(projectId, projectInput) {
     const parsedDueDate = parseDateInput(projectInput ? projectInput.dueDate : '');
     const hasValidDueDate = parsedDueDate && parsedDueDate.toString() !== 'Invalid Date';
     const colorScheme = normalizeProjectColorSchemeValue(projectInput ? projectInput.colorScheme : '');
+    const previousIsPublic = headerIndex.Is_Public !== undefined
+      ? normalizeProjectPublicValue(data[projectRowIndex][headerIndex.Is_Public])
+      : false;
+    const isPublic = normalizeProjectPublicValue(projectInput ? projectInput.isPublic : false);
+
+    if (previousIsPublic && !isPublic) {
+      const unclaimedTaskIds = getUnclaimedTaskIdsForProject(normalizedProjectId);
+      if (unclaimedTaskIds.length > 0) {
+        return JSON.stringify({
+          success: false,
+          error: `Cannot make this project private while ${unclaimedTaskIds.length} task(s) are still unclaimed. Assign or claim them first.`
+        });
+      }
+    }
 
     const refreshedRow = data[projectRowIndex].slice();
     if (headerIndex.Project_Title !== undefined) refreshedRow[headerIndex.Project_Title] = projectTitle;
     if (headerIndex.Description !== undefined) refreshedRow[headerIndex.Description] = description;
     if (headerIndex.Status !== undefined) refreshedRow[headerIndex.Status] = status;
     if (headerIndex.Due_Date !== undefined) refreshedRow[headerIndex.Due_Date] = hasValidDueDate ? parsedDueDate : '';
+    if (headerIndex.Is_Public !== undefined) refreshedRow[headerIndex.Is_Public] = isPublic;
     const colorSchemeColumnIndex = getProjectColorSchemeColumnIndex(headers);
     if (colorSchemeColumnIndex !== -1) refreshedRow[colorSchemeColumnIndex] = colorScheme;
     updateRowValues(projectsSheet, projectRowIndex + 1, refreshedRow);
     invalidateTableCache('Projects');
+
+    const sharesSheet = getOrCreateProjectSharesSheet();
+    const sharesData = sharesSheet.getDataRange().getValues();
+    const shareRowsToDelete = [];
+    for (let i = sharesData.length - 1; i >= 1; i--) {
+      if ((sharesData[i][0] || '').toString().trim() === normalizedProjectId) shareRowsToDelete.push(i + 1);
+    }
+    deleteRowsBySheetIndexes(sharesSheet, shareRowsToDelete);
+
+    const sharedUserIds = isPublic ? getNormalizedSharedUserIds(projectInput ? projectInput.sharedUserIds : []) : [];
+    let newShares = [];
+    if (sharedUserIds.length > 0) {
+      newShares = sharedUserIds.map((userId) => [normalizedProjectId, userId]);
+      appendRows(sharesSheet, newShares);
+    }
+    invalidateTableCache('Project_Shares');
 
     const updatedProject = {};
     headers.forEach((header, index) => {
@@ -179,7 +249,11 @@ function updateProject(projectId, projectInput) {
         : (value instanceof Date ? value.toISOString() : value);
     });
 
-    return JSON.stringify({ success: true, project: updatedProject });
+    return JSON.stringify({
+      success: true,
+      project: updatedProject,
+      shares: newShares.map((share) => ({ Project_ID: share[0], User_ID: share[1] }))
+    });
   } catch (error) {
     return JSON.stringify({
       success: false,
@@ -266,6 +340,17 @@ function deleteProject(projectId) {
       }
       deleteRowsBySheetIndexes(assignmentsSheet, assignmentRowsToDelete);
       invalidateTableCache('Assignments');
+    }
+
+    const sharesSheet = spreadsheet.getSheetByName('Project_Shares');
+    if (sharesSheet) {
+      const sharesData = sharesSheet.getDataRange().getValues();
+      const shareRowsToDelete = [];
+      for (let i = sharesData.length - 1; i >= 1; i--) {
+        if ((sharesData[i][0] || '').toString().trim() === normalizedProjectId) shareRowsToDelete.push(i + 1);
+      }
+      deleteRowsBySheetIndexes(sharesSheet, shareRowsToDelete);
+      invalidateTableCache('Project_Shares');
     }
 
     deleteRowsBySheetIndexes(projectsSheet, [projectRowIndex + 1]);

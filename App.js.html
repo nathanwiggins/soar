@@ -104,6 +104,7 @@
       const subtasks = ref([]);
       const agendas = ref([]);
       const agendaShares = ref([]);
+      const projectShares = ref([]);
       const agendaSessions = ref([]);
       const activeSession = ref(null);
       const activeSessionIndex = ref(0);
@@ -111,6 +112,7 @@
       const showAgendaModal = ref(false);
       const activeAgenda = ref(null);
       const activeAgendaShares = ref([]);
+      const activeProjectShares = ref([]);
       const savingAgenda = ref(false);
       const showNewSessionPrompt = ref(false);
       const newSubtaskTitle = ref('');
@@ -234,7 +236,8 @@
         dueDate: '',
         description: '',
         status: 'Not Started',
-        colorScheme: defaultProjectColorScheme
+        colorScheme: defaultProjectColorScheme,
+        isPublic: false
       });
 
       const showTaskDetailsModal = ref(false);
@@ -247,6 +250,8 @@
       const updatingTaskStatusIds = ref([]);
       const permanentlyDeletingTaskIds = ref([]);
       const duplicatingTaskIds = ref([]);
+      const claimingTaskIds = ref([]);
+      const unclaimingTaskIds = ref([]);
       const hoveredTaskId = ref(null);
       const copiedTaskId = ref(null);
       const showProjectDetailsModal = ref(false);
@@ -375,7 +380,8 @@
       const userStats = computed(() => {
         const signature = [
           getCollectionSignature(users.value, 'User_ID', ['Email', 'Name', 'Manager_ID', 'Profile_Pic_Url']),
-          getCollectionSignature(assignments.value, 'Assignment_ID', ['Assignee_ID'])
+          getCollectionSignature(assignments.value, 'Assignment_ID', ['Assignee_ID']),
+          getCollectionSignature(projectShares.value, 'Project_ID', ['User_ID'])
         ].join('::');
 
         return memoizeBySignature('userStats', signature, () => {
@@ -413,7 +419,29 @@
             reportUsers.sort((a, b) => (a?.Name || '').localeCompare(b?.Name || ''));
           });
 
-          return { usersById, usersByEmail, directReportsByManagerId, assignmentsByUserId, assigneesByTaskId };
+          const projectSharesByUserId = new Map();
+          const projectSharesByProjectId = new Map();
+          projectShares.value.forEach((share) => {
+            const projectId = normalizeId(share?.Project_ID);
+            const userId = normalizeId(share?.User_ID);
+            if (!projectId || !userId) return;
+
+            if (!projectSharesByUserId.has(userId)) projectSharesByUserId.set(userId, new Set());
+            projectSharesByUserId.get(userId).add(projectId);
+
+            if (!projectSharesByProjectId.has(projectId)) projectSharesByProjectId.set(projectId, new Set());
+            projectSharesByProjectId.get(projectId).add(userId);
+          });
+
+          return {
+            usersById,
+            usersByEmail,
+            directReportsByManagerId,
+            assignmentsByUserId,
+            assigneesByTaskId,
+            projectSharesByUserId,
+            projectSharesByProjectId
+          };
         });
       });
 
@@ -445,6 +473,8 @@
         const signature = [
           getCollectionSignature(tasks.value, 'Task_ID', ['Project_ID', 'Status', 'Due_Date', 'Priority', 'Task_Title', 'Description', '_syncing']),
           getCollectionSignature(assignments.value, 'Assignment_ID', ['Assignee_ID']),
+          getCollectionSignature(projects.value, 'Project_ID', ['Is_Public', 'Creator_ID']),
+          getCollectionSignature(projectShares.value, 'Project_ID', ['User_ID']),
           currentUserId.value,
           showAllWorkItems.value ? 'all' : 'assigned'
         ].join('::');
@@ -452,9 +482,17 @@
         return memoizeBySignature('filteredTasks', signature, () => {
           if (showAllWorkItems.value) return tasks.value;
           const assignedIds = assignedEntityIdsForCurrentUser.value;
+          const userId = currentUserId.value;
           return tasks.value.filter((task) => {
             if (isCompleteStatus(task?.Status)) return false;
-            return assignedIds.has(normalizeId(task?.Task_ID));
+            const taskId = normalizeId(task?.Task_ID);
+            if (assignedIds.has(taskId)) return true;
+
+            const project = projectsById.value.get(normalizeId(task?.Project_ID));
+            if (!project) return false;
+            if (idsMatch(project.Creator_ID, userId)) return true;
+            if (isPublicProject(project) && isSharedOnProject(project.Project_ID, userId) && isTaskUnclaimed(taskId)) return true;
+            return false;
           });
         });
       });
@@ -482,14 +520,16 @@
 
       const visibleProjects = computed(() => {
         const signature = [
-          getCollectionSignature(projects.value, 'Project_ID', ['Project_ID', 'Project_Title', 'Description', 'Status', 'Due_Date', 'Color_Scheme']),
+          getCollectionSignature(projects.value, 'Project_ID', ['Project_ID', 'Project_Title', 'Description', 'Status', 'Due_Date', 'Color_Scheme', 'Is_Public', 'Creator_ID']),
           getCollectionSignature(visibleTasks.value, 'Task_ID', ['Project_ID']),
+          getCollectionSignature(projectShares.value, 'Project_ID', ['User_ID']),
           currentUserId.value,
           showAllWorkItems.value ? '1' : '0'
         ].join('::');
         return memoizeBySignature('visibleProjects', signature, () => {
           if (showAllWorkItems.value) return projects.value;
           const assignedIds = assignedEntityIdsForCurrentUser.value;
+          const userId = currentUserId.value;
           const visibleProjectIds = new Set(
             visibleTasks.value
               .map((task) => normalizeId(task?.Project_ID))
@@ -498,7 +538,9 @@
 
           return projects.value.filter((project) => {
             const projectId = normalizeId(project?.Project_ID);
-            return assignedIds.has(projectId) || visibleProjectIds.has(projectId);
+            if (assignedIds.has(projectId) || visibleProjectIds.has(projectId)) return true;
+            if (idsMatch(project.Creator_ID, userId)) return true;
+            return isPublicProject(project) && isSharedOnProject(projectId, userId);
           });
         });
       });
@@ -826,6 +868,7 @@
               assignments: payload.assignments || [],
               agendas: payload.agendas || [],
               agendaShares: payload.agendaShares || [],
+              projectShares: payload.projectShares || [],
               agendaSessions: payload.agendaSessions || [],
               comments: payload.comments || [],
               currentUserSettings: payload.currentUserSettings || {},
@@ -850,6 +893,7 @@
         assignments.value = Array.isArray(payload.assignments) ? payload.assignments : [];
         agendas.value = Array.isArray(payload.agendas) ? payload.agendas : [];
         agendaShares.value = Array.isArray(payload.agendaShares) ? payload.agendaShares : [];
+        projectShares.value = Array.isArray(payload.projectShares) ? payload.projectShares : [];
         agendaSessions.value = Array.isArray(payload.agendaSessions) ? payload.agendaSessions : [];
         comments.value = Array.isArray(payload.comments) ? payload.comments : [];
         loadedCommentTopicIds.value = [
@@ -1072,6 +1116,16 @@
       const getProjectById = (projectId) => projectsById.value.get(normalizeId(projectId)) || null;
       const getTaskById = (taskId) => tasksById.value.get(normalizeId(taskId)) || null;
       const getUserById = (userId) => userStats.value.usersById.get(normalizeId(userId)) || null;
+
+      const isPublicProject = (project) => {
+        const value = project?.Is_Public;
+        return value === true || value === 'TRUE' || value === 'true' || value === 'Yes' || value === 1 || value === '1';
+      };
+      const isTaskUnclaimed = (taskId) => (userStats.value.assigneesByTaskId.get(normalizeId(taskId)) || []).length === 0;
+      const isSharedOnProject = (projectId, userId) => {
+        const sharedUserIds = userStats.value.projectSharesByProjectId.get(normalizeId(projectId));
+        return Boolean(sharedUserIds && userId && sharedUserIds.has(normalizeId(userId)));
+      };
 
       function parseAsLocalDate(dateValue) {
         if (!dateValue) return new Date('');
@@ -1839,7 +1893,11 @@
           createdDate: project.Created_Date || '',
           dueDate: formatDateForInput(project.Due_Date),
           colorScheme: normalizeProjectColorScheme(getRawProjectColorScheme(project)),
-          creatorId: project.Creator_ID || ''
+          creatorId: project.Creator_ID || '',
+          isPublic: isPublicProject(project),
+          sharedUserIds: projectShares.value
+            .filter((share) => idsMatch(share.Project_ID, project.Project_ID))
+            .map((share) => share.User_ID)
         };
       };
 
@@ -1890,6 +1948,7 @@
 
       const openProjectInfo = (project) => {
         projectDetailsForm.value = buildProjectDetailsForm(project);
+        activeProjectShares.value = projectDetailsForm.value.sharedUserIds.slice();
         isEditingProject.value = false;
         showProjectDetailsModal.value = true;
       };
@@ -1909,6 +1968,7 @@
         const latestProject = projects.value.find((p) => p.Project_ID === projectDetailsForm.value.projectId);
         if (latestProject) {
           projectDetailsForm.value = buildProjectDetailsForm(latestProject);
+          activeProjectShares.value = projectDetailsForm.value.sharedUserIds.slice();
         }
         isEditingProject.value = false;
       };
@@ -2269,7 +2329,8 @@
           alert('Task title cannot be empty.');
           return;
         }
-        if (!Array.isArray(taskDetailsForm.value.assigneeIds) || taskDetailsForm.value.assigneeIds.length === 0) {
+        const isPublicProjectTask = isPublicProject(getProjectById(taskDetailsForm.value.projectId));
+        if (!isPublicProjectTask && (!Array.isArray(taskDetailsForm.value.assigneeIds) || taskDetailsForm.value.assigneeIds.length === 0)) {
           alert('Please assign at least one person to this task.');
           return;
         }
@@ -2296,16 +2357,18 @@
           Recurrence_End_Date: taskDetailsForm.value.recurrenceRule ? (taskDetailsForm.value.recurrenceEndDate || '') : '',
           _syncing: true
         };
-        const optimisticAssignments = taskDetailsForm.value.assigneeIds.map((assigneeId) => ({
-          Assignment_ID: taskId,
-          Assignee_ID: assigneeId,
-          _syncing: true
-        }));
 
         savingTask.value = true;
         if (taskIndex >= 0) tasks.value.splice(taskIndex, 1, optimisticTask);
-        assignments.value = assignments.value.filter((a) => !idsMatch(a.Assignment_ID, taskId));
-        assignments.value.push(...optimisticAssignments);
+        if (!isPublicProjectTask) {
+          const optimisticAssignments = taskDetailsForm.value.assigneeIds.map((assigneeId) => ({
+            Assignment_ID: taskId,
+            Assignee_ID: assigneeId,
+            _syncing: true
+          }));
+          assignments.value = assignments.value.filter((a) => !idsMatch(a.Assignment_ID, taskId));
+          assignments.value.push(...optimisticAssignments);
+        }
         isEditingTask.value = false;
         showTaskDetailsAssigneeDropdown.value = false;
 
@@ -2464,6 +2527,90 @@
           .completeTask(taskId);
       };
 
+      const isClaimingTask = (taskId) => claimingTaskIds.value.some((id) => idsMatch(id, taskId));
+      const isUnclaimingTask = (taskId) => unclaimingTaskIds.value.some((id) => idsMatch(id, taskId));
+
+      const claimTaskById = (taskId) => {
+        const normalizedTaskId = normalizeId(taskId);
+        if (!normalizedTaskId || isClaimingTask(normalizedTaskId)) return;
+
+        const userId = currentUserId.value;
+        if (!userId) return;
+
+        const isOptimisticClaim = (a) => a && a._syncing && idsMatch(a.Assignment_ID, normalizedTaskId) && idsMatch(a.Assignee_ID, userId);
+        claimingTaskIds.value.push(normalizedTaskId);
+        assignments.value.push({ Assignment_ID: normalizedTaskId, Assignee_ID: userId, _syncing: true });
+        if (taskDetailsForm.value && idsMatch(taskDetailsForm.value.taskId, normalizedTaskId)) {
+          taskDetailsForm.value.assigneeIds = [userId];
+        }
+
+        google.script.run
+          .withSuccessHandler((response) => {
+            claimingTaskIds.value = claimingTaskIds.value.filter((id) => !idsMatch(id, normalizedTaskId));
+            assignments.value = assignments.value.filter((a) => !isOptimisticClaim(a));
+
+            const result = parseRunResponse(response);
+            if (!result || !result.success) {
+              if (taskDetailsForm.value && idsMatch(taskDetailsForm.value.taskId, normalizedTaskId)) {
+                taskDetailsForm.value.assigneeIds = [];
+              }
+              showToast(result?.error || 'Failed to claim task.');
+              return;
+            }
+
+            if (result.assignment) {
+              assignments.value.push(result.assignment);
+            }
+          })
+          .withFailureHandler((error) => {
+            claimingTaskIds.value = claimingTaskIds.value.filter((id) => !idsMatch(id, normalizedTaskId));
+            assignments.value = assignments.value.filter((a) => !isOptimisticClaim(a));
+            if (taskDetailsForm.value && idsMatch(taskDetailsForm.value.taskId, normalizedTaskId)) {
+              taskDetailsForm.value.assigneeIds = [];
+            }
+            console.error('Failed to claim task:', error);
+            showToast('Failed to claim task. Please try again.');
+          })
+          .claimTask(normalizedTaskId);
+      };
+
+      const unclaimTaskById = (taskId) => {
+        const normalizedTaskId = normalizeId(taskId);
+        if (!normalizedTaskId || isUnclaimingTask(normalizedTaskId)) return;
+
+        const previousAssignments = assignments.value.filter((a) => idsMatch(a.Assignment_ID, normalizedTaskId));
+
+        unclaimingTaskIds.value.push(normalizedTaskId);
+        assignments.value = assignments.value.filter((a) => !idsMatch(a.Assignment_ID, normalizedTaskId));
+        if (taskDetailsForm.value && idsMatch(taskDetailsForm.value.taskId, normalizedTaskId)) {
+          taskDetailsForm.value.assigneeIds = [];
+        }
+
+        google.script.run
+          .withSuccessHandler((response) => {
+            unclaimingTaskIds.value = unclaimingTaskIds.value.filter((id) => !idsMatch(id, normalizedTaskId));
+
+            const result = parseRunResponse(response);
+            if (!result || !result.success) {
+              assignments.value.push(...previousAssignments);
+              if (taskDetailsForm.value && idsMatch(taskDetailsForm.value.taskId, normalizedTaskId)) {
+                taskDetailsForm.value.assigneeIds = previousAssignments.map((a) => a.Assignee_ID);
+              }
+              showToast(result?.error || 'Failed to unclaim task.');
+            }
+          })
+          .withFailureHandler((error) => {
+            unclaimingTaskIds.value = unclaimingTaskIds.value.filter((id) => !idsMatch(id, normalizedTaskId));
+            assignments.value.push(...previousAssignments);
+            if (taskDetailsForm.value && idsMatch(taskDetailsForm.value.taskId, normalizedTaskId)) {
+              taskDetailsForm.value.assigneeIds = previousAssignments.map((a) => a.Assignee_ID);
+            }
+            console.error('Failed to unclaim task:', error);
+            showToast('Failed to unclaim task. Please try again.');
+          })
+          .unclaimTask(normalizedTaskId);
+      };
+
       const isDuplicatingTask = (taskId) => duplicatingTaskIds.value.some((id) => idsMatch(id, taskId));
 
       const duplicateTaskById = (taskId) => {
@@ -2594,6 +2741,9 @@
         const projectId = projectDetailsForm.value.projectId;
         const projectIndex = projects.value.findIndex((p) => idsMatch(p.Project_ID, projectId));
         const previousProject = projectIndex >= 0 ? { ...projects.value[projectIndex] } : null;
+        const isPublic = Boolean(projectDetailsForm.value.isPublic);
+        const sharedUserIds = isPublic ? activeProjectShares.value.slice() : [];
+        const previousShares = projectShares.value.filter((s) => idsMatch(s.Project_ID, projectId)).slice();
         const optimisticProject = {
           ...(previousProject || {}),
           Project_ID: projectId,
@@ -2602,11 +2752,19 @@
           Status: projectDetailsForm.value.status,
           Description: projectDetailsForm.value.description,
           Color_Scheme: projectDetailsForm.value.colorScheme,
+          Is_Public: isPublic,
           _syncing: true
+        };
+
+        const revertShares = () => {
+          projectShares.value = projectShares.value.filter((s) => !idsMatch(s.Project_ID, projectId));
+          projectShares.value.push(...previousShares);
         };
 
         savingProject.value = true;
         if (projectIndex >= 0) projects.value.splice(projectIndex, 1, optimisticProject);
+        projectShares.value = projectShares.value.filter((s) => !idsMatch(s.Project_ID, projectId));
+        projectShares.value.push(...sharedUserIds.map((userId) => ({ Project_ID: projectId, User_ID: userId })));
         isEditingProject.value = false;
 
         google.script.run
@@ -2617,8 +2775,10 @@
             if (!result || !result.success || !result.project) {
               const revertIndex = projects.value.findIndex((p) => idsMatch(p.Project_ID, projectId));
               if (revertIndex >= 0) projects.value.splice(revertIndex, 1, previousProject || stripSyncFlag(projects.value[revertIndex]));
+              revertShares();
               if (projectDetailsForm.value && idsMatch(projectDetailsForm.value.projectId, projectId)) {
                 projectDetailsForm.value = previousProject ? buildProjectDetailsForm(previousProject) : projectDetailsForm.value;
+                activeProjectShares.value = projectDetailsForm.value.sharedUserIds.slice();
               }
               showToast(result?.error || 'Failed to save project — your changes were not saved.');
               return;
@@ -2632,17 +2792,24 @@
               const fallbackIndex = projects.value.findIndex((p) => idsMatch(p.Project_ID, projectId));
               if (fallbackIndex >= 0) projects.value.splice(fallbackIndex, 1, updatedProject);
             }
+            projectShares.value = projectShares.value.filter((s) => !idsMatch(s.Project_ID, updatedProject.Project_ID));
+            if (Array.isArray(result.shares) && result.shares.length > 0) {
+              projectShares.value.push(...result.shares);
+            }
 
             if (projectDetailsForm.value && idsMatch(projectDetailsForm.value.projectId, updatedProject.Project_ID)) {
               projectDetailsForm.value = buildProjectDetailsForm(updatedProject);
+              activeProjectShares.value = projectDetailsForm.value.sharedUserIds.slice();
             }
           })
           .withFailureHandler((error) => {
             savingProject.value = false;
             const revertIndex = projects.value.findIndex((p) => idsMatch(p.Project_ID, projectId));
             if (revertIndex >= 0) projects.value.splice(revertIndex, 1, previousProject || stripSyncFlag(projects.value[revertIndex]));
+            revertShares();
             if (projectDetailsForm.value && idsMatch(projectDetailsForm.value.projectId, projectId)) {
               projectDetailsForm.value = previousProject ? buildProjectDetailsForm(previousProject) : projectDetailsForm.value;
+              activeProjectShares.value = projectDetailsForm.value.sharedUserIds.slice();
             }
             console.error('Failed to update project:', error);
             showToast('Failed to save project — your changes were not saved.');
@@ -2652,7 +2819,9 @@
             dueDate: projectDetailsForm.value.dueDate,
             status: projectDetailsForm.value.status,
             description: projectDetailsForm.value.description,
-            colorScheme: projectDetailsForm.value.colorScheme
+            colorScheme: projectDetailsForm.value.colorScheme,
+            isPublic: isPublic,
+            sharedUserIds: sharedUserIds
           });
       };
 
@@ -2744,8 +2913,10 @@
           dueDate: '',
           description: '',
           status: 'Not Started',
-          colorScheme: defaultProjectColorScheme
+          colorScheme: defaultProjectColorScheme,
+          isPublic: false
         };
+        activeProjectShares.value = [];
       };
 
       const openAddProject = () => {
@@ -2801,7 +2972,8 @@
           alert('No project selected.');
           return;
         }
-        if (!Array.isArray(newTaskForm.value.assigneeIds) || newTaskForm.value.assigneeIds.length === 0) {
+        const isTaskForPublicProject = isPublicProject(selectedProject.value);
+        if (!isTaskForPublicProject && (!Array.isArray(newTaskForm.value.assigneeIds) || newTaskForm.value.assigneeIds.length === 0)) {
           alert('Please assign at least one person to this task.');
           return;
         }
@@ -2826,7 +2998,7 @@
           Creator_ID: currentUser.value?.User_ID || '',
           _syncing: true
         };
-        const tempAssignments = newTaskForm.value.assigneeIds.map((assigneeId) => ({
+        const tempAssignments = isTaskForPublicProject ? [] : newTaskForm.value.assigneeIds.map((assigneeId) => ({
           Assignment_ID: tempId,
           Assignee_ID: assigneeId,
           _syncing: true
@@ -2877,7 +3049,7 @@
             recurrenceRule: newTaskForm.value.recurrenceRule,
             recurrenceInterval: newTaskForm.value.recurrenceInterval,
             recurrenceEndDate: newTaskForm.value.recurrenceEndDate,
-            assigneeIds: newTaskForm.value.assigneeIds,
+            assigneeIds: isTaskForPublicProject ? [] : newTaskForm.value.assigneeIds,
             subtasks: subtaskTitles
           });
       };
@@ -2890,6 +3062,8 @@
         }
 
         const tempId = makeClientId('PROJ');
+        const isPublic = Boolean(newProjectForm.value.isPublic);
+        const sharedUserIds = isPublic ? activeProjectShares.value.slice() : [];
         const tempProject = {
           Project_ID: tempId,
           Project_Title: trimmedTitle,
@@ -2898,6 +3072,7 @@
           Due_Date: newProjectForm.value.dueDate || '',
           Creator_ID: currentUser.value?.User_ID || '',
           Color_Scheme: newProjectForm.value.colorScheme || 'default',
+          Is_Public: isPublic,
           _syncing: true
         };
         const tempAssignment = {
@@ -2909,6 +3084,9 @@
         creatingProject.value = true;
         projects.value.push(tempProject);
         assignments.value.push(tempAssignment);
+        if (sharedUserIds.length > 0) {
+          projectShares.value.push(...sharedUserIds.map((userId) => ({ Project_ID: tempId, User_ID: userId })));
+        }
         closeAddProject();
 
         google.script.run
@@ -2916,6 +3094,7 @@
             creatingProject.value = false;
             projects.value = projects.value.filter((p) => !idsMatch(p.Project_ID, tempId));
             assignments.value = assignments.value.filter((a) => !idsMatch(a.Assignment_ID, tempId));
+            projectShares.value = projectShares.value.filter((s) => !idsMatch(s.Project_ID, tempId));
 
             const result = parseRunResponse(response);
             if (!result || !result.success) {
@@ -2928,6 +3107,9 @@
               if (result.assignment) {
                 assignments.value.push(result.assignment);
               }
+              if (Array.isArray(result.shares) && result.shares.length > 0) {
+                projectShares.value.push(...result.shares);
+              }
             } else {
               fetchData();
             }
@@ -2936,6 +3118,7 @@
             creatingProject.value = false;
             projects.value = projects.value.filter((p) => !idsMatch(p.Project_ID, tempId));
             assignments.value = assignments.value.filter((a) => !idsMatch(a.Assignment_ID, tempId));
+            projectShares.value = projectShares.value.filter((s) => !idsMatch(s.Project_ID, tempId));
             console.error('Failed to add project:', error);
             showToast('Failed to create project. Please try again.');
           })
@@ -2944,7 +3127,9 @@
             dueDate: newProjectForm.value.dueDate,
             description: newProjectForm.value.description,
             status: newProjectForm.value.status || 'Not Started',
-            colorScheme: newProjectForm.value.colorScheme
+            colorScheme: newProjectForm.value.colorScheme,
+            isPublic: isPublic,
+            sharedUserIds: sharedUserIds
           });
       };
 
@@ -3964,6 +4149,53 @@
         }
       };
 
+      const projectShareQuery = ref('');
+      const projectShareInputRef = ref(null);
+
+      const filteredProjectShareSuggestions = computed(() => {
+        if (!projectShareQuery.value) return [];
+        const query = projectShareQuery.value.toLowerCase();
+        return users.value.filter((u) => {
+          if (idsMatch(u.User_ID, currentUserId.value)) return false;
+          if (projectDetailsForm.value && idsMatch(u.User_ID, projectDetailsForm.value.creatorId)) return false;
+          if (activeProjectShares.value.includes(u.User_ID)) return false;
+          return (u.Name || '').toLowerCase().includes(query) || (u.Email || '').toLowerCase().includes(query);
+        }).slice(0, 5);
+      });
+
+      const activeProjectSharedUsers = computed(() => {
+        return activeProjectShares.value.map(id => getUserById(id)).filter(Boolean);
+      });
+
+      const addProjectShare = (userId) => {
+        if (!activeProjectShares.value.includes(userId)) {
+          activeProjectShares.value.push(userId);
+        }
+        projectShareQuery.value = '';
+        nextTick(() => {
+          if (projectShareInputRef.value) projectShareInputRef.value.focus();
+        });
+      };
+
+      const removeProjectShare = (userId) => {
+        const idx = activeProjectShares.value.indexOf(userId);
+        if (idx > -1) activeProjectShares.value.splice(idx, 1);
+      };
+
+      const handleProjectShareKeyDown = (e) => {
+        if ((e.key === 'Tab' || e.key === 'Enter') && filteredProjectShareSuggestions.value.length > 0) {
+          e.preventDefault();
+          addProjectShare(filteredProjectShareSuggestions.value[0].User_ID);
+        }
+      };
+
+      const getSharedUsersForProject = (projectId) => {
+        return projectShares.value
+          .filter(s => idsMatch(s.Project_ID, projectId))
+          .map(s => getUserById(s.User_ID))
+          .filter(Boolean);
+      };
+
       const getSharedUsersForAgenda = (agendaId) => {
         return agendaShares.value
           .filter(s => idsMatch(s.Agenda_ID, agendaId))
@@ -4345,6 +4577,13 @@
         hoveredTaskId,
         isDuplicatingTask,
         duplicateTaskById,
+        claimTaskById,
+        unclaimTaskById,
+        isClaimingTask,
+        isUnclaimingTask,
+        isPublicProject,
+        isTaskUnclaimed,
+        isSharedOnProject,
         showProjectDetailsModal,
         projectDetailsForm,
         deletingProject,
@@ -4438,6 +4677,16 @@
         isAssigneeSelected,
         createTask,
         createProject,
+        projectShares,
+        activeProjectShares,
+        activeProjectSharedUsers,
+        projectShareQuery,
+        projectShareInputRef,
+        filteredProjectShareSuggestions,
+        addProjectShare,
+        removeProjectShare,
+        handleProjectShareKeyDown,
+        getSharedUsersForProject,
         getCommentAuthor,
         getCommentCountForTask,
         getSubtaskCountForTask,

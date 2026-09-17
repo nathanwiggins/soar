@@ -292,6 +292,23 @@ function ensureTaskHasAssignees(assigneeIds) {
     throw new Error('At least one assignee is required for every task.');
   }
 }
+function isProjectPublic(projectId) {
+  const project = getProjectById(projectId);
+  return Boolean(project && normalizeProjectPublicValue(project.Is_Public));
+}
+function getUnclaimedTaskIdsForProject(projectId) {
+  const normalizedProjectId = (projectId || '').toString().trim();
+  if (!normalizedProjectId) return [];
+
+  const assignedTaskIds = new Set(
+    getTableData('Assignments').map((assignment) => (assignment.Assignment_ID || '').toString().trim())
+  );
+
+  return getTableData('Tasks')
+    .filter((task) => (task.Project_ID || '').toString().trim() === normalizedProjectId)
+    .map((task) => (task.Task_ID || '').toString().trim())
+    .filter((taskId) => taskId && !assignedTaskIds.has(taskId));
+}
 function validateAssigneePermissions(assigneeIds, actorUserId, grandfatheredAssigneeIds) {
   const normalizedActorId = (actorUserId || '').toString().trim();
   if (!normalizedActorId) {
@@ -345,16 +362,21 @@ function createTask(projectId, taskInput) {
     if (recurrenceRule && !hasValidDueDate) {
       throw new Error('A due date is required to set up a recurring task.');
     }
-    const assigneeIds = getValidAssigneeIds(taskInput ? taskInput.assigneeIds : []);
-    ensureTaskHasAssignees(assigneeIds);
     const normalizedProjectId = ensureProjectExists(projectId);
+    const isPublicProject = isProjectPublic(normalizedProjectId);
+    const assigneeIds = isPublicProject ? [] : getValidAssigneeIds(taskInput ? taskInput.assigneeIds : []);
+    if (!isPublicProject) {
+      ensureTaskHasAssignees(assigneeIds);
+    }
     const creatorId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
 
     if (!creatorId) {
       throw new Error('Could not determine Creator_ID from current user email.');
     }
 
-    validateAssigneePermissions(assigneeIds, creatorId);
+    if (!isPublicProject) {
+      validateAssigneePermissions(assigneeIds, creatorId);
+    }
 
     if (headerIndex.Task_ID !== undefined) newRow[headerIndex.Task_ID] = generateNextId('Tasks', 'T');
     if (headerIndex.Project_ID !== undefined) newRow[headerIndex.Project_ID] = normalizedProjectId;
@@ -465,7 +487,9 @@ function duplicateTask(taskId) {
         .filter((assignment) => (assignment.Assignment_ID || '').toString().trim() === normalizedTaskId)
         .map((assignment) => assignment.Assignee_ID)
     );
-    ensureTaskHasAssignees(assigneeIds);
+    if (!isProjectPublic(sourceTask.Project_ID)) {
+      ensureTaskHasAssignees(assigneeIds);
+    }
 
     const now = new Date();
     const newRow = new Array(headers.length).fill('');
@@ -613,11 +637,25 @@ function updateTask(taskId, taskInput) {
     if (recurrenceRule && !hasValidDueDate) {
       throw new Error('A due date is required to set up a recurring task.');
     }
-    const assigneeIds = getValidAssigneeIds(taskInput ? taskInput.assigneeIds : []);
-    ensureTaskHasAssignees(assigneeIds);
     const status = normalizeTaskStatus(taskInput ? taskInput.status : '');
     const projectId = ensureProjectExists(taskInput ? taskInput.projectId : '');
+    const isPublicProject = isProjectPublic(projectId);
     const editorId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
+
+    const assignmentsSheetForRead = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Assignments');
+    if (!assignmentsSheetForRead) {
+      throw new Error('Assignments sheet was not found.');
+    }
+    const assignmentsDataForRead = assignmentsSheetForRead.getDataRange().getValues();
+    const previousAssigneeIds = assignmentsDataForRead
+      .filter((row, index) => index > 0 && row[0] === normalizedTaskId)
+      .map((row) => (row[1] || '').toString().trim())
+      .filter(Boolean);
+
+    const assigneeIds = isPublicProject ? previousAssigneeIds : getValidAssigneeIds(taskInput ? taskInput.assigneeIds : []);
+    if (!isPublicProject) {
+      ensureTaskHasAssignees(assigneeIds);
+    }
 
     const currentUserId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
     const isMarkingCompleted = isTaskCompleteStatus(status) && !isTaskCompleteStatus(previousStatus);
@@ -651,36 +689,36 @@ function updateTask(taskId, taskInput) {
     updateRowValues(sheet, taskRowIndex + 1, updatedTaskRow);
     invalidateTableCache('Tasks');
 
-    const assignmentsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Assignments');
-    if (!assignmentsSheet) {
-      throw new Error('Assignments sheet was not found.');
-    }
+    const assignmentsSheet = assignmentsSheetForRead;
+    const assignmentsData = assignmentsDataForRead;
 
-    const assignmentsData = assignmentsSheet.getDataRange().getValues();
-    const previousAssigneeIds = assignmentsData
-      .filter((row, index) => index > 0 && row[0] === normalizedTaskId)
-      .map((row) => (row[1] || '').toString().trim())
-      .filter(Boolean);
-    validateAssigneePermissions(assigneeIds, editorId, previousAssigneeIds);
-    const assignmentRowsToDelete = [];
-    for (let i = assignmentsData.length - 1; i >= 1; i--) {
-      if (assignmentsData[i][0] === normalizedTaskId) {
-        assignmentRowsToDelete.push(i + 1);
+    let updatedAssignments = previousAssigneeIds.map((assigneeId) => ({
+      Assignment_ID: normalizedTaskId,
+      Assignee_ID: assigneeId
+    }));
+
+    if (!isPublicProject) {
+      validateAssigneePermissions(assigneeIds, editorId, previousAssigneeIds);
+      const assignmentRowsToDelete = [];
+      for (let i = assignmentsData.length - 1; i >= 1; i--) {
+        if (assignmentsData[i][0] === normalizedTaskId) {
+          assignmentRowsToDelete.push(i + 1);
+        }
       }
-    }
-    deleteRowsBySheetIndexes(assignmentsSheet, assignmentRowsToDelete);
-    invalidateTableCache('Assignments');
-
-    let updatedAssignments = [];
-    if (assigneeIds.length > 0) {
-      updatedAssignments = assigneeIds.map((assigneeId) => ({
-        Assignment_ID: normalizedTaskId,
-        Assignee_ID: assigneeId
-      }));
-
-      const assignmentRows = updatedAssignments.map((assignment) => [assignment.Assignment_ID, assignment.Assignee_ID]);
-      appendRows(assignmentsSheet, assignmentRows);
+      deleteRowsBySheetIndexes(assignmentsSheet, assignmentRowsToDelete);
       invalidateTableCache('Assignments');
+
+      updatedAssignments = [];
+      if (assigneeIds.length > 0) {
+        updatedAssignments = assigneeIds.map((assigneeId) => ({
+          Assignment_ID: normalizedTaskId,
+          Assignee_ID: assigneeId
+        }));
+
+        const assignmentRows = updatedAssignments.map((assignment) => [assignment.Assignment_ID, assignment.Assignee_ID]);
+        appendRows(assignmentsSheet, assignmentRows);
+        invalidateTableCache('Assignments');
+      }
     }
 
     const refreshedRow = updatedTaskRow;
@@ -693,7 +731,7 @@ function updateTask(taskId, taskInput) {
         : (value instanceof Date ? value.toISOString() : value);
     });
     const previousAssigneeSet = new Set(previousAssigneeIds);
-    const newlyAssignedIds = assigneeIds.filter((assigneeId) => !previousAssigneeSet.has(assigneeId));
+    const newlyAssignedIds = isPublicProject ? [] : assigneeIds.filter((assigneeId) => !previousAssigneeSet.has(assigneeId));
     sendTaskAssignmentNotifications(updatedTask, newlyAssignedIds, currentUserId);
     if (isMarkingCompleted) {
       sendTaskCompletedNotifications(updatedTask, assigneeIds, currentUserId);
@@ -819,6 +857,111 @@ function completeTask(taskId) {
   }
 }
 
+function claimTask(taskId) {
+  const normalizedTaskId = taskId ? taskId.toString().trim() : '';
+  if (!normalizedTaskId) {
+    return JSON.stringify({ success: false, error: 'Task ID is required.' });
+  }
+
+  try {
+    const task = getTaskById(normalizedTaskId);
+    if (!task) throw new Error('Task not found.');
+
+    const project = getProjectById(task.Project_ID);
+    if (!project || !normalizeProjectPublicValue(project.Is_Public)) {
+      throw new Error('This task cannot be claimed.');
+    }
+
+    const currentUserId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
+    if (!currentUserId) throw new Error('Could not determine current user.');
+
+    const normalizedProjectId = (project.Project_ID || '').toString().trim();
+    const creatorId = (project.Creator_ID || '').toString().trim();
+    const isShared = getTableData('Project_Shares').some(
+      (share) => (share.Project_ID || '').toString().trim() === normalizedProjectId
+        && (share.User_ID || '').toString().trim() === currentUserId
+    );
+    if (currentUserId !== creatorId && !isShared) {
+      throw new Error('You do not have access to claim this task.');
+    }
+
+    const hasExistingAssignee = getTableData('Assignments').some(
+      (assignment) => (assignment.Assignment_ID || '').toString().trim() === normalizedTaskId
+    );
+    if (hasExistingAssignee) {
+      throw new Error('This task has already been claimed.');
+    }
+
+    const assignmentsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Assignments');
+    if (!assignmentsSheet) throw new Error('Assignments sheet was not found.');
+
+    appendRows(assignmentsSheet, [[normalizedTaskId, currentUserId]]);
+    invalidateTableCache('Assignments');
+
+    return JSON.stringify({
+      success: true,
+      taskId: normalizedTaskId,
+      assignment: { Assignment_ID: normalizedTaskId, Assignee_ID: currentUserId }
+    });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: error && error.message ? error.message : 'Failed to claim task.'
+    });
+  }
+}
+function unclaimTask(taskId) {
+  const normalizedTaskId = taskId ? taskId.toString().trim() : '';
+  if (!normalizedTaskId) {
+    return JSON.stringify({ success: false, error: 'Task ID is required.' });
+  }
+
+  try {
+    const task = getTaskById(normalizedTaskId);
+    if (!task) throw new Error('Task not found.');
+
+    const project = getProjectById(task.Project_ID);
+    if (!project || !normalizeProjectPublicValue(project.Is_Public)) {
+      throw new Error('This task cannot be unclaimed.');
+    }
+
+    const currentUserId = getCurrentUserIdByEmail(normalizeEmail(getCurrentUser()));
+    if (!currentUserId) throw new Error('Could not determine current user.');
+
+    const assignmentsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Assignments');
+    if (!assignmentsSheet) throw new Error('Assignments sheet was not found.');
+
+    const assignmentsData = assignmentsSheet.getDataRange().getValues();
+    const matchingRowIndexes = [];
+    const assigneeIds = [];
+    for (let i = 1; i < assignmentsData.length; i++) {
+      if ((assignmentsData[i][0] || '').toString().trim() === normalizedTaskId) {
+        matchingRowIndexes.push(i + 1);
+        assigneeIds.push((assignmentsData[i][1] || '').toString().trim());
+      }
+    }
+
+    if (matchingRowIndexes.length === 0) {
+      throw new Error('This task is not currently claimed.');
+    }
+
+    const creatorId = (project.Creator_ID || '').toString().trim();
+    const isSoleAssignee = assigneeIds.length === 1 && assigneeIds[0] === currentUserId;
+    if (!isSoleAssignee && currentUserId !== creatorId) {
+      throw new Error('Only the person who claimed this task, or the project creator, can unclaim it.');
+    }
+
+    deleteRowsBySheetIndexes(assignmentsSheet, matchingRowIndexes);
+    invalidateTableCache('Assignments');
+
+    return JSON.stringify({ success: true, taskId: normalizedTaskId });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: error && error.message ? error.message : 'Failed to unclaim task.'
+    });
+  }
+}
 function moveTaskToProject(taskId, newProjectId) {
   const normalizedTaskId = taskId ? taskId.toString().trim() : '';
   const normalizedProjectId = newProjectId ? newProjectId.toString().trim() : '';
