@@ -489,9 +489,9 @@
             if (assignedIds.has(taskId)) return true;
 
             const project = projectsById.value.get(normalizeId(task?.Project_ID));
-            if (!project) return false;
+            if (!project || !isPublicProject(project)) return false;
             if (idsMatch(project.Creator_ID, userId)) return true;
-            if (isPublicProject(project) && isSharedOnProject(project.Project_ID, userId) && isTaskUnclaimed(taskId)) return true;
+            if (isSharedOnProject(project.Project_ID, userId) && isTaskUnclaimed(taskId)) return true;
             return false;
           });
         });

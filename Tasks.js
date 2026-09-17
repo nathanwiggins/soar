@@ -996,6 +996,19 @@ function moveTaskToProject(taskId, newProjectId) {
       if (!currentUserId || currentUserId !== sourceCreatorId || currentUserId !== targetCreatorId) {
         return JSON.stringify({ success: false, error: 'Only project creators can move tasks between projects.' });
       }
+
+      if (sourceProject && normalizeProjectPublicValue(sourceProject.Is_Public)) {
+        const hasAssignee = getTableData('Assignments').some(
+          (assignment) => (assignment.Assignment_ID || '').toString().trim() === normalizedTaskId
+        );
+        if (!hasAssignee) {
+          const assignmentsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Assignments');
+          if (assignmentsSheet) {
+            appendRows(assignmentsSheet, [[normalizedTaskId, currentUserId]]);
+            invalidateTableCache('Assignments');
+          }
+        }
+      }
     }
 
     const taskRowIndex = bodyRows.findIndex(row => (row[idCol] || '').toString().trim() === normalizedTaskId);
