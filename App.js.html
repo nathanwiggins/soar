@@ -3516,10 +3516,21 @@
       };
 
       const handleGlobalKeyDown = (event) => {
-        if (!event.metaKey && !event.ctrlKey) return;
-
         const tag = document.activeElement?.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
+
+        if (event.key === 'Delete') {
+          if (showTaskDetailsModal.value && taskDetailsForm.value?.taskId) {
+            event.preventDefault();
+            deleteTask();
+          } else if (showProjectDetailsModal.value && projectDetailsForm.value?.projectId) {
+            event.preventDefault();
+            deleteProject();
+          }
+          return;
+        }
+
+        if (!event.metaKey && !event.ctrlKey) return;
 
         if (event.key === 'z') {
           if (calendarDateUndoStack.value.length) {

@@ -228,6 +228,8 @@ Task cards can be dragged between project columns. Only the task creator can dra
 
 Hover a task card and press **Cmd/Ctrl+C** to copy it, then press **Cmd/Ctrl+V** to paste a duplicate. The same shortcut works while **Task Details** is open, copying/pasting the task currently shown in the modal. Both shortcuts are ignored while typing in a text field.
 
+While **Task Details** or **Project Details** is open, press **Delete** to delete the task or project currently shown in the modal (same effect as clicking **Delete Task**/**Delete Project**, including the confirmation prompt). Ignored while typing in a text field.
+
 ### Creating a Project
 
 1. Go to **Project Board**.
@@ -263,7 +265,7 @@ What SOAR records:
 
 Other buttons:
 
-- **Delete Project**: Deletes the project row, tasks in that project, and assignment rows for those deleted tasks. It does not currently remove the project creator assignment row from `Assignments`.
+- **Delete Project**: Deletes the project row, tasks in that project, and assignment rows for those deleted tasks. It does not currently remove the project creator assignment row from `Assignments`. Pressing **Delete** while **Project Details** is open triggers the same action.
 - **Cancel**: Cancels edit mode.
 - **Close**: Closes the modal when not editing.
 
@@ -312,7 +314,7 @@ Footer buttons:
 
 - **Complete Task**: sets the task status to `Complete`, records `Completed_By`, and records `Completed_At`.
 - **Complete**: displayed in the same button position when the task is already complete.
-- **Delete Task**: deletes the task and related assignments. Only visible to the task creator.
+- **Delete Task**: deletes the task and related assignments. Only visible to the task creator. Pressing **Delete** while **Task Details** is open triggers the same action.
 - **Duplicate Task**: creates an independent copy of the task, including its assignees and subtasks, via `duplicateTask()`.
 - **Save Changes**: saves edits.
 - **Cancel**: cancels edit mode.
