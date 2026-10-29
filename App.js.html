@@ -141,6 +141,7 @@
       const calendarViewMode = ref(localStorage.getItem('soar_calendar_view') || 'month');
       const showSupervisorUserDropdown = ref(false);
       const selectedSupervisorUserIds = ref([]);
+      const supervisorViewMode = ref('active');
       const showHideProjectsDropdown = ref(false);
       const hiddenProjectIds = ref(new Set());
       const showHideCalendarProjectsDropdown = ref(false);
@@ -635,6 +636,31 @@
           });
         });
       });
+
+      const supervisorCompletedTasks = computed(() => {
+        const signature = [
+          getCollectionSignature(tasks.value, 'Task_ID', ['Status', 'Project_ID', 'Task_Title', 'Due_Date', 'Priority', 'Completed_At', 'Completed_By']),
+          selectedSupervisorUserIds.value.slice().sort().join(','),
+          getCollectionSignature(assignments.value, 'Assignment_ID', ['Assignee_ID'])
+        ].join('::');
+        return memoizeBySignature('supervisorCompletedTasks', signature, () => {
+          const assignedIds = assignedEntityIdsForSelectedSupervisorUsers.value;
+          const getSortTime = (task) => {
+            const completedTime = new Date(task?.Completed_At || '').getTime();
+            if (!Number.isNaN(completedTime)) return completedTime;
+            const dueTime = parseAsLocalDate(task?.Due_Date || 0).getTime();
+            return Number.isNaN(dueTime) ? 0 : dueTime;
+          };
+          return tasks.value
+            .filter((task) => isCompleteStatus(task?.Status) && assignedIds.has(normalizeId(task?.Task_ID)))
+            .slice()
+            .sort((left, right) => getSortTime(right) - getSortTime(left));
+        });
+      });
+
+      const getSelectedSupervisorAssigneesForTask = (taskId) => {
+        return getAssigneesForTask(taskId).filter((user) => isSupervisorUserSelected(user.User_ID));
+      };
 
       const supervisorVisibleProjects = computed(() => {
         const assignedIds = assignedEntityIdsForSelectedSupervisorUsers.value;
@@ -1174,6 +1200,7 @@
         currentTab.value = tabId;
         if (tabId !== 'supervisor-view') {
           showSupervisorUserDropdown.value = false;
+          supervisorViewMode.value = 'active';
         }
         if (tabId !== 'project-board') {
           showHideProjectsDropdown.value = false;
@@ -4522,6 +4549,9 @@
         supervisorVisibleTasks,
         showSupervisorUserDropdown,
         selectedSupervisorUserIds,
+        supervisorViewMode,
+        supervisorCompletedTasks,
+        getSelectedSupervisorAssigneesForTask,
         supervisorUserSummary,
         showAllWorkItems,
         comments,
