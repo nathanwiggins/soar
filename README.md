@@ -69,6 +69,7 @@
      - [Settings.js](Settings.js)
      - [Bootstrap.js](Bootstrap.js)
      - [Chat.js](Chat.js)
+     - [Token.js](Token.js)
      - [Code.js](Code.js) — paste this into the existing `Code.gs` file if you did not create a separate `Code` script file.
    - Create Apps Script HTML files for:
      - [Index.html](Index.html)
@@ -81,6 +82,7 @@
    - Add a property named `GEMINI_API_KEY` with your Gemini API key.
    - If this property is missing, the red chat bubble still appears, but assistant requests return: `AI Assistant is not configured (Missing API Key).`
    - To enable the support ticketing GitHub integration, add a property named `GITHUB_PAT` with a GitHub Personal Access Token that has write access to issues on the `nathanwiggins/soar` repository.
+   - Alternatively, open `Token.js` in the Apps Script editor, replace `YOUR_GITHUB_PAT_HERE` with the token, and run `setGithubPat` once to save it as the `GITHUB_PAT` Script Property. The token only needs to live in Script Properties, so the placeholder can be restored afterward; `clasp push` will reset `Token.js` to the placeholder anyway. Running `setGithubPat` with the placeholder still in place throws an error and leaves any existing `GITHUB_PAT` untouched.
 
 6. **Deploy as web app**
    - Click **Deploy** → **New deployment**.
@@ -1053,7 +1055,7 @@ The manifest file defines permissions, runtime, and deployment settings:
 | Property | Required | Purpose |
 |---|---:|---|
 | `GEMINI_API_KEY` | Optional | Enables SOAR Assistant calls to Gemini. |
-| `GITHUB_PAT` | Optional | GitHub Personal Access Token for the support ticketing integration. Must have write access to issues on `nathanwiggins/soar`. |
+| `GITHUB_PAT` | Optional | GitHub Personal Access Token for the support ticketing integration. Must have write access to issues on `nathanwiggins/soar`. Can be set manually or by running `setGithubPat` in `Token.js`. |
 | `soar_data_version:last_updated` | Auto-created | App data version for cache invalidation. |
 | `soar_next_id:{Sheet}:{Prefix}` | Auto-created | ID counters for generated IDs. |
 | `soar_user_settings:{email}` | Auto-created | User font size and notification settings. |
