@@ -120,7 +120,7 @@ SOAR has a left sidebar, a top header, a main work area, a lower-left user menu,
 #### Left sidebar tabs
 
 - **Project Board**: The default work board. Shows project columns and task cards.
-- **Supervisor Tools**: Only available to users who have direct reports. Shows selected direct reports' assigned work.
+- **Supervisor Tools**: Only available to users who have direct reports. Shows selected direct reports' assigned work, with an **Active / Completed** toggle to switch between open tasks and completed (past) assignments.
 - **Calendar**: Month view of project due dates and task due dates, with an optional multi-month scroll view.
 - **Past Assignments**: Completed tasks assigned to the current user.
 - **Meeting Agendas**: Agenda cards under **My Agendas** and **Shared With Me**.
@@ -129,7 +129,7 @@ SOAR has a left sidebar, a top header, a main work area, a lower-left user menu,
 
 - On **Project Board**, the header has a **Hide/Show Projects** button (to hide or reveal individual project columns, per user) and a **New Project** red button.
 - On **Meeting Agendas**, the primary red button is **New Agenda**.
-- On **Supervisor Tools**, the header has a team-member selector whose default text is **Select team members**.
+- On **Supervisor Tools**, the header has an **Active / Completed** toggle and a team-member selector whose default text is **Select team members**.
 - On **Calendar**, the header has previous-month and next-month arrow buttons (month view only), a **Today** button, the current month label (month view only), a **Month / Multi-month** toggle, and a **Hide/Show Projects** button (to hide or reveal whole projects on the calendar, per user).
 - The **To-Do** button (checkmark icon with "To-Do" label) is always visible in the top header and opens the **To-Do List** sidebar on the right side.
 
@@ -196,7 +196,7 @@ By default, a user sees:
 - projects they created, and
 - **Public Projects** they are shared on (see [Public Projects and Task Claiming](#public-projects-and-task-claiming)).
 
-Completed tasks are not shown on the main **Project Board** after they are complete; they appear in **Past Assignments** for assigned users.
+Completed tasks are not shown on the main **Project Board** after they are complete; they appear in **Past Assignments** for assigned users, and in the **Completed** view of **Supervisor Tools** for their supervisors.
 
 Users can further control which projects appear on their board using the **Hide/Show Projects** button in the top header (to the left of **New Project**). Clicking it opens a dropdown listing every visible project with a checkbox. Unchecking a project hides its column from the board; checking it restores it. Hidden projects still appear on the **Calendar**, since calendar visibility is controlled separately by its own **Hide/Show Projects** setting (see [Calendar](#calendar)). This preference is saved per user in `PropertiesService` and does not affect other users' boards.
 
@@ -401,12 +401,21 @@ How it works:
 1. Click **Supervisor Tools** in the sidebar.
 2. Use the header selector, default text **Select team members**.
 3. Check one or more direct reports.
-4. SOAR shows open tasks assigned to selected users and projects containing those tasks.
+4. With **Active** selected (the default), SOAR shows open tasks assigned to selected users and projects containing those tasks.
+5. Click **Completed** in the header toggle to see the completed (past) assignments of the selected users.
+
+Completed view:
+
+- Shows a card for each completed task assigned to any selected user, sorted by completion time (most recent first; tasks without a `Completed_At` value fall back to their due date).
+- Each card shows the task title, project, the selected team members assigned to it, the due date, and the completion date/time. Hovering the completion date shows who marked it complete.
+- Click a card to open **Task Details**.
+- If no team members are selected, SOAR displays **View completed assignments for individuals you supervise.** If the selected users have no completed tasks, SOAR displays **No completed assignments yet.**
+- Leaving the **Supervisor Tools** tab resets the toggle to **Active**.
 
 Notes:
 
 - The selector lists direct reports, not the full indirect reporting tree.
-- The board itself can still show tasks in project columns, and the **+ Add Task** button remains visible.
+- The board itself can still show tasks in project columns, and the **+ Add Task** button remains visible in the **Active** view.
 
 ### Calendar
 
@@ -755,7 +764,7 @@ Footer buttons:
 ### Frontend Architecture (Vue 3)
 
 - **Reactive Data**: Refs for `users`, `projects`, `tasks`, `subtasks`, `assignments`, `comments`, `agendas`, `agendaShares`, and `agendaSessions`.
-- **State Management**: Computed properties for current user, visibility, assignee summaries, project summaries, calendar entries, agenda ownership, shared agendas, and supervisor selections.
+- **State Management**: Computed properties for current user, visibility, assignee summaries, project summaries, calendar entries, agenda ownership, shared agendas, supervisor selections, and supervisor completed assignments (`supervisorCompletedTasks`).
 - **Data Sync**: `getGlobalVersionHash()` checks whether cached payload data is still current; if not, `getInitialPayload()` reloads app data.
 - **UI Framework**: Tailwind CSS, Font Awesome icons, SortableJS/Vue Draggable, and Marked for assistant markdown rendering.
 
