@@ -457,7 +457,7 @@ function createTask(projectId, taskInput) {
     });
   }
 }
-function duplicateTask(taskId) {
+function duplicateTask(taskId, targetProjectId) {
   const normalizedTaskId = taskId ? taskId.toString().trim() : '';
   if (!normalizedTaskId) {
     return JSON.stringify({ success: false, error: 'Task ID is required.' });
@@ -482,12 +482,27 @@ function duplicateTask(taskId) {
       throw new Error('Could not determine Creator_ID from current user email.');
     }
 
-    const assigneeIds = getValidAssigneeIds(
+    const sourceProjectId = (sourceTask.Project_ID || '').toString().trim();
+    const requestedProjectId = targetProjectId ? targetProjectId.toString().trim() : '';
+    const destinationProjectId = requestedProjectId
+      ? ensureProjectExists(requestedProjectId)
+      : sourceProjectId;
+    const isPublicDestination = isProjectPublic(destinationProjectId);
+    const isCrossProject = destinationProjectId !== sourceProjectId;
+
+    let assigneeIds = isPublicDestination ? [] : getValidAssigneeIds(
       getTableData('Assignments')
         .filter((assignment) => (assignment.Assignment_ID || '').toString().trim() === normalizedTaskId)
         .map((assignment) => assignment.Assignee_ID)
     );
-    if (!isProjectPublic(sourceTask.Project_ID)) {
+    if (!isPublicDestination && isCrossProject) {
+      const assignableIds = getAssignableUserIdsForUser(creatorId);
+      assigneeIds = assigneeIds.filter((assigneeId) => assignableIds.has(assigneeId));
+    }
+    if (!isPublicDestination && assigneeIds.length === 0) {
+      assigneeIds = [creatorId];
+    }
+    if (!isPublicDestination) {
       ensureTaskHasAssignees(assigneeIds);
     }
 
@@ -496,7 +511,7 @@ function duplicateTask(taskId) {
     const newTaskId = generateNextId('Tasks', 'T');
 
     if (headerIndex.Task_ID !== undefined) newRow[headerIndex.Task_ID] = newTaskId;
-    if (headerIndex.Project_ID !== undefined) newRow[headerIndex.Project_ID] = sourceTask.Project_ID;
+    if (headerIndex.Project_ID !== undefined) newRow[headerIndex.Project_ID] = destinationProjectId;
     if (headerIndex.Task_Title !== undefined) newRow[headerIndex.Task_Title] = sourceTask.Task_Title;
     if (headerIndex.Due_Date !== undefined) newRow[headerIndex.Due_Date] = parseDateInput(sourceTask.Due_Date) || '';
     if (headerIndex.Status !== undefined) newRow[headerIndex.Status] = TASK_DEFAULT_STATUS;
