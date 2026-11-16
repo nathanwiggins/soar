@@ -221,7 +221,7 @@ Each task card shows:
 
 - status dropdown/pill with title **Update task status**;
 - subtask count indicator (list-check icon and number) next to the status pill, shown only when the task has subtasks;
-- a duplicate (copy icon) button that creates an independent copy of the task via `duplicateTask()`;
+- a duplicate (copy icon) button that opens the same **Duplicate into** project menu as the **Duplicate Task** button in Task Details, then creates an independent copy of the task in the chosen project via `duplicateTask(taskId, targetProjectId)`;
 - speech-bubble comments button with the number of unresolved comments;
 - task title;
 - assignee avatars or initials;
@@ -334,7 +334,7 @@ Footer buttons:
 - **Complete Task**: sets the task status to `Complete`, records `Completed_By`, and records `Completed_At`.
 - **Complete**: displayed in the same button position when the task is already complete.
 - **Delete Task**: deletes the task and related assignments. Only visible to the task creator.
-- **Duplicate Task**: creates an independent copy of the task, including its assignees and subtasks, via `duplicateTask()`.
+- **Duplicate Task**: opens a **Duplicate into** menu listing the current project (labeled **This project**) followed by every other project visible to you, sorted by title. Picking a project creates an independent copy of the task, including its assignees and subtasks, in that project via `duplicateTask(taskId, targetProjectId)`. You do not need to own the target project. Public Projects are labeled **Public** in the menu.
 - **Save Changes**: saves edits.
 - **Cancel**: cancels edit mode.
 - **Close**: closes the modal when not editing.
@@ -1218,13 +1218,14 @@ Creates a new task inside a project.
 
 **Returns**: `{success: true, task: {...}, assignments: [...], subtasks: [...]}`
 
-#### `duplicateTask(taskId)`
-Creates an independent copy of a task in the same project, including its assignees and subtasks.
+#### `duplicateTask(taskId, targetProjectId)`
+Creates an independent copy of a task, including its assignees and subtasks, in the same project or in another project. The current user does not need to be the creator of either project.
 
 **Parameters**:
 - `taskId` (string): Task_ID to duplicate.
+- `targetProjectId` (string, optional): Project_ID to place the copy in. Defaults to the source task's project. Must be an existing project.
 
-**Net Effect**: Copies `Task_Title`, `Description`, `Priority`, `Due_Date`, `Project_ID`, assignees, and subtask titles into a new task with a new `Task_ID`. Resets `Status` to `Not Started` and subtasks to `Incomplete`, clears completion fields, and sets `Creator_ID` to the current user. Comments are not copied. Sends task-assignment notifications to the copied assignees, same as `createTask`.
+**Net Effect**: Copies `Task_Title`, `Description`, `Priority`, `Due_Date`, assignees, and subtask titles into a new task with a new `Task_ID` in the target project. If the target is a Public Project, the copy is created unclaimed (zero assignees). If the target is a private project and the source task has no assignees, the current user becomes the copy's sole assignee. Resets `Status` to `Not Started` and subtasks to `Incomplete`, clears completion fields, and sets `Creator_ID` to the current user. Comments are not copied. Sends task-assignment notifications to the copied assignees, same as `createTask`.
 
 **Returns**: `{success: true, task: {...}, assignments: [...], subtasks: [...]}`
 

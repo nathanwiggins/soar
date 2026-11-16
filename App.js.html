@@ -251,6 +251,7 @@
       const updatingTaskStatusIds = ref([]);
       const permanentlyDeletingTaskIds = ref([]);
       const duplicatingTaskIds = ref([]);
+      const duplicateMenu = ref(null);
       const claimingTaskIds = ref([]);
       const unclaimingTaskIds = ref([]);
       const hoveredTaskId = ref(null);
@@ -1933,6 +1934,7 @@
         taskDetailsForm.value = buildTaskDetailsForm(task);
         isEditingTask.value = false;
         showTaskDetailsAssigneeDropdown.value = false;
+        closeDuplicateMenu();
         showTaskDetailsModal.value = true;
         loadCommentsForTopic(task.Task_ID);
       };
@@ -2003,6 +2005,7 @@
       const closeTaskInfo = () => {
         showTaskDetailsModal.value = false;
         showTaskDetailsAssigneeDropdown.value = false;
+        closeDuplicateMenu();
         isEditingTask.value = false;
         taskDetailsForm.value = null;
       };
@@ -2640,9 +2643,72 @@
 
       const isDuplicatingTask = (taskId) => duplicatingTaskIds.value.some((id) => idsMatch(id, taskId));
 
-      const duplicateTaskById = (taskId) => {
+      const duplicateTargetProjects = computed(() => {
+        const currentProjectId = normalizeId(duplicateMenu.value?.projectId);
+        const currentProject = currentProjectId ? getProjectById(currentProjectId) : null;
+        const others = visibleProjects.value
+          .filter((project) => !idsMatch(project.Project_ID, currentProjectId))
+          .slice()
+          .sort((a, b) => (a.Project_Title || '').toString().localeCompare((b.Project_Title || '').toString()));
+        return currentProject ? [currentProject, ...others] : others;
+      });
+
+      const handleDuplicateMenuScroll = (event) => {
+        const menuElement = document.getElementById('duplicate-project-menu');
+        if (menuElement && event.target instanceof Node && menuElement.contains(event.target)) return;
+        closeDuplicateMenu();
+      };
+
+      const closeDuplicateMenu = () => {
+        if (!duplicateMenu.value) return;
+        duplicateMenu.value = null;
+        window.removeEventListener('scroll', handleDuplicateMenuScroll, true);
+        window.removeEventListener('resize', closeDuplicateMenu);
+      };
+
+      const openDuplicateMenu = (event, taskId, projectId) => {
+        const normalizedTaskId = normalizeId(taskId);
+        if (!normalizedTaskId) return;
+        if (duplicateMenu.value && idsMatch(duplicateMenu.value.taskId, normalizedTaskId)) {
+          closeDuplicateMenu();
+          return;
+        }
+        closeDuplicateMenu();
+        const menuWidth = 288;
+        const menuMaxHeight = 288;
+        const gap = 6;
+        const rect = event?.currentTarget?.getBoundingClientRect?.();
+        const style = { width: `${menuWidth}px` };
+        if (rect) {
+          const left = Math.min(Math.max(8, rect.left), window.innerWidth - menuWidth - 8);
+          style.left = `${Math.max(8, left)}px`;
+          if (window.innerHeight - rect.bottom >= menuMaxHeight + gap || rect.top < menuMaxHeight + gap) {
+            style.top = `${rect.bottom + gap}px`;
+          } else {
+            style.bottom = `${window.innerHeight - rect.top + gap}px`;
+          }
+        } else {
+          style.top = '50%';
+          style.left = '50%';
+          style.transform = 'translate(-50%, -50%)';
+        }
+        duplicateMenu.value = { taskId: normalizedTaskId, projectId: normalizeId(projectId), style };
+        window.addEventListener('scroll', handleDuplicateMenuScroll, true);
+        window.addEventListener('resize', closeDuplicateMenu);
+      };
+
+      const duplicateTaskIntoProject = (projectId) => {
+        const taskId = duplicateMenu.value?.taskId;
+        closeDuplicateMenu();
+        if (taskId) duplicateTaskById(taskId, projectId);
+      };
+
+      const duplicateTaskById = (taskId, targetProjectId) => {
         const normalizedTaskId = normalizeId(taskId);
         if (!normalizedTaskId || isDuplicatingTask(normalizedTaskId)) return;
+        const normalizedTargetProjectId = normalizeId(targetProjectId);
+        const sourceTask = tasks.value.find((task) => idsMatch(task.Task_ID, normalizedTaskId));
+        const isCrossProject = Boolean(normalizedTargetProjectId && sourceTask && !idsMatch(sourceTask.Project_ID, normalizedTargetProjectId));
 
         duplicatingTaskIds.value.push(normalizedTaskId);
 
@@ -2664,7 +2730,8 @@
               if (Array.isArray(result.subtasks) && result.subtasks.length > 0) {
                 subtasks.value.push(...result.subtasks);
               }
-              showToast('Task duplicated.', 'success');
+              const targetTitle = isCrossProject ? getProjectById(result.task.Project_ID)?.Project_Title : '';
+              showToast(targetTitle ? `Task duplicated into ${targetTitle}.` : 'Task duplicated.', 'success');
             } else {
               fetchData();
             }
@@ -2674,7 +2741,7 @@
             console.error('Failed to duplicate task:', error);
             showToast('Failed to duplicate task. Please try again.');
           })
-          .duplicateTask(normalizedTaskId);
+          .duplicateTask(normalizedTaskId, normalizedTargetProjectId || '');
       };
 
       const deleteTaskPermanently = (task) => {
@@ -4604,6 +4671,11 @@
         updatingTaskStatusIds,
         permanentlyDeletingTaskIds,
         duplicatingTaskIds,
+        duplicateMenu,
+        duplicateTargetProjects,
+        openDuplicateMenu,
+        closeDuplicateMenu,
+        duplicateTaskIntoProject,
         hoveredTaskId,
         isDuplicatingTask,
         duplicateTaskById,
