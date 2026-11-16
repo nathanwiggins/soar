@@ -334,7 +334,7 @@ Footer buttons:
 - **Complete Task**: sets the task status to `Complete`, records `Completed_By`, and records `Completed_At`.
 - **Complete**: displayed in the same button position when the task is already complete.
 - **Delete Task**: deletes the task and related assignments. Only visible to the task creator.
-- **Duplicate Task**: opens a **Duplicate into** menu listing the current project (labeled **This project**) followed by every other project visible to you, sorted by title. Picking a project creates an independent copy of the task, including its assignees and subtasks, in that project via `duplicateTask(taskId, targetProjectId)`. You do not need to own the target project. Public Projects are labeled **Public** in the menu.
+- **Duplicate Task**: opens a **Duplicate into** menu listing the current project (labeled **This project**) followed by every other project visible to you, sorted by title. Picking a project creates an independent copy of the task, including its assignees and subtasks, in that project via `duplicateTask(taskId, targetProjectId)`. You do not need to own the target project. When copying into a different project, only assignees you are allowed to assign (yourself and your reporting chain) are kept; if none remain, you become the assignee. Public Projects are labeled **Public** in the menu.
 - **Save Changes**: saves edits.
 - **Cancel**: cancels edit mode.
 - **Close**: closes the modal when not editing.
@@ -1225,7 +1225,7 @@ Creates an independent copy of a task, including its assignees and subtasks, in 
 - `taskId` (string): Task_ID to duplicate.
 - `targetProjectId` (string, optional): Project_ID to place the copy in. Defaults to the source task's project. Must be an existing project.
 
-**Net Effect**: Copies `Task_Title`, `Description`, `Priority`, `Due_Date`, assignees, and subtask titles into a new task with a new `Task_ID` in the target project. If the target is a Public Project, the copy is created unclaimed (zero assignees). If the target is a private project and the source task has no assignees, the current user becomes the copy's sole assignee. Resets `Status` to `Not Started` and subtasks to `Incomplete`, clears completion fields, and sets `Creator_ID` to the current user. Comments are not copied. Sends task-assignment notifications to the copied assignees, same as `createTask`.
+**Net Effect**: Copies `Task_Title`, `Description`, `Priority`, `Due_Date`, assignees, and subtask titles into a new task with a new `Task_ID` in the target project. If the target is a Public Project, the copy is created unclaimed (zero assignees). If the target is a different private project, source assignees outside the current user's assignable set (themselves and their reporting chain, per `getAssignableUserIdsForUser`) are dropped. If the target is a private project and no assignees remain, the current user becomes the copy's sole assignee. Resets `Status` to `Not Started` and subtasks to `Incomplete`, clears completion fields, and sets `Creator_ID` to the current user. Comments are not copied. Sends task-assignment notifications to the copied assignees, same as `createTask`.
 
 **Returns**: `{success: true, task: {...}, assignments: [...], subtasks: [...]}`
 

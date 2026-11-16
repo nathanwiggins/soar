@@ -482,17 +482,23 @@ function duplicateTask(taskId, targetProjectId) {
       throw new Error('Could not determine Creator_ID from current user email.');
     }
 
+    const sourceProjectId = (sourceTask.Project_ID || '').toString().trim();
     const requestedProjectId = targetProjectId ? targetProjectId.toString().trim() : '';
     const destinationProjectId = requestedProjectId
       ? ensureProjectExists(requestedProjectId)
-      : (sourceTask.Project_ID || '').toString().trim();
+      : sourceProjectId;
     const isPublicDestination = isProjectPublic(destinationProjectId);
+    const isCrossProject = destinationProjectId !== sourceProjectId;
 
     let assigneeIds = isPublicDestination ? [] : getValidAssigneeIds(
       getTableData('Assignments')
         .filter((assignment) => (assignment.Assignment_ID || '').toString().trim() === normalizedTaskId)
         .map((assignment) => assignment.Assignee_ID)
     );
+    if (!isPublicDestination && isCrossProject) {
+      const assignableIds = getAssignableUserIdsForUser(creatorId);
+      assigneeIds = assigneeIds.filter((assigneeId) => assignableIds.has(assigneeId));
+    }
     if (!isPublicDestination && assigneeIds.length === 0) {
       assigneeIds = [creatorId];
     }
